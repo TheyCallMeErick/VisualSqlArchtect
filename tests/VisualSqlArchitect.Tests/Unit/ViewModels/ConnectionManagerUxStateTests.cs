@@ -8,6 +8,20 @@ namespace VisualSqlArchitect.Tests.Unit.ViewModels;
 public class ConnectionManagerUxStateTests
 {
     [Fact]
+    public void OpenNewProfileCommand_OpensDialogAndStartsEditing()
+    {
+        var vm = new ConnectionManagerViewModel
+        {
+            IsVisible = false,
+        };
+
+        vm.OpenNewProfileCommand.Execute(null);
+
+        Assert.True(vm.IsVisible);
+        Assert.True(vm.IsEditing);
+    }
+
+    [Fact]
     public void Connect_DoesNotCloseDialogImmediately()
     {
         var vm = new ConnectionManagerViewModel

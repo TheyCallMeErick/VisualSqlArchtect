@@ -290,7 +290,11 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable
             () => _layoutManager.RunAutoLayout(),
             () => Nodes.Count > 0
         );
-        OpenDiagnosticsCommand = new RelayCommand(() => Diagnostics.Open());
+        OpenDiagnosticsCommand = new RelayCommand(() =>
+        {
+            Sidebar.ActiveTab = SidebarTab.Diagnostics;
+            Diagnostics.RunChecksCommand.Execute(null);
+        });
         TogglePreviewCommand = new RelayCommand(DataPreview.Toggle);
         BringSelectionToFrontCommand = new RelayCommand(
             () => BringSelectionToFront(),
@@ -346,7 +350,7 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable
                 _nodeManager.SpawnTableNode(tableName, columns, position);
             }
         );
-        Sidebar = new SidebarViewModel(nodesList, ConnectionManager, schemaVM);
+        Sidebar = new SidebarViewModel(nodesList, ConnectionManager, schemaVM, Diagnostics);
 
         // Subscribe to LiveSql property changes with stored handler
         _liveSqlPropertyChangedHandler = (_, e) =>

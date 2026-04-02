@@ -14,6 +14,7 @@ public class SidebarControlCodeBehindRegressionTests
         Assert.Contains("nodesButton.Click += (_, _) => vm.ActiveTab = SidebarTab.Nodes;", source);
         Assert.Contains("connectionButton.Click += (_, _) => vm.ActiveTab = SidebarTab.Connection;", source);
         Assert.Contains("schemaButton.Click += (_, _) => vm.ActiveTab = SidebarTab.Schema;", source);
+        Assert.Contains("vm.ActiveTab = SidebarTab.Diagnostics;", source);
     }
 
     [Fact]
@@ -24,9 +25,13 @@ public class SidebarControlCodeBehindRegressionTests
         Assert.Contains("nodesControl.DataContext = vm.NodesList;", source);
         Assert.Contains("connectionControl.DataContext = vm.ConnectionManager;", source);
         Assert.Contains("schemaControl.DataContext = vm.Schema;", source);
+        Assert.Contains("diagnosticsControl.DataContext = vm.Diagnostics;", source);
 
         Assert.Contains("_buttonsWired = false;", source);
         Assert.Contains("WireUpButtons();", source);
+        Assert.Contains("_ = AnimateActiveTabAsync(vm.ActiveTab);", source);
+        Assert.Contains("search?.Focus();", source);
+        Assert.Contains("OnSidebarPropertyChanged", source);
     }
 
     private static string ReadSidebarCodeBehind()

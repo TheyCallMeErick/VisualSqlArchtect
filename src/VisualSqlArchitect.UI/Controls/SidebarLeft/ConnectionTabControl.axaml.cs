@@ -4,6 +4,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Shapes;
 using Avalonia.Controls.Templates;
 using Avalonia.Media;
+using Avalonia;
 using VisualSqlArchitect.UI.Services.Localization;
 using VisualSqlArchitect.UI.ViewModels;
 
@@ -83,6 +84,7 @@ public partial class ConnectionTabControl : UserControl
                     // Find button and status dot in this grid
                     var button = grid.Children.OfType<Button>().FirstOrDefault();
                     var dot = grid.Children.OfType<Ellipse>().FirstOrDefault();
+                    SetClass(border, "active", isActive);
 
                     if (button != null)
                     {
@@ -90,24 +92,39 @@ public partial class ConnectionTabControl : UserControl
                         button.Content = isActive
                             ? LocalizationService.Instance["connection.disconnect"]
                             : LocalizationService.Instance["connection.connect"];
-                        if (isActive)
-                        {
-                            button.Background = new SolidColorBrush(Color.Parse("#D63031")); // Red for disconnect
-                            button.Foreground = new SolidColorBrush(Color.Parse("#FF6B6B")); // Light red
-                        }
-                        else
-                        {
-                            button.Background = new SolidColorBrush(Color.Parse("#4C1F6B")); // Purple for connect
-                            button.Foreground = new SolidColorBrush(Color.Parse("#C084FC")); // Light purple
-                        }
+                        SetClass(button, "danger", isActive);
+                        SetClass(button, "secondary", !isActive);
                     }
 
                     if (dot != null)
                     {
-                        dot.Fill = new SolidColorBrush(Color.Parse(isActive ? "#10B981" : "#6B7280")); // Green if active
+                        dot.Fill = isActive
+                            ? ResolveBrush("BtnSuccessFgBrush", "#DCFCE7")
+                            : ResolveBrush("TextSecondaryBrush", "#8B95A8");
                     }
                 }
             }
         }
+    }
+
+    private static void SetClass(StyledElement element, string className, bool enabled)
+    {
+        if (enabled)
+        {
+            if (!element.Classes.Contains(className))
+                element.Classes.Add(className);
+            return;
+        }
+
+        if (element.Classes.Contains(className))
+            element.Classes.Remove(className);
+    }
+
+    private static IBrush ResolveBrush(string resourceKey, string fallbackHex)
+    {
+        if (Application.Current?.TryFindResource(resourceKey, out object? resource) == true && resource is IBrush brush)
+            return brush;
+
+        return new SolidColorBrush(Color.Parse(fallbackHex));
     }
 }

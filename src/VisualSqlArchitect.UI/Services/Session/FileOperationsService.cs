@@ -49,6 +49,7 @@ public class FileOperationsService(Window window, CanvasViewModel vm)
             await CanvasSerializer.SaveToFileAsync(path, _vm);
             _vm.CurrentFilePath = path;
             _vm.IsDirty = false;
+            RecentFilesStore.Touch(path);
             _vm.NotifySuccess("Canvas saved successfully.", path);
         }
         catch (Exception ex)
@@ -72,6 +73,14 @@ public class FileOperationsService(Window window, CanvasViewModel vm)
         if (path is null)
             return;
 
+        await OpenPathAsync(path);
+    }
+
+    public async Task OpenPathAsync(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            return;
+
         try
         {
             CanvasLoadResult result = await CanvasSerializer.LoadFromFileAsync(path, _vm, BuildColumnLookup());
@@ -83,6 +92,7 @@ public class FileOperationsService(Window window, CanvasViewModel vm)
 
             _vm.CurrentFilePath = path;
             _vm.IsDirty = false;
+            RecentFilesStore.Touch(path);
             _window.FindControl<InfiniteCanvas>("TheCanvas")?.InvalidateWires();
 
             string? warningDetails = result.Warnings is { Count: > 0 }

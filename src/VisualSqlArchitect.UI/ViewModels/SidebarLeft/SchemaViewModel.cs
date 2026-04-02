@@ -123,8 +123,14 @@ public sealed class SchemaViewModel : ViewModelBase
     public bool HasConnection
     {
         get => _hasConnection;
-        set => Set(ref _hasConnection, value);
+        set
+        {
+            if (Set(ref _hasConnection, value))
+                RaisePropertyChanged(nameof(ShowFilterEmptyState));
+        }
     }
+
+    public bool ShowFilterEmptyState => HasConnection && Categories.Count == 0;
 
     /// <summary>
     /// The database metadata to display.
@@ -160,7 +166,10 @@ public sealed class SchemaViewModel : ViewModelBase
         Categories.Clear();
 
         if (Metadata is null || Metadata.Schemas.Count == 0)
+        {
+            RaisePropertyChanged(nameof(ShowFilterEmptyState));
             return;
+        }
 
         // Create category viewmodels - using Material Icon Kind names
         var tablesCategory = new SchemaCategoryViewModel("Tables", "Table", "#60A5FA");
@@ -275,6 +284,8 @@ public sealed class SchemaViewModel : ViewModelBase
                 "Triggers not yet supported", "⚡", "(feature coming soon)"));
             Categories.Add(triggersCategory);
         }
+
+        RaisePropertyChanged(nameof(ShowFilterEmptyState));
     }
 
     public static PinDataType MapSqlTypeToPinDataType(string? rawType)

@@ -61,6 +61,12 @@ public sealed class PinInfoRowViewModel(PinViewModel pin)
     public Avalonia.Media.SolidColorBrush ColorBrush => pin.PinBrush;
 }
 
+public enum PropertyPanelTab
+{
+    Properties,
+    ProjectSettings,
+}
+
 // ─── Property panel ──────────────────────────────────────────────────────────
 
 /// <summary>
@@ -75,6 +81,11 @@ public sealed class PropertyPanelViewModel : ViewModelBase
     private string _lastRawSql = string.Empty;
     private string? _sqlTraceFragment;
     private string? _sqlTraceContext;
+    private PropertyPanelTab _activeTab = PropertyPanelTab.Properties;
+    private string _selectedNamingConvention = "snake_case";
+    private bool _enforceAliasNaming = true;
+    private bool _warnOnReservedKeywords = true;
+    private string _maxAliasLength = "64";
 
     private readonly UndoRedoStack _undo;
     private readonly LocalizationService _loc = LocalizationService.Instance;
@@ -86,7 +97,15 @@ public sealed class PropertyPanelViewModel : ViewModelBase
         {
             RaisePropertyChanged(nameof(NodeAliasLabel));
         };
+
+        SelectPropertiesTabCommand = new RelayCommand(() => ActiveTab = PropertyPanelTab.Properties);
+        SelectProjectSettingsTabCommand = new RelayCommand(() =>
+            ActiveTab = PropertyPanelTab.ProjectSettings
+        );
     }
+
+    public RelayCommand SelectPropertiesTabCommand { get; }
+    public RelayCommand SelectProjectSettingsTabCommand { get; }
 
     // ── Sub-collections ───────────────────────────────────────────────────────
     public ObservableCollection<ParameterRowViewModel> Parameters { get; } = [];
@@ -111,6 +130,53 @@ public sealed class PropertyPanelViewModel : ViewModelBase
     {
         get => _panelTitle;
         private set => Set(ref _panelTitle, value);
+    }
+
+    public PropertyPanelTab ActiveTab
+    {
+        get => _activeTab;
+        set
+        {
+            if (Set(ref _activeTab, value))
+            {
+                RaisePropertyChanged(nameof(ShowPropertiesTab));
+                RaisePropertyChanged(nameof(ShowProjectSettingsTab));
+            }
+        }
+    }
+
+    public bool ShowPropertiesTab => ActiveTab == PropertyPanelTab.Properties;
+    public bool ShowProjectSettingsTab => ActiveTab == PropertyPanelTab.ProjectSettings;
+
+    public IReadOnlyList<string> NamingConventionOptions { get; } =
+    [
+        "snake_case",
+        "camelCase",
+        "PascalCase",
+    ];
+
+    public string SelectedNamingConvention
+    {
+        get => _selectedNamingConvention;
+        set => Set(ref _selectedNamingConvention, value);
+    }
+
+    public bool EnforceAliasNaming
+    {
+        get => _enforceAliasNaming;
+        set => Set(ref _enforceAliasNaming, value);
+    }
+
+    public bool WarnOnReservedKeywords
+    {
+        get => _warnOnReservedKeywords;
+        set => Set(ref _warnOnReservedKeywords, value);
+    }
+
+    public string MaxAliasLength
+    {
+        get => _maxAliasLength;
+        set => Set(ref _maxAliasLength, value);
     }
 
     // ── SQL Trace ─────────────────────────────────────────────────────────────
@@ -161,6 +227,8 @@ public sealed class PropertyPanelViewModel : ViewModelBase
 
     public string NodeTitle => SelectedNode?.Title ?? string.Empty;
     public string NodeCategory => SelectedNode?.Category.ToString() ?? string.Empty;
+    public string NodeTypeLabel => SelectedNode?.Type.ToString() ?? string.Empty;
+    public string NodeTypeSubtitle => SelectedNode?.Subtitle ?? string.Empty;
     public string NodeAlias
     {
         get => SelectedNode?.Alias ?? string.Empty;
@@ -207,12 +275,16 @@ public sealed class PropertyPanelViewModel : ViewModelBase
         RaisePropertyChanged(nameof(HasOutputs));
         RaisePropertyChanged(nameof(NodeTitle));
         RaisePropertyChanged(nameof(NodeCategory));
+        RaisePropertyChanged(nameof(NodeTypeLabel));
+        RaisePropertyChanged(nameof(NodeTypeSubtitle));
         RaisePropertyChanged(nameof(NodeAlias));
         RaisePropertyChanged(nameof(NodeAliasLabel));
         RaisePropertyChanged(nameof(ShowAliasEditor));
         RaisePropertyChanged(nameof(HeaderGradient));
         RaisePropertyChanged(nameof(CategoryIcon));
         RaisePropertyChanged(nameof(CategoryIconKind));
+        RaisePropertyChanged(nameof(ShowPropertiesTab));
+        RaisePropertyChanged(nameof(ShowProjectSettingsTab));
     }
 
     public void ShowMultiSelection(IReadOnlyList<NodeViewModel> nodes)
@@ -231,8 +303,12 @@ public sealed class PropertyPanelViewModel : ViewModelBase
         RaisePropertyChanged(nameof(HasParams));
         RaisePropertyChanged(nameof(HasInputs));
         RaisePropertyChanged(nameof(HasOutputs));
+        RaisePropertyChanged(nameof(NodeTypeLabel));
+        RaisePropertyChanged(nameof(NodeTypeSubtitle));
         RaisePropertyChanged(nameof(NodeAliasLabel));
         RaisePropertyChanged(nameof(ShowAliasEditor));
+        RaisePropertyChanged(nameof(ShowPropertiesTab));
+        RaisePropertyChanged(nameof(ShowProjectSettingsTab));
     }
 
     public void Clear()
@@ -251,8 +327,12 @@ public sealed class PropertyPanelViewModel : ViewModelBase
         RaisePropertyChanged(nameof(HasParams));
         RaisePropertyChanged(nameof(HasInputs));
         RaisePropertyChanged(nameof(HasOutputs));
+        RaisePropertyChanged(nameof(NodeTypeLabel));
+        RaisePropertyChanged(nameof(NodeTypeSubtitle));
         RaisePropertyChanged(nameof(NodeAliasLabel));
         RaisePropertyChanged(nameof(ShowAliasEditor));
+        RaisePropertyChanged(nameof(ShowPropertiesTab));
+        RaisePropertyChanged(nameof(ShowProjectSettingsTab));
     }
 
     private static bool IsSourceAliasNode(NodeType? type) =>

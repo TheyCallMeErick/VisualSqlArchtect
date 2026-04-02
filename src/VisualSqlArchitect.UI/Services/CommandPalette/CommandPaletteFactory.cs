@@ -474,16 +474,6 @@ public class CommandPaletteFactory(
                 Tags = "distribute space equal vertical nodes",
                 Execute = () => _vm.DistributeVCommand.Execute(null),
             },
-            // ── Diagnostics ───────────────────────────────────────────────────
-            new()
-            {
-                Name = "App Diagnostics",
-                Description = "Open the self-check diagnostics panel",
-                Shortcut = "",
-                Icon = MaterialIconKind.HeartPulse,
-                Tags = "health check status errors warnings debug",
-                Execute = () => _vm.OpenDiagnosticsCommand.Execute(null),
-            },
             // ── Export ────────────────────────────────────────────────────────
             new()
             {

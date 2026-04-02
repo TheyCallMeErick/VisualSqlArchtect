@@ -322,10 +322,13 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
     public RelayCommand ConnectCommand { get; }
     public RelayCommand DisconnectCommand { get; }
     public RelayCommand CloseCommand { get; }
+    public RelayCommand OpenNewProfileCommand { get; }
     public RelayCommand RefreshHealthCommand { get; }
     public RelayCommand ClearCanvasAfterConnectCommand { get; }
     public RelayCommand KeepCanvasAfterConnectCommand { get; }
     public RelayCommand CloseClearCanvasPromptCommand { get; }
+
+    public event Action<ConnectionProfile>? ConnectionActivated;
 
     // ── Constructor ───────────────────────────────────────────────────────────
 
@@ -349,6 +352,11 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
         ConnectCommand        = new RelayCommand(Connect, () => SelectedProfile is not null);
         DisconnectCommand     = new RelayCommand(Disconnect, () => _activeProfileId is not null);
         CloseCommand          = new RelayCommand(() => IsVisible = false);
+        OpenNewProfileCommand = new RelayCommand(() =>
+        {
+            Open();
+            BeginNewProfile();
+        });
         RefreshHealthCommand  = new RelayCommand(StartRefreshHealthSafe, () => _activeProfileId is not null);
         ClearCanvasAfterConnectCommand = new RelayCommand(ClearCanvasAfterConnect);
         KeepCanvasAfterConnectCommand = new RelayCommand(KeepCanvasAfterConnect);
@@ -511,6 +519,7 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
                 TestStatus = _loc["connection.status.connected"];
                 TestStatusColor = "#4ADE80";
                 IsVisible = false;
+                ConnectionActivated?.Invoke(profile);
             }
             else
             {

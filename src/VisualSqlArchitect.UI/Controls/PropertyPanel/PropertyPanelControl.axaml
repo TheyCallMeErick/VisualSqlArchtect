@@ -4,8 +4,7 @@
              xmlns:loc="using:VisualSqlArchitect.UI.Services.Localization"
              xmlns:mi="using:Material.Icons.Avalonia"
              x:Class="VisualSqlArchitect.UI.Controls.PropertyPanelControl"
-             x:DataType="vm:PropertyPanelViewModel"
-             Width="240">
+             x:DataType="vm:PropertyPanelViewModel">
 
   <UserControl.Styles>
 
@@ -65,6 +64,44 @@
     <Style Selector="Border.pin-info-row:pointerover">
       <Setter Property="Background" Value="#131720"/>
     </Style>
+
+    <Style Selector="Button.panel-tab">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+      <Setter Property="FontWeight" Value="{StaticResource FontWeightStrong}"/>
+      <Setter Property="FontFamily" Value="{StaticResource UIFont}"/>
+      <Setter Property="FontSize" Value="{StaticResource FontSizeBody}"/>
+      <Setter Property="Padding" Value="14,9"/>
+      <Setter Property="MinHeight" Value="42"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Border.CornerRadius" Value="0"/>
+      <Setter Property="Border.BorderThickness" Value="0,0,0,2"/>
+      <Setter Property="Border.BorderBrush" Value="Transparent"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Foreground" Duration="0:0:0.1"/>
+          <BrushTransition Property="Border.BorderBrush" Duration="0:0:0.1"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.panel-tab:pointerover">
+      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+    </Style>
+    <Style Selector="Button.panel-tab.active">
+      <Setter Property="Foreground" Value="{StaticResource AccentBlueBrush}"/>
+      <Setter Property="Border.BorderBrush" Value="{StaticResource AccentBlueBrush}"/>
+    </Style>
+    <Style Selector="Button.panel-tab:focus-visible">
+      <Setter Property="Background" Value="{StaticResource MacroBg2Brush}"/>
+      <Setter Property="Border.BorderBrush" Value="{StaticResource BorderActiveBrush}"/>
+      <Setter Property="Border.BorderThickness" Value="0,0,0,2"/>
+    </Style>
+    <Style Selector="Button.panel-tab:disabled">
+      <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+      <Setter Property="Opacity" Value="0.62"/>
+      <Setter Property="Border.BorderBrush" Value="Transparent"/>
+    </Style>
   </UserControl.Styles>
 
   <!-- ══ Panel shell ════════════════════════════════════════════════════════ -->
@@ -72,53 +109,78 @@
           BorderBrush="#1A1D26"
           BorderThickness="1,0,0,0">
 
-    <Grid RowDefinitions="Auto,*">
+    <Grid RowDefinitions="42,*">
 
       <!-- ── Panel header ──────────────────────────────────────────────────── -->
       <Border Grid.Row="0"
-              Background="#0D0F14"
-              Padding="12,10"
-              BorderBrush="#1A1D26"
+              Background="{StaticResource MacroBg1Brush}"
+              BorderBrush="{StaticResource MacroBorderSubtleBrush}"
               BorderThickness="0,0,0,1">
-
-        <Grid ColumnDefinitions="Auto,*">
-
-          <!-- Node category gradient badge -->
-          <Border Grid.Column="0"
-                  Width="28" Height="28"
-                  CornerRadius="7"
-                  Background="{Binding HeaderGradient}"
-                  Margin="0,0,10,0"
-                  VerticalAlignment="Center"
-                  IsVisible="{Binding HasNode}">
-            <mi:MaterialIcon Kind="{Binding CategoryIconKind}"
-                             Width="14" Height="14"
-                             Foreground="White"
-                             HorizontalAlignment="Center"
-                             VerticalAlignment="Center"/>
-          </Border>
-
-          <!-- Title -->
-          <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
-            <TextBlock Text="{Binding PanelTitle}"
-                       FontSize="12"
-                       FontWeight="SemiBold"
-                       Foreground="#E8EAED"
-                       TextTrimming="CharacterEllipsis"/>
-            <TextBlock Text="{Binding NodeCategory}"
-                       FontSize="10"
-                       Foreground="#4A5568"
-                       IsVisible="{Binding HasNode}"/>
-          </StackPanel>
-        </Grid>
+        <StackPanel Orientation="Horizontal" Spacing="0">
+          <Button Classes="panel-tab"
+                  Classes.active="{Binding ShowPropertiesTab}"
+                  Command="{Binding SelectPropertiesTabCommand}"
+                  Content="Properties"/>
+          <Button Classes="panel-tab"
+                  Classes.active="{Binding ShowProjectSettingsTab}"
+                  Command="{Binding SelectProjectSettingsTabCommand}"
+                  Content="Project Settings"/>
+        </StackPanel>
       </Border>
 
       <!-- ── Scrollable content ────────────────────────────────────────────── -->
       <ScrollViewer Grid.Row="1"
                     VerticalScrollBarVisibility="Auto"
-                    HorizontalScrollBarVisibility="Disabled">
+            HorizontalScrollBarVisibility="Disabled"
+            IsVisible="{Binding ShowPropertiesTab}">
+        <Grid RowDefinitions="Auto,*">
+        <Border Padding="12,10"
+                BorderBrush="#1A1D26"
+                BorderThickness="0,0,0,1"
+                IsVisible="{Binding HasNode}">
+          <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
+            <Border Grid.Column="0"
+              Grid.RowSpan="2"
+                    Width="24" Height="24"
+                    CornerRadius="6"
+                    Background="{Binding HeaderGradient}"
+                    Margin="0,0,8,0"
+                    VerticalAlignment="Center">
+              <mi:MaterialIcon Kind="{Binding CategoryIconKind}"
+                               Width="12" Height="12"
+                               Foreground="White"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"/>
+            </Border>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+              <TextBlock Text="{Binding PanelTitle}"
+                         FontSize="12"
+                         FontWeight="SemiBold"
+                         Foreground="#E8EAED"
+                         TextTrimming="CharacterEllipsis"/>
+              <TextBlock Text="{Binding NodeCategory}"
+                         FontSize="10"
+                         Foreground="#4A5568"/>
+            </StackPanel>
 
-        <StackPanel Spacing="0" IsVisible="{Binding HasNode}">
+            <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,6,0,0" Spacing="1">
+              <TextBlock Text="NODE TYPE"
+                         FontSize="9"
+                         FontWeight="Bold"
+                         Foreground="#4A5568"
+                         LetterSpacing="1.4"/>
+              <TextBlock Text="{Binding NodeTypeLabel}"
+                         FontSize="11"
+                         FontWeight="SemiBold"
+                         Foreground="#E8EAED"/>
+              <TextBlock Text="{Binding NodeTypeSubtitle}"
+                         FontSize="10"
+                         Foreground="#8B95A8"
+                         TextTrimming="CharacterEllipsis"/>
+            </StackPanel>
+          </Grid>
+        </Border>
+        <StackPanel Grid.Row="1" Spacing="0" IsVisible="{Binding HasNode}">
 
           <!-- ── ALIAS ──────────────────────────────────────────────────────── -->
           <Border Padding="12,12,12,8"
@@ -366,6 +428,58 @@
             </StackPanel>
           </Border>
 
+        </StackPanel>
+
+        <TextBlock Grid.Row="1"
+             Text="Select a node to edit its properties."
+                   Margin="12,12,12,0"
+                   FontSize="11"
+                   Foreground="#4A5568"
+                   IsVisible="{Binding HasNode, Converter={x:Static BoolConverters.Not}}"/>
+        </Grid>
+      </ScrollViewer>
+
+      <ScrollViewer Grid.Row="1"
+                    VerticalScrollBarVisibility="Auto"
+                    HorizontalScrollBarVisibility="Disabled"
+                    IsVisible="{Binding ShowProjectSettingsTab}">
+        <StackPanel Spacing="12" Margin="12,10,12,12">
+          <TextBlock Classes="section-label" Text="Naming Conventions"/>
+
+          <StackPanel Spacing="4">
+            <TextBlock Classes="param-label" Text="Alias convention"/>
+            <ComboBox Classes="param-combo"
+                      ItemsSource="{Binding NamingConventionOptions}"
+                      SelectedItem="{Binding SelectedNamingConvention, Mode=TwoWay}"/>
+          </StackPanel>
+
+          <CheckBox Content="Enforce alias naming"
+                    IsChecked="{Binding EnforceAliasNaming, Mode=TwoWay}"
+                    FontSize="11"
+                    Foreground="#8B95A8"/>
+
+          <CheckBox Content="Warn on reserved SQL keywords"
+                    IsChecked="{Binding WarnOnReservedKeywords, Mode=TwoWay}"
+                    FontSize="11"
+                    Foreground="#8B95A8"/>
+
+          <StackPanel Spacing="4">
+            <TextBlock Classes="param-label" Text="Max alias length"/>
+            <TextBox Classes="param-input"
+                     Text="{Binding MaxAliasLength, Mode=TwoWay}"
+                     Watermark="64"/>
+          </StackPanel>
+
+          <Border Background="#0D0F14"
+                  BorderBrush="#252C3F"
+                  BorderThickness="1"
+                  CornerRadius="6"
+                  Padding="8,7">
+            <TextBlock Text="These settings are project-scoped and will be used by naming and validation helpers."
+                       FontSize="10"
+                       TextWrapping="Wrap"
+                       Foreground="#4A5568"/>
+          </Border>
         </StackPanel>
       </ScrollViewer>
     </Grid>

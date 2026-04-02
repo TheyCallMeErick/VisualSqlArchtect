@@ -1,26 +1,35 @@
 namespace VisualSqlArchitect.UI.ViewModels;
 
 /// <summary>
-/// Represents the three tabs in the left sidebar: Nodes, Connection, and Schema.
+/// Represents the tabs in the left sidebar.
 /// </summary>
 public enum SidebarTab
 {
     Nodes,
     Connection,
-    Schema
+    Schema,
+    Diagnostics
 }
 
 /// <summary>
-/// ViewModel for the left sidebar containing three tabs: Nodes list, Connection status, and Database schema.
-/// Manages tab switching and delegates content to specialized ViewModels.
+/// ViewModel for the left sidebar containing tabs for nodes, connections,
+/// schema, and diagnostics.
 /// </summary>
 public sealed class SidebarViewModel : ViewModelBase
 {
     private SidebarTab _activeTab = SidebarTab.Nodes;
 
-    public RelayCommand? SelectNodesCommand { get; set; }
-    public RelayCommand? SelectConnectionCommand { get; set; }
-    public RelayCommand? SelectSchemaCommand { get; set; }
+    public RelayCommand SelectNodesCommand { get; }
+    public RelayCommand SelectConnectionCommand { get; }
+    public RelayCommand SelectSchemaCommand { get; }
+    public RelayCommand SelectDiagnosticsCommand { get; }
+    public RelayCommand AddNodeCommand { get; }
+    public RelayCommand AddConnectionCommand { get; }
+    public RelayCommand TogglePreviewCommand { get; }
+
+    public event Action? AddNodeRequested;
+    public event Action? AddConnectionRequested;
+    public event Action? TogglePreviewRequested;
 
     /// <summary>
     /// Gets or sets the currently active tab.
@@ -35,6 +44,7 @@ public sealed class SidebarViewModel : ViewModelBase
                 RaisePropertyChanged(nameof(ShowNodes));
                 RaisePropertyChanged(nameof(ShowConnection));
                 RaisePropertyChanged(nameof(ShowSchema));
+                RaisePropertyChanged(nameof(ShowDiagnostics));
             }
         }
     }
@@ -55,6 +65,11 @@ public sealed class SidebarViewModel : ViewModelBase
     public bool ShowSchema => ActiveTab == SidebarTab.Schema;
 
     /// <summary>
+    /// Returns true when Diagnostics tab is active.
+    /// </summary>
+    public bool ShowDiagnostics => ActiveTab == SidebarTab.Diagnostics;
+
+    /// <summary>
     /// ViewModel for the Nodes list tab.
     /// </summary>
     public NodesListViewModel NodesList { get; }
@@ -69,13 +84,44 @@ public sealed class SidebarViewModel : ViewModelBase
     /// </summary>
     public SchemaViewModel Schema { get; }
 
+    /// <summary>
+    /// ViewModel for diagnostics tab.
+    /// </summary>
+    public AppDiagnosticsViewModel Diagnostics { get; }
+
     public SidebarViewModel(
         NodesListViewModel nodesList,
         ConnectionManagerViewModel connectionManager,
-        SchemaViewModel schema)
+        SchemaViewModel schema,
+        AppDiagnosticsViewModel diagnostics)
     {
         NodesList = nodesList;
         ConnectionManager = connectionManager;
         Schema = schema;
+        Diagnostics = diagnostics;
+
+        SelectNodesCommand = new RelayCommand(() => ActiveTab = SidebarTab.Nodes);
+        SelectConnectionCommand = new RelayCommand(() => ActiveTab = SidebarTab.Connection);
+        SelectSchemaCommand = new RelayCommand(() => ActiveTab = SidebarTab.Schema);
+        SelectDiagnosticsCommand = new RelayCommand(() =>
+        {
+            ActiveTab = SidebarTab.Diagnostics;
+            Diagnostics.RunChecksCommand.Execute(null);
+        });
+        AddNodeCommand = new RelayCommand(RequestAddNode);
+        AddConnectionCommand = new RelayCommand(RequestAddConnection);
+        TogglePreviewCommand = new RelayCommand(() => TogglePreviewRequested?.Invoke());
+    }
+
+    private void RequestAddNode()
+    {
+        ActiveTab = SidebarTab.Nodes;
+        AddNodeRequested?.Invoke();
+    }
+
+    private void RequestAddConnection()
+    {
+        ActiveTab = SidebarTab.Connection;
+        AddConnectionRequested?.Invoke();
     }
 }
