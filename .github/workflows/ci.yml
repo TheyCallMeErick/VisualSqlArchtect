@@ -9,6 +9,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      CI_VERSION: 0.0.${{ github.run_number }}
+      CI_INFORMATIONAL_VERSION: 0.0.${{ github.run_number }}+${{ github.sha }}
 
     steps:
       - uses: actions/checkout@v4
@@ -22,7 +25,7 @@ jobs:
         run: dotnet restore files.sln
 
       - name: Build
-        run: dotnet build files.sln --no-restore
+        run: dotnet build files.sln --no-restore -p:Version=$CI_VERSION -p:InformationalVersion=$CI_INFORMATIONAL_VERSION
 
       - name: Test
         run: dotnet test files.sln --no-build --verbosity normal

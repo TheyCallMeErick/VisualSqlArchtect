@@ -128,7 +128,7 @@ public static class CredentialProtector
     /// </summary>
     private static byte[] DeriveKey()
     {
-        string material = $"{Environment.MachineName}\0{Environment.UserName}\0VisualSqlArchitect";
+        string material = $"{Environment.MachineName}\0{Environment.UserName}\0{AppConstants.AppName}";
         byte[] materialBytes = Encoding.UTF8.GetBytes(material);
         byte[] ikmInput = new byte[materialBytes.Length + _installationSecret.Value.Length];
         Buffer.BlockCopy(materialBytes, 0, ikmInput, 0, materialBytes.Length);
@@ -141,10 +141,7 @@ public static class CredentialProtector
 
     private static byte[] LoadOrCreateInstallationSecret()
     {
-        string dir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "VisualSqlArchitect"
-        );
+        string dir = AppConstants.AppDataDirectory;
         string path = Path.Combine(dir, ".credential_salt.bin");
 
         // Existing file: reading must succeed — returning random bytes here would silently
@@ -228,8 +225,8 @@ public sealed class CredentialVaultStore
     public CredentialVaultStore(string? appDataRoot = null)
     {
         string baseDir = string.IsNullOrWhiteSpace(appDataRoot)
-            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VisualSqlArchitect")
-            : Path.Combine(appDataRoot, "VisualSqlArchitect");
+            ? AppConstants.AppDataDirectory
+            : Path.Combine(appDataRoot, AppConstants.AppName);
 
         _vaultPath = Path.Combine(baseDir, "credentials.vault.json");
     }

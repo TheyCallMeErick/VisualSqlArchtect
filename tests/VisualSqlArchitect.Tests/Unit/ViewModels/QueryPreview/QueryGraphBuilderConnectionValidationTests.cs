@@ -58,7 +58,7 @@ public class QueryGraphBuilderConnectionValidationTests
         Connect(canvas, orders, "id", columnList, "columns");
         Connect(canvas, columnList, "result", result, "columns");
 
-        Connect(canvas, orders, "id", andNode, "cond_1");
+        Connect(canvas, orders, "id", andNode, "conditions");
 
         canvas.Nodes.Add(orders);
         canvas.Nodes.Add(columnList);

@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace VisualSqlArchitect.UI.Services.Localization;
 
-public sealed class LocalizationService : INotifyPropertyChanged
+public sealed class LocalizationService : ILocalizationService
 {
     private const string DefaultCulture = "pt-BR";
     private readonly object _sync = new();
@@ -91,8 +91,7 @@ public sealed class LocalizationService : INotifyPropertyChanged
     }
 
     private static string SettingsFilePath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "VisualSqlArchitect",
+        global::VisualSqlArchitect.UI.AppConstants.AppDataDirectory,
         "localization.settings.json");
 
     private static string? LoadSavedCulture()

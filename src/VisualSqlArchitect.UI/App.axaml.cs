@@ -1,22 +1,55 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Styling;
+using Microsoft.Extensions.DependencyInjection;
+using VisualSqlArchitect.UI.Services.Settings;
 using VisualSqlArchitect.UI.Services.Theming;
+using VisualSqlArchitect.UI.ViewModels;
 
 namespace VisualSqlArchitect.UI;
 
 public partial class App : Application
 {
+    private IServiceProvider? _services;
+
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
     public override void OnFrameworkInitializationCompleted()
     {
+        ApplySavedThemeVariant();
         ApplyUserThemeIfPresent();
 
+        _services = BuildServices();
+
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
-            desktop.MainWindow = new MainWindow();
+            desktop.MainWindow = _services.GetRequiredService<MainWindow>();
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private static IServiceProvider BuildServices()
+    {
+        var services = new ServiceCollection();
+
+        services.AddVisualSqlArchitect();
+        services.AddSingleton<ThemeJsonSettingsService>();
+        services.AddTransient<ShellViewModel>();
+        services.AddTransient<MainWindow>();
+
+        return services.BuildServiceProvider();
+    }
+
+    private static void ApplySavedThemeVariant()
+    {
+        if (Application.Current is null)
+            return;
+
+        AppSettings settings = AppSettingsStore.Load();
+        Application.Current.RequestedThemeVariant =
+            settings.ThemeVariant.Equals("Light", StringComparison.OrdinalIgnoreCase)
+                ? ThemeVariant.Light
+                : ThemeVariant.Dark;
     }
 
     private static void ApplyUserThemeIfPresent()

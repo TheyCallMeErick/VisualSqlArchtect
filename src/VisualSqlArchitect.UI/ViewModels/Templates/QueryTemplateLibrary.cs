@@ -60,7 +60,20 @@ public static class QueryTemplateLibrary
     )
     {
         PinViewModel fp = from.OutputPins.First(p => p.Name == fromPin);
-        PinViewModel tp = to.InputPins.First(p => p.Name == toPin);
+
+        // ResultOutput.columns expects a ColumnSet. Legacy templates still project scalar
+        // pins directly there, so reroute to ResultOutput.column when needed.
+        string resolvedToPin = toPin;
+        if (
+            string.Equals(toPin, "columns", StringComparison.Ordinal)
+            && fp.EffectiveDataType != PinDataType.ColumnSet
+            && to.InputPins.Any(p => string.Equals(p.Name, "column", StringComparison.Ordinal))
+        )
+        {
+            resolvedToPin = "column";
+        }
+
+        PinViewModel tp = to.InputPins.First(p => p.Name == resolvedToPin);
         return new ConnectionViewModel(fp, default, default) { ToPin = tp };
     }
 

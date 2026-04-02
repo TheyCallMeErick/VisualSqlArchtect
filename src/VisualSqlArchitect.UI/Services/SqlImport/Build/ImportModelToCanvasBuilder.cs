@@ -74,7 +74,7 @@ public sealed class ImportModelToCanvasBuilder(CanvasViewModel canvas)
                     input.FromParts[i].JoinType is not null
                         ? $"{input.FromParts[i].JoinType}: {table}"
                         : $"FROM: {table}",
-                    ImportItemStatus.Imported,
+                    EImportItemStatus.Imported,
                     sourceNodeId: tableNode.Id
                 )
             );
@@ -145,7 +145,7 @@ public sealed class ImportModelToCanvasBuilder(CanvasViewModel canvas)
             report.Add(
                 new ImportReportItem(
                     "SELECT *",
-                    ImportItemStatus.Imported,
+                    EImportItemStatus.Imported,
                     "All columns wired",
                     result.Id
                 )
@@ -175,7 +175,7 @@ public sealed class ImportModelToCanvasBuilder(CanvasViewModel canvas)
                     report.Add(
                         new ImportReportItem(
                             $"Column: {expr}",
-                            ImportItemStatus.Skipped,
+                            EImportItemStatus.Skipped,
                             "Complex expression — wire manually"
                         )
                     );
@@ -187,8 +187,8 @@ public sealed class ImportModelToCanvasBuilder(CanvasViewModel canvas)
                 new ImportReportItem(
                     $"SELECT ({wired}/{input.SelectedColumns.Count} columns)",
                     wired == input.SelectedColumns.Count
-                        ? ImportItemStatus.Imported
-                        : ImportItemStatus.Partial,
+                        ? EImportItemStatus.Imported
+                        : EImportItemStatus.Partial,
                     wired == input.SelectedColumns.Count
                         ? null
                         : "Some selected columns could not be auto-wired.",

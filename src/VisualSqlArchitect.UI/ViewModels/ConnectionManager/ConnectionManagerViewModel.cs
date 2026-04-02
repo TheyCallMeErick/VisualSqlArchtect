@@ -13,80 +13,6 @@ using VisualSqlArchitect.UI.ViewModels.Canvas;
 
 namespace VisualSqlArchitect.UI.ViewModels;
 
-// ── Persisted connection profile ───────────────────────────────────────────────
-
-public sealed class ConnectionProfile
-{
-    public string Id { get; set; } = Guid.NewGuid().ToString();
-    public string Name { get; set; } = "New Connection";
-    public DatabaseProvider Provider { get; set; } = DatabaseProvider.Postgres;
-    public string Host { get; set; } = AppConstants.DefaultHost;
-    public int Port { get; set; } = 5432;
-    public string Database { get; set; } = "";
-    public string Username { get; set; } = "";
-    public string Password { get; set; } = "";
-    public bool UseIntegratedSecurity { get; set; } = false;
-    public int TimeoutSeconds { get; set; } = 30;
-
-    public static int DefaultPort(DatabaseProvider p) => p switch
-    {
-        DatabaseProvider.Postgres  => 5432,
-        DatabaseProvider.MySql     => 3306,
-        DatabaseProvider.SqlServer => 1433,
-        DatabaseProvider.SQLite    => 0,    // SQLite doesn't use ports (file-based)
-        _                          => 5432,
-    };
-
-    /// <summary>
-    /// Returns a shallow copy with the password encrypted using CredentialProtector.
-    /// Used before serialization to disk.
-    /// </summary>
-    public ConnectionProfile WithProtectedPassword()
-    {
-        return new()
-        {
-            Id = this.Id,
-            Name = this.Name,
-            Provider = this.Provider,
-            Host = this.Host,
-            Port = this.Port,
-            Database = this.Database,
-            Username = this.Username,
-            Password = CredentialProtector.Protect(this.Password),
-            UseIntegratedSecurity = this.UseIntegratedSecurity,
-            TimeoutSeconds = this.TimeoutSeconds,
-        };
-    }
-
-    /// <summary>
-    /// Returns a shallow copy with the password decrypted using CredentialProtector.
-    /// Used after deserialization from disk. Handles legacy plaintext passwords transparently.
-    /// </summary>
-    public ConnectionProfile WithUnprotectedPassword()
-    {
-        return new()
-        {
-            Id = this.Id,
-            Name = this.Name,
-            Provider = this.Provider,
-            Host = this.Host,
-            Port = this.Port,
-            Database = this.Database,
-            Username = this.Username,
-            Password = CredentialProtector.Unprotect(this.Password),
-            UseIntegratedSecurity = this.UseIntegratedSecurity,
-            TimeoutSeconds = this.TimeoutSeconds,
-        };
-    }
-
-    public ConnectionConfig ToConnectionConfig() =>
-        new(Provider, Host, Port, Database, Username, Password, UseIntegratedSecurity, TimeoutSeconds);
-}
-
-// ── Health status ─────────────────────────────────────────────────────────────
-
-public enum ConnectionHealthStatus { Unknown, Online, Degraded, Offline }
-
 // ── ViewModel ─────────────────────────────────────────────────────────────────
 
 public sealed class ConnectionManagerViewModel : ViewModelBase
@@ -154,8 +80,8 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
             Set(ref _activeProfileId, value);
             RaisePropertyChanged(nameof(ActiveConnectionLabel));
             ActiveHealthStatus = value is null
-                ? ConnectionHealthStatus.Unknown
-                : ConnectionHealthStatus.Online;
+                ? EConnectionHealthStatus.Unknown
+                : EConnectionHealthStatus.Online;
             RestartHealthMonitor();
         }
     }
@@ -181,8 +107,8 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
         }
     }
 
-    private ConnectionHealthStatus _activeHealthStatus = ConnectionHealthStatus.Unknown;
-    public ConnectionHealthStatus ActiveHealthStatus
+    private EConnectionHealthStatus _activeHealthStatus = EConnectionHealthStatus.Unknown;
+    public EConnectionHealthStatus ActiveHealthStatus
     {
         get => _activeHealthStatus;
         private set
@@ -196,17 +122,17 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
 
     public string ConnectionIndicatorColor => _activeHealthStatus switch
     {
-        ConnectionHealthStatus.Online   => "#4ADE80",
-        ConnectionHealthStatus.Degraded => "#FBBF24",
-        ConnectionHealthStatus.Offline  => "#EF4444",
+        EConnectionHealthStatus.Online   => "#4ADE80",
+        EConnectionHealthStatus.Degraded => "#FBBF24",
+        EConnectionHealthStatus.Offline  => "#EF4444",
         _                               => "#4A5568",
     };
 
     public string ConnectionHealthLabel => _activeHealthStatus switch
     {
-        ConnectionHealthStatus.Online   => _loc["connection.health.online"],
-        ConnectionHealthStatus.Degraded => _loc["connection.health.degraded"],
-        ConnectionHealthStatus.Offline  => _loc["connection.health.offline"],
+        EConnectionHealthStatus.Online   => _loc["connection.health.online"],
+        EConnectionHealthStatus.Degraded => _loc["connection.health.degraded"],
+        EConnectionHealthStatus.Offline  => _loc["connection.health.offline"],
         _                               => _loc["connection.none"],
     };
 
@@ -652,7 +578,7 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
         var profile = Profiles.FirstOrDefault(x => x.Id == _activeProfileId);
         if (profile is null)
         {
-            ActiveHealthStatus = ConnectionHealthStatus.Unknown;
+            ActiveHealthStatus = EConnectionHealthStatus.Unknown;
             return;
         }
 
@@ -661,23 +587,23 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
             var result = await RunTestAsync(profile.ToConnectionConfig(), profile.Provider, profile.TimeoutSeconds, ct);
             if (!result.Success)
             {
-                ActiveHealthStatus = ConnectionHealthStatus.Offline;
+                ActiveHealthStatus = EConnectionHealthStatus.Offline;
                 return;
             }
             var ms = result.Latency?.TotalMilliseconds ?? 0;
             ActiveHealthStatus = ms >= DegradedLatencyThresholdMs
-                ? ConnectionHealthStatus.Degraded
-                : ConnectionHealthStatus.Online;
+                ? EConnectionHealthStatus.Degraded
+                : EConnectionHealthStatus.Online;
         }
         catch (OperationCanceledException)
         {
             // either shutdown or timeout — mark offline only if the monitor wasn't cancelled
             if (!ct.IsCancellationRequested)
-                ActiveHealthStatus = ConnectionHealthStatus.Offline;
+                ActiveHealthStatus = EConnectionHealthStatus.Offline;
         }
         catch
         {
-            ActiveHealthStatus = ConnectionHealthStatus.Offline;
+            ActiveHealthStatus = EConnectionHealthStatus.Offline;
         }
     }
 
@@ -779,8 +705,8 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
 
     private static string ProfilesFilePath =>
         Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "VisualSqlArchitect", "connections.json");
+            global::VisualSqlArchitect.UI.AppConstants.AppDataDirectory,
+            "connections.json");
 
     private void LoadProfiles()
     {

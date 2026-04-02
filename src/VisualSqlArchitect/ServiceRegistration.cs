@@ -15,15 +15,35 @@ namespace VisualSqlArchitect;
 /// </summary>
 public static class DbOrchestratorFactory
 {
-    public static IDbOrchestrator Create(ConnectionConfig config) =>
-        config.Provider switch
+    private static readonly Dictionary<DatabaseProvider, Func<ConnectionConfig, IDbOrchestrator>> _factories =
+        new()
         {
-            DatabaseProvider.SqlServer => new SqlServerOrchestrator(config),
-            DatabaseProvider.MySql => new MySqlOrchestrator(config),
-            DatabaseProvider.Postgres => new PostgresOrchestrator(config),
-            DatabaseProvider.SQLite => new SqliteOrchestrator(config),
-            _ => throw new NotSupportedException($"Provider '{config.Provider}' is not supported."),
+            [DatabaseProvider.SqlServer] = config => new SqlServerOrchestrator(config),
+            [DatabaseProvider.MySql] = config => new MySqlOrchestrator(config),
+            [DatabaseProvider.Postgres] = config => new PostgresOrchestrator(config),
+            [DatabaseProvider.SQLite] = config => new SqliteOrchestrator(config),
         };
+
+    public static IDbOrchestrator Create(ConnectionConfig config)
+    {
+        if (!_factories.TryGetValue(config.Provider, out Func<ConnectionConfig, IDbOrchestrator>? factory))
+            throw new NotSupportedException($"Provider '{config.Provider}' is not supported.");
+
+        return factory(config);
+    }
+
+    public static Func<ConnectionConfig, IDbOrchestrator>? Register(
+        DatabaseProvider provider,
+        Func<ConnectionConfig, IDbOrchestrator> factory)
+    {
+        ArgumentNullException.ThrowIfNull(factory);
+
+        _factories.TryGetValue(provider, out Func<ConnectionConfig, IDbOrchestrator>? previous);
+        _factories[provider] = factory;
+        return previous;
+    }
+
+    public static bool IsRegistered(DatabaseProvider provider) => _factories.ContainsKey(provider);
 }
 
 // ─── Active Connection Context ────────────────────────────────────────────────

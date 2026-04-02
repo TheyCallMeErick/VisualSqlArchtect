@@ -1,87 +1,8 @@
 using System.Collections.ObjectModel;
 using System.Text;
-using Material.Icons;
 using VisualSqlArchitect.Nodes;
 
 namespace VisualSqlArchitect.UI.ViewModels;
-
-// ── Diagnostic status ─────────────────────────────────────────────────────────
-
-public enum DiagnosticStatus
-{
-    Ok,
-    Warning,
-    Error,
-}
-
-// ── Diagnostic entry ──────────────────────────────────────────────────────────
-
-public sealed class AppDiagnosticEntry : ViewModelBase
-{
-    private DiagnosticStatus _status;
-    private string _details = "";
-    private DateTime _lastCheckAt = DateTime.MinValue;
-
-    public string Name { get; init; } = "";
-    public string Recommendation { get; init; } = "";
-
-    public DiagnosticStatus Status
-    {
-        get => _status;
-        set
-        {
-            Set(ref _status, value);
-            RaisePropertyChanged(nameof(StatusIcon));
-            RaisePropertyChanged(nameof(StatusColor));
-        }
-    }
-
-    public string Details
-    {
-        get => _details;
-        set => Set(ref _details, value);
-    }
-
-    public DateTime LastCheckAt
-    {
-        get => _lastCheckAt;
-        set
-        {
-            Set(ref _lastCheckAt, value);
-            RaisePropertyChanged(nameof(LastCheckLabel));
-        }
-    }
-
-    public string StatusIcon =>
-        Status switch
-        {
-            DiagnosticStatus.Ok => "✓",
-            DiagnosticStatus.Warning => "⚠",
-            DiagnosticStatus.Error => "✕",
-            _ => "?",
-        };
-
-    public MaterialIconKind StatusIconKind =>
-        Status switch
-        {
-            DiagnosticStatus.Ok => MaterialIconKind.CheckCircle,
-            DiagnosticStatus.Warning => MaterialIconKind.Alert,
-            DiagnosticStatus.Error => MaterialIconKind.CloseCircle,
-            _ => MaterialIconKind.HelpCircle,
-        };
-
-    public string StatusColor =>
-        Status switch
-        {
-            DiagnosticStatus.Ok => "#4ADE80",
-            DiagnosticStatus.Warning => "#FBBF24",
-            DiagnosticStatus.Error => "#EF4444",
-            _ => "#4A5568",
-        };
-
-    public string LastCheckLabel =>
-        _lastCheckAt == DateTime.MinValue ? "—" : _lastCheckAt.ToString("HH:mm:ss");
-}
 
 // ── ViewModel ─────────────────────────────────────────────────────────────────
 
@@ -109,28 +30,28 @@ public sealed class AppDiagnosticsViewModel : ViewModelBase
     public RelayCommand CopyReportCommand { get; }
 
     // ── Summary ───────────────────────────────────────────────────────────────
-    public int ErrorCount => Entries.Count(e => e.Status == DiagnosticStatus.Error);
-    public int WarningCount => Entries.Count(e => e.Status == DiagnosticStatus.Warning);
-    public DiagnosticStatus OverallStatus =>
-        ErrorCount > 0 ? DiagnosticStatus.Error
-        : WarningCount > 0 ? DiagnosticStatus.Warning
-        : DiagnosticStatus.Ok;
+    public int ErrorCount => Entries.Count(e => e.Status == EDiagnosticStatus.Error);
+    public int WarningCount => Entries.Count(e => e.Status == EDiagnosticStatus.Warning);
+    public EDiagnosticStatus OverallStatus =>
+        ErrorCount > 0 ? EDiagnosticStatus.Error
+        : WarningCount > 0 ? EDiagnosticStatus.Warning
+        : EDiagnosticStatus.Ok;
 
     public string OverallLabel =>
         OverallStatus switch
         {
-            DiagnosticStatus.Ok => "All systems OK",
-            DiagnosticStatus.Warning => $"{WarningCount} warning(s) detected",
-            DiagnosticStatus.Error => $"{ErrorCount} error(s) detected",
+            EDiagnosticStatus.Ok => "All systems OK",
+            EDiagnosticStatus.Warning => $"{WarningCount} warning(s) detected",
+            EDiagnosticStatus.Error => $"{ErrorCount} error(s) detected",
             _ => "",
         };
 
     public string OverallColor =>
         OverallStatus switch
         {
-            DiagnosticStatus.Ok => "#4ADE80",
-            DiagnosticStatus.Warning => "#FBBF24",
-            DiagnosticStatus.Error => "#EF4444",
+            EDiagnosticStatus.Ok => "#4ADE80",
+            EDiagnosticStatus.Warning => "#FBBF24",
+            EDiagnosticStatus.Error => "#EF4444",
             _ => "#4A5568",
         };
 
@@ -177,7 +98,7 @@ public sealed class AppDiagnosticsViewModel : ViewModelBase
                 Name = string.IsNullOrWhiteSpace(area) ? "Warning" : area,
                 Details = message,
                 Recommendation = recommendation,
-                Status = DiagnosticStatus.Warning,
+                Status = EDiagnosticStatus.Warning,
                 LastCheckAt = DateTime.Now,
             }
         );
@@ -268,7 +189,7 @@ public sealed class AppDiagnosticsViewModel : ViewModelBase
 
         if (_canvas.Nodes.Count == 0)
         {
-            entry.Status = DiagnosticStatus.Warning;
+            entry.Status = EDiagnosticStatus.Warning;
             entry.Details = "Canvas is empty — no nodes present";
             return;
         }
@@ -278,17 +199,17 @@ public sealed class AppDiagnosticsViewModel : ViewModelBase
 
         if (!hasTable)
         {
-            entry.Status = DiagnosticStatus.Warning;
+            entry.Status = EDiagnosticStatus.Warning;
             entry.Details = $"{_canvas.Nodes.Count} node(s) present but no table source";
         }
         else if (!hasOutput)
         {
-            entry.Status = DiagnosticStatus.Warning;
+            entry.Status = EDiagnosticStatus.Warning;
             entry.Details = $"{_canvas.Nodes.Count} node(s) present but no Result Output";
         }
         else
         {
-            entry.Status = DiagnosticStatus.Ok;
+            entry.Status = EDiagnosticStatus.Ok;
             entry.Details =
                 $"{_canvas.Nodes.Count} node(s), {_canvas.Connections.Count} connection(s)";
         }
@@ -304,17 +225,17 @@ public sealed class AppDiagnosticsViewModel : ViewModelBase
 
         if (errors > 0)
         {
-            entry.Status = DiagnosticStatus.Error;
+            entry.Status = EDiagnosticStatus.Error;
             entry.Details = $"{errors} error(s) and {warnings} warning(s) in the graph";
         }
         else if (warnings > 0)
         {
-            entry.Status = DiagnosticStatus.Warning;
+            entry.Status = EDiagnosticStatus.Warning;
             entry.Details = $"{warnings} warning(s) in the graph";
         }
         else
         {
-            entry.Status = DiagnosticStatus.Ok;
+            entry.Status = EDiagnosticStatus.Ok;
             entry.Details = "No validation issues";
         }
     }
@@ -327,12 +248,12 @@ public sealed class AppDiagnosticsViewModel : ViewModelBase
         int count = _canvas.OrphanCount;
         if (count > 0)
         {
-            entry.Status = DiagnosticStatus.Warning;
+            entry.Status = EDiagnosticStatus.Warning;
             entry.Details = $"{count} node(s) not connected to any output";
         }
         else
         {
-            entry.Status = DiagnosticStatus.Ok;
+            entry.Status = EDiagnosticStatus.Ok;
             entry.Details = "No orphan nodes detected";
         }
     }
@@ -346,13 +267,13 @@ public sealed class AppDiagnosticsViewModel : ViewModelBase
         if (conformance < 100)
         {
             entry.Status = _canvas.HasNamingViolations
-                ? DiagnosticStatus.Warning
-                : DiagnosticStatus.Ok;
+                ? EDiagnosticStatus.Warning
+                : EDiagnosticStatus.Ok;
             entry.Details = $"Naming conformance: {conformance}%";
         }
         else
         {
-            entry.Status = DiagnosticStatus.Ok;
+            entry.Status = EDiagnosticStatus.Ok;
             entry.Details = "All aliases follow naming conventions (100%)";
         }
     }
@@ -365,17 +286,17 @@ public sealed class AppDiagnosticsViewModel : ViewModelBase
         string? sql = _canvas.QueryText?.Trim();
         if (string.IsNullOrEmpty(sql))
         {
-            entry.Status = DiagnosticStatus.Warning;
+            entry.Status = EDiagnosticStatus.Warning;
             entry.Details = "No SQL generated yet — connect nodes to a Result Output";
         }
         else if (sql.StartsWith("--") || sql.Contains("ERROR", StringComparison.OrdinalIgnoreCase))
         {
-            entry.Status = DiagnosticStatus.Error;
+            entry.Status = EDiagnosticStatus.Error;
             entry.Details = "Last SQL generation produced an error";
         }
         else
         {
-            entry.Status = DiagnosticStatus.Ok;
+            entry.Status = EDiagnosticStatus.Ok;
             string preview =
                 sql.Length > 60 ? sql[..60].Replace('\n', ' ') + "…" : sql.Replace('\n', ' ');
             entry.Details = $"SQL OK · {preview}";
@@ -390,17 +311,17 @@ public sealed class AppDiagnosticsViewModel : ViewModelBase
         int depth = _canvas.UndoRedo.UndoDepth;
         if (!_canvas.IsDirty)
         {
-            entry.Status = DiagnosticStatus.Ok;
+            entry.Status = EDiagnosticStatus.Ok;
             entry.Details = "Canvas is saved (no unsaved changes)";
         }
         else if (depth > 50)
         {
-            entry.Status = DiagnosticStatus.Warning;
+            entry.Status = EDiagnosticStatus.Warning;
             entry.Details = $"Unsaved changes with {depth} undo steps — consider saving";
         }
         else
         {
-            entry.Status = DiagnosticStatus.Ok;
+            entry.Status = EDiagnosticStatus.Ok;
             entry.Details = $"Unsaved changes · {depth} undo step(s) available";
         }
     }
@@ -419,7 +340,7 @@ public sealed class AppDiagnosticsViewModel : ViewModelBase
         {
             sb.AppendLine($"[{e.StatusIcon}] {e.Name}");
             sb.AppendLine($"    {e.Details}");
-            if (e.Status != DiagnosticStatus.Ok)
+            if (e.Status != EDiagnosticStatus.Ok)
                 sb.AppendLine($"    → {e.Recommendation}");
         }
 

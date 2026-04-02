@@ -21,7 +21,7 @@ public class SqlImporterFallbackSafetyTests
         Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, item =>
-            item.Status == ImportItemStatus.Skipped
+            item.Status == EImportItemStatus.Skipped
             && item.Label.Contains("Raw fallback", StringComparison.OrdinalIgnoreCase)
             && (item.Note ?? string.Empty).Contains("disabled", StringComparison.OrdinalIgnoreCase)
             && (item.Note ?? string.Empty).Contains("unsafe", StringComparison.OrdinalIgnoreCase));

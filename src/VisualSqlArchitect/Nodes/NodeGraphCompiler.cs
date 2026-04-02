@@ -259,11 +259,16 @@ public sealed class NodeGraphCompiler(NodeGraph graph, EmitContext ctx)
 
     private ISqlExpression CompileLogicGate(NodeInstance node, LogicOperator op)
     {
-        // Each condition has its own dynamic input pin (cond_1, cond_2, …).
-        // Chaining AND/OR nodes automatically produces nested parenthesised SQL
-        // because LogicGateExpr.Emit wraps multi-operand expressions in ( … ).
+        // Canonical model: single variadic "conditions" input pin.
+        // Legacy compatibility: also accept cond_N from previously serialized graphs.
         var conditions = _graph
-            .Connections.Where(c => c.ToNodeId == node.Id && c.ToPinName.StartsWith("cond_"))
+            .Connections.Where(c =>
+                c.ToNodeId == node.Id
+                && (
+                    c.ToPinName.Equals("conditions", StringComparison.OrdinalIgnoreCase)
+                    || c.ToPinName.StartsWith("cond_", StringComparison.OrdinalIgnoreCase)
+                )
+            )
             .OrderBy(c => c.ToPinName, StringComparer.Ordinal)
             .Select(c => Resolve(c.FromNodeId, c.FromPinName))
             .ToList();

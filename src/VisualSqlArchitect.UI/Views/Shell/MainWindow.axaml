@@ -67,6 +67,25 @@
       <Setter Property="BorderBrush" Value="#FF5FA3FF"/>
       <Setter Property="Foreground" Value="White"/>
     </Style>
+    <Style Selector="Button.settings-nav">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+      <Setter Property="HorizontalContentAlignment" Value="Left"/>
+      <Setter Property="Padding" Value="8,6"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Button.settings-nav:pointerover">
+      <Setter Property="Background" Value="#45263249"/>
+      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+    </Style>
+    <Style Selector="Button.settings-nav.active">
+      <Setter Property="Background" Value="#7027334C"/>
+      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
   </Window.Styles>
 
     <!-- ══════════════════════════════════════════════════════════════════
@@ -178,17 +197,6 @@
             </StackPanel>
           </Button>
 
-          <!-- Snap to grid toggle -->
-          <Button Classes="tb" FontSize="11"
-                  Command="{Binding ToggleSnapCommand}"
-              ToolTip.Tip="{Binding [tooltip.snapToGrid], Source={x:Static loc:LocalizationService.Instance}}"
-                  AutomationProperties.Name="Toggle snap to grid">
-            <StackPanel Orientation="Horizontal" Spacing="4">
-              <mi:MaterialIcon Kind="GridLarge" Width="14" Height="14"/>
-              <TextBlock Text="{Binding SnapToGridLabel}" FontSize="11"/>
-            </StackPanel>
-          </Button>
-
           <Border Width="1" Height="14" Background="{StaticResource MacroBorderSubtleBrush}" Margin="2,0"/>
 
           <!-- Preview toggle -->
@@ -272,8 +280,6 @@
       <Grid Grid.Column="0" Grid.ColumnSpan="5" Name="CenterGrid" Panel.ZIndex="0">
         <Grid.RowDefinitions>
           <RowDefinition Height="*"/>
-          <RowDefinition Height="8"/>
-          <RowDefinition Height="220" MinHeight="150"/>
         </Grid.RowDefinitions>
 
         <!-- Canvas + overlays -->
@@ -384,19 +390,31 @@
                       AutomationProperties.Name="Fit to screen"/>
             </StackPanel>
           </Border>
+
         </Panel>
-
-        <!-- Horizontal splitter above DataPreview -->
-        <GridSplitter Grid.Row="1" Height="8" HorizontalAlignment="Stretch"
-                      ResizeDirection="Rows" Cursor="SizeNorthSouth" Name="BottomSplitter"
-                      IsVisible="{Binding DataPreview.IsVisible}"/>
-
-        <!-- Data Preview panel -->
-        <Border Grid.Row="2" IsVisible="{Binding DataPreview.IsVisible}">
-          <ctrl:DataPreviewPanel Name="PreviewPanel"
-                                 DataContext="{Binding DataPreview}"/>
-        </Border>
       </Grid>
+
+          <!-- Floating data/sql preview (center column to avoid drawer overlap) -->
+          <Border Grid.Column="2"
+                  HorizontalAlignment="Center"
+              VerticalAlignment="Bottom"
+                  Width="980"
+                  MaxWidth="980"
+                  MinWidth="620"
+                  Margin="0,0,0,14"
+              MaxHeight="320"
+              MinHeight="180"
+              ZIndex="6"
+              IsVisible="{Binding DataPreview.IsVisible}"
+                  Background="#E20B1020"
+                  BorderBrush="#D3283650"
+              BorderThickness="1"
+                  CornerRadius="14"
+                  BoxShadow="0 14 34 0 #54000000"
+              ClipToBounds="True">
+            <ctrl:DataPreviewPanel Name="PreviewPanel"
+                   DataContext="{Binding DataPreview}"/>
+          </Border>
 
       <!-- ╠═ LEFT: Floating Sidebar ═══════════════════════════════════════════╣ -->
       <Border x:Name="LeftSidebarHost"
@@ -544,13 +562,14 @@
       </Grid>
     </Border>
 
-    <Panel Grid.RowSpan="5">
+    <Panel Grid.RowSpan="5" ZIndex="80">
       <Border IsVisible="{Binding Toasts.IsVisible}"
               HorizontalAlignment="Right"
               VerticalAlignment="Top"
               Margin="0,52,16,0"
               Padding="10"
               Width="420"
+              ZIndex="81"
               Background="{StaticResource MacroBg1Brush}"
               BorderBrush="{Binding Toasts.AccentColor}"
               BorderThickness="1"
@@ -601,6 +620,7 @@
 
             <Border IsVisible="{Binding Toasts.IsDetailsOpen}"
               Background="{StaticResource MacroScrimBrush}"
+              ZIndex="82"
               IsHitTestVisible="True"
               PointerPressed="ToastDetailsBackdrop_PointerPressed">
         <Border HorizontalAlignment="Center"
@@ -716,5 +736,325 @@
       <ctrl:ConnectionManagerControl DataContext="{Binding Canvas.ConnectionManager}"
                                      Name="ConnectionManagerOverlay"/>
     </Panel>
+
+    <Border IsVisible="{Binding IsSettingsVisible}"
+            Background="{StaticResource MacroScrimBrush}"
+            ZIndex="60"
+            IsHitTestVisible="True"
+            PointerPressed="SettingsBackdrop_PointerPressed">
+      <Border HorizontalAlignment="Center"
+              VerticalAlignment="Center"
+              Width="1080"
+              MaxWidth="1180"
+              MinWidth="900"
+              MinHeight="620"
+              Background="#EE0B1020"
+              BorderBrush="#D22B3855"
+              BorderThickness="1"
+              CornerRadius="16"
+              Padding="0"
+              BoxShadow="0 18 44 0 #66000000"
+              ClipToBounds="True"
+              PointerPressed="SettingsDialog_PointerPressed">
+        <Grid ColumnDefinitions="280,*">
+          <Border Grid.Column="0"
+                  Background="#D9121A2A"
+                  BorderBrush="#AA273247"
+                  BorderThickness="0,0,1,0"
+                  Padding="18">
+            <StackPanel Spacing="12">
+              <TextBlock Text="Settings"
+                         FontSize="34"
+                         FontWeight="SemiBold"
+                         Foreground="{StaticResource TextPrimaryBrush}"/>
+
+              <Border Background="#85253147"
+                      BorderBrush="#AA3D4B67"
+                      BorderThickness="1"
+                      CornerRadius="10"
+                      Padding="10,8">
+                <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                  <mi:MaterialIcon Grid.Column="0" Kind="CogOutline" Width="14" Height="14" Foreground="{StaticResource AccentBlueBrush}"/>
+                  <TextBlock Grid.Column="1" Text="General" Margin="8,0,0,0" Foreground="{StaticResource TextPrimaryBrush}" FontWeight="SemiBold"/>
+                  <mi:MaterialIcon Grid.Column="2" Kind="ChevronDown" Width="14" Height="14" Foreground="{StaticResource TextSecondaryBrush}"/>
+                </Grid>
+              </Border>
+
+              <StackPanel Spacing="10" Margin="8,0,0,0">
+                <Button Classes="settings-nav"
+                  Classes.active="{Binding IsLanguageRegionSectionSelected}"
+                  Click="SettingsNavBtn_Click"
+                  Tag="LanguageRegion"
+                  Content="Language &amp; Region"/>
+                <Button Classes="settings-nav"
+                  Classes.active="{Binding IsAppearanceSectionSelected}"
+                  Click="SettingsNavBtn_Click"
+                  Tag="Appearance"
+                  Content="Appearance"/>
+                <Button Classes="settings-nav"
+                  Classes.active="{Binding IsDateTimeSectionSelected}"
+                  Click="SettingsNavBtn_Click"
+                  Tag="DateTime"
+                  Content="Date &amp; Time"/>
+                <Button Classes="settings-nav"
+                  Classes.active="{Binding IsKeyboardShortcutsSectionSelected}"
+                  Click="SettingsNavBtn_Click"
+                  Tag="KeyboardShortcuts"
+                  Content="Keyboard Shortcuts"/>
+              </StackPanel>
+
+              <Border Height="1" Background="#44344355" Margin="0,4"/>
+
+              <StackPanel Spacing="10">
+                <Button Classes="settings-nav"
+                  Classes.active="{Binding IsPrivacySectionSelected}"
+                  Click="SettingsNavBtn_Click"
+                  Tag="Privacy"
+                  Content="Privacy"/>
+                <Button Classes="settings-nav"
+                  Classes.active="{Binding IsNotificationSectionSelected}"
+                  Click="SettingsNavBtn_Click"
+                  Tag="Notification"
+                  Content="Notification"/>
+                <Button Classes="settings-nav"
+                  Classes.active="{Binding IsAccessibilitySectionSelected}"
+                  Click="SettingsNavBtn_Click"
+                  Tag="Accessibility"
+                  Content="Accessibility"/>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
+          <Border Grid.Column="1" Padding="18">
+          <Grid RowDefinitions="Auto,*">
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+              <StackPanel Grid.Column="0" Spacing="2">
+                <TextBlock Text="{Binding SettingsSectionTitle}"
+                           FontSize="22"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource TextPrimaryBrush}"/>
+                <TextBlock Text="{Binding SettingsSectionSubtitle}"
+                           FontSize="12"
+                           Foreground="{StaticResource TextSecondaryBrush}"/>
+              </StackPanel>
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <TextBlock Text="{Binding AppVersionLabel, StringFormat=v{0}}"
+                           FontSize="11"
+                           Foreground="{StaticResource TextMutedBrush}"
+                           VerticalAlignment="Center"/>
+                <Button Name="SettingsCloseBtn"
+                        Click="SettingsCloseBtn_Click"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Foreground="{StaticResource TextSecondaryBrush}"
+                        Padding="4"
+                        Content="✕"/>
+              </StackPanel>
+            </Grid>
+
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+              <StackPanel Spacing="14">
+                <StackPanel Spacing="8" IsVisible="{Binding IsAppearanceSectionSelected}">
+                  <TextBlock Text="Theme Mode"
+                             FontSize="14"
+                             FontWeight="SemiBold"
+                             Foreground="{StaticResource TextPrimaryBrush}"/>
+                  <Grid ColumnDefinitions="*,*,*">
+                    <Border Grid.Column="0" Background="#8D161F31" BorderBrush="#FF4F5EFF" BorderThickness="1" CornerRadius="12" Padding="10">
+                      <StackPanel Spacing="8">
+                        <Border Height="64" CornerRadius="8" Background="#F4F6FA"/>
+                        <Button Content="Light Mode"
+                                Classes="secondary"
+                                Click="SettingsThemeLightBtn_Click"
+                                HorizontalAlignment="Stretch"
+                                Padding="10,6"
+                                CornerRadius="8"/>
+                      </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="1" Margin="10,0,0,0" Background="#8A101523" BorderBrush="#AA273247" BorderThickness="1" CornerRadius="12" Padding="10">
+                      <StackPanel Spacing="8">
+                        <Border Height="64" CornerRadius="8" Background="#1B2536"/>
+                        <Button Content="Dark Mode"
+                                Classes="secondary"
+                                Click="SettingsThemeDarkBtn_Click"
+                                HorizontalAlignment="Stretch"
+                                Padding="10,6"
+                                CornerRadius="8"/>
+                      </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="2" Margin="10,0,0,0" Background="#8A101523" BorderBrush="#AA273247" BorderThickness="1" CornerRadius="12" Padding="10">
+                      <StackPanel Spacing="8">
+                        <Border Height="64" CornerRadius="8" Background="#2B3443"/>
+                        <TextBlock Text="System Preferences"
+                                   FontSize="12"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   HorizontalAlignment="Center"/>
+                      </StackPanel>
+                    </Border>
+                  </Grid>
+                </StackPanel>
+
+                <Border Height="1" Background="#44344355" IsVisible="{Binding IsAppearanceSectionSelected}"/>
+
+                <StackPanel Spacing="8" IsVisible="{Binding IsAppearanceSectionSelected}">
+                  <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                    <StackPanel Grid.Column="0" Spacing="2">
+                      <TextBlock Text="Grid Snap"
+                                 FontSize="14"
+                                 FontWeight="SemiBold"
+                                 Foreground="{StaticResource TextPrimaryBrush}"/>
+                      <TextBlock Text="Controla o snap dos nós no canvas."
+                                 FontSize="11"
+                                 Foreground="{StaticResource TextSecondaryBrush}"/>
+                    </StackPanel>
+                    <Button Grid.Column="1"
+                            Classes="secondary"
+                            Click="SettingsToggleSnapBtn_Click"
+                            ToolTip.Tip="{Binding [tooltip.snapToGrid], Source={x:Static loc:LocalizationService.Instance}}"
+                            Padding="10,6"
+                            CornerRadius="8">
+                      <StackPanel Orientation="Horizontal" Spacing="6">
+                        <mi:MaterialIcon Kind="GridLarge" Width="14" Height="14"/>
+                        <TextBlock Text="{Binding Canvas.SnapToGridLabel, FallbackValue=Snap OFF}"/>
+                      </StackPanel>
+                    </Button>
+                  </Grid>
+                </StackPanel>
+
+                <Border Height="1" Background="#44344355" IsVisible="{Binding IsAppearanceSectionSelected}"/>
+
+                <StackPanel Spacing="8" IsVisible="{Binding IsLanguageRegionSectionSelected}">
+                  <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                    <StackPanel Grid.Column="0" Spacing="2">
+                      <TextBlock Text="Language &amp; Region"
+                                 FontSize="14"
+                                 FontWeight="SemiBold"
+                                 Foreground="{StaticResource TextPrimaryBrush}"/>
+                      <TextBlock Text="Toggle between PT-BR and EN-US."
+                                 FontSize="11"
+                                 Foreground="{StaticResource TextSecondaryBrush}"/>
+                    </StackPanel>
+                    <Button Grid.Column="1"
+                            Content="Alternar idioma"
+                            Classes="secondary"
+                            Click="SettingsToggleLanguageBtn_Click"
+                            Padding="10,6"
+                            CornerRadius="8"/>
+                  </Grid>
+                </StackPanel>
+
+                <Border Height="1" Background="#44344355" IsVisible="{Binding IsAppearanceSectionSelected}"/>
+
+                <StackPanel Spacing="8" IsVisible="{Binding IsAppearanceSectionSelected}">
+                  <TextBlock Text="Theme JSON"
+                             FontSize="14"
+                             FontWeight="SemiBold"
+                             Foreground="{StaticResource TextPrimaryBrush}"/>
+                  <TextBlock Text="Paste your theme JSON, apply and persist instantly."
+                             FontSize="11"
+                             Foreground="{StaticResource TextSecondaryBrush}"/>
+
+                  <TextBox x:Name="SettingsThemeJsonTextBox"
+                           AcceptsReturn="True"
+                           TextWrapping="Wrap"
+                           FontFamily="Consolas,monospace"
+                           FontSize="11"
+                           MinHeight="140"
+                           MaxHeight="260"/>
+
+                  <Grid ColumnDefinitions="Auto,Auto,*,Auto" VerticalAlignment="Center">
+                    <Button Grid.Column="0"
+                            Content="Aplicar JSON"
+                            Classes="info"
+                            Click="SettingsApplyThemeJsonBtn_Click"
+                            Padding="10,6"
+                            CornerRadius="8"/>
+                    <Button Grid.Column="1"
+                            Margin="8,0,0,0"
+                            Content="Restaurar tema padrão"
+                            Classes="secondary"
+                            Click="SettingsRestoreDefaultThemeBtn_Click"
+                            Padding="10,6"
+                            CornerRadius="8"/>
+                    <TextBlock Grid.Column="2"
+                               x:Name="SettingsThemeStatusText"
+                               Margin="8,0,0,0"
+                               VerticalAlignment="Center"
+                               FontSize="10"
+                               Foreground="{StaticResource TextMutedBrush}"
+                               Text=""/>
+                    <Button Grid.Column="3"
+                            Margin="8,0,0,0"
+                            Content="Fechar"
+                            Classes="secondary"
+                            Click="SettingsCloseBtn_Click"
+                            Padding="10,6"
+                            CornerRadius="8"/>
+                  </Grid>
+                </StackPanel>
+
+                <Border Height="1" Background="#44344355" IsVisible="{Binding IsDateTimeSectionSelected}"/>
+                <StackPanel Spacing="6" IsVisible="{Binding IsDateTimeSectionSelected}">
+                  <TextBlock Text="Date &amp; Time"
+                             FontSize="14"
+                             FontWeight="SemiBold"
+                             Foreground="{StaticResource TextPrimaryBrush}"/>
+                  <TextBlock Text="Trabalho em progresso."
+                             FontSize="11"
+                             Foreground="{StaticResource TextSecondaryBrush}"/>
+                </StackPanel>
+
+                <Border Height="1" Background="#44344355" IsVisible="{Binding IsKeyboardShortcutsSectionSelected}"/>
+                <StackPanel Spacing="6" IsVisible="{Binding IsKeyboardShortcutsSectionSelected}">
+                  <TextBlock Text="Keyboard Shortcuts"
+                             FontSize="14"
+                             FontWeight="SemiBold"
+                             Foreground="{StaticResource TextPrimaryBrush}"/>
+                  <TextBlock Text="Trabalho em progresso."
+                             FontSize="11"
+                             Foreground="{StaticResource TextSecondaryBrush}"/>
+                </StackPanel>
+
+                <Border Height="1" Background="#44344355" IsVisible="{Binding IsPrivacySectionSelected}"/>
+                <StackPanel Spacing="6" IsVisible="{Binding IsPrivacySectionSelected}">
+                  <TextBlock Text="Privacy"
+                             FontSize="14"
+                             FontWeight="SemiBold"
+                             Foreground="{StaticResource TextPrimaryBrush}"/>
+                  <TextBlock Text="Trabalho em progresso."
+                             FontSize="11"
+                             Foreground="{StaticResource TextSecondaryBrush}"/>
+                </StackPanel>
+
+                <Border Height="1" Background="#44344355" IsVisible="{Binding IsNotificationSectionSelected}"/>
+                <StackPanel Spacing="6" IsVisible="{Binding IsNotificationSectionSelected}">
+                  <TextBlock Text="Notification"
+                             FontSize="14"
+                             FontWeight="SemiBold"
+                             Foreground="{StaticResource TextPrimaryBrush}"/>
+                  <TextBlock Text="Trabalho em progresso."
+                             FontSize="11"
+                             Foreground="{StaticResource TextSecondaryBrush}"/>
+                </StackPanel>
+
+                <Border Height="1" Background="#44344355" IsVisible="{Binding IsAccessibilitySectionSelected}"/>
+                <StackPanel Spacing="6" IsVisible="{Binding IsAccessibilitySectionSelected}">
+                  <TextBlock Text="Accessibility"
+                             FontSize="14"
+                             FontWeight="SemiBold"
+                             Foreground="{StaticResource TextPrimaryBrush}"/>
+                  <TextBlock Text="Trabalho em progresso."
+                             FontSize="11"
+                             Foreground="{StaticResource TextSecondaryBrush}"/>
+                </StackPanel>
+              </StackPanel>
+            </ScrollViewer>
+          </Grid>
+          </Border>
+        </Grid>
+      </Border>
+    </Border>
     </Grid>
 </Window>

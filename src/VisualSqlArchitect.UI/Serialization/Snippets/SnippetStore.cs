@@ -43,10 +43,7 @@ public static class SnippetStore
 
     private static string StoreFilePath()
     {
-        string dir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "VisualSqlArchitect"
-        );
+        string dir = global::VisualSqlArchitect.UI.AppConstants.AppDataDirectory;
         Directory.CreateDirectory(dir);
         return Path.Combine(dir, "snippets.json");
     }

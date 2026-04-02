@@ -13,10 +13,7 @@ public static class RecentFilesStore
     private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true };
 
     private static string AppDataDir =>
-        Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "VisualSqlArchitect"
-        );
+        global::VisualSqlArchitect.UI.AppConstants.AppDataDirectory;
 
     private static string RecentFilePath => Path.Combine(AppDataDir, "recent-files.json");
 

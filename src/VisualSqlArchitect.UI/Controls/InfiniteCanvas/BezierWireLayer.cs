@@ -25,7 +25,7 @@ public sealed class BezierWireLayer : Control
         Point To,
         Color Color,
         double Thickness,
-        ConnectionViewModel.WireDashKind DashKind,
+        ConnectionViewModel.EWireDashKind DashKind,
         long StartedAtMs
     );
 
@@ -108,7 +108,7 @@ public sealed class BezierWireLayer : Control
         Color Color,
         double Thickness,
         bool IsGlow,
-        ConnectionViewModel.WireDashKind DashKind
+        ConnectionViewModel.EWireDashKind DashKind
     );
 
     private readonly Dictionary<PenKey, Pen> _penCache = new();
@@ -126,11 +126,11 @@ public sealed class BezierWireLayer : Control
     private Pen GetPen(
         Color color,
         double thickness,
-        ConnectionViewModel.WireDashKind dashKind = ConnectionViewModel.WireDashKind.Solid,
+        ConnectionViewModel.EWireDashKind dashKind = ConnectionViewModel.EWireDashKind.Solid,
         bool isGlow = false
     )
     {
-        var cacheDashKind = isGlow ? ConnectionViewModel.WireDashKind.Solid : dashKind;
+        var cacheDashKind = isGlow ? ConnectionViewModel.EWireDashKind.Solid : dashKind;
         var key = new PenKey(color, thickness, isGlow, cacheDashKind);
         if (!_penCache.TryGetValue(key, out Pen? pen))
         {
@@ -143,9 +143,9 @@ public sealed class BezierWireLayer : Control
             {
                 pen.DashStyle = dashKind switch
                 {
-                    ConnectionViewModel.WireDashKind.LongDash => ColumnSetDashStyle,
-                    ConnectionViewModel.WireDashKind.WideDash => RowSetDashStyle,
-                    ConnectionViewModel.WireDashKind.Dotted => ExpressionDashStyle,
+                    ConnectionViewModel.EWireDashKind.LongDash => ColumnSetDashStyle,
+                    ConnectionViewModel.EWireDashKind.WideDash => RowSetDashStyle,
+                    ConnectionViewModel.EWireDashKind.Dotted => ExpressionDashStyle,
                     _ => null,
                 };
             }

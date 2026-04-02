@@ -23,7 +23,7 @@ public class AppDiagnosticsOverlayWarningTests
             vm.Entries,
             e =>
                 e.Name == "Canvas Migration"
-                && e.Status == DiagnosticStatus.Warning
+                && e.Status == EDiagnosticStatus.Warning
                 && e.Details.Contains("migrated", StringComparison.OrdinalIgnoreCase)
         );
     }

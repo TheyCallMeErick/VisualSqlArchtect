@@ -8,6 +8,18 @@ public static class AppConstants
 {
     // ── App ──────────────────────────────────────────────────────────────────
 
+    /// <summary>Internal app name used in storage paths.</summary>
+    public const string AppName = "VisualSqlArchitect";
+
+    /// <summary>Display name shown in window titles and UI labels.</summary>
+    public const string AppDisplayName = "Visual SQL Architect";
+
+    /// <summary>Base directory under AppData for local app persistence.</summary>
+    public static string AppDataDirectory => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        AppName
+    );
+
     /// <summary>Application version embedded in saved canvas files.</summary>
     public const string AppVersion = "1.0.0";
 

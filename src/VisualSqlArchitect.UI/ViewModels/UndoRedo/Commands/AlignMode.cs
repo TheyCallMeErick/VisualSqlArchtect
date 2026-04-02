@@ -1,6 +1,6 @@
 namespace VisualSqlArchitect.UI.ViewModels.UndoRedo.Commands;
 
-public enum AlignMode
+public enum EAlignMode
 {
     Left,
     Right,

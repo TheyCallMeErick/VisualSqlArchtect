@@ -1,5 +1,8 @@
 namespace VisualSqlArchitect.Providers.Dialects;
 
+using VisualSqlArchitect.Core;
+using VisualSqlArchitect.QueryEngine;
+
 /// <summary>
 /// Implementação de ISqlDialect para SQL Server.
 /// Usa INFORMATION_SCHEMA views compatível com SQL Server 2012+
@@ -83,6 +86,31 @@ public sealed class SqlServerDialect : ISqlDialect
         return string.Join(" ", parts);
     }
 
+    public string ApplyQueryHints(string sql, string? queryHints)
+    {
+        if (!QueryHintSyntax.TryNormalize(DatabaseProvider.SqlServer, queryHints, out string hints, out _)
+            || string.IsNullOrWhiteSpace(hints))
+            return TrimTrailingSemicolon(sql);
+
+        string baseSql = TrimTrailingSemicolon(sql);
+        if (baseSql.Contains(" OPTION (", StringComparison.OrdinalIgnoreCase))
+            return baseSql;
+
+        string normalized = hints.StartsWith("OPTION", StringComparison.OrdinalIgnoreCase)
+            ? hints
+            : $"OPTION ({hints})";
+
+        return $"{baseSql}\n{normalized}";
+    }
+
     public string QuoteIdentifier(string identifier) =>
         $"[{identifier.Replace("]", "]]")}]";
+
+    private static string TrimTrailingSemicolon(string sql)
+    {
+        if (string.IsNullOrWhiteSpace(sql))
+            return string.Empty;
+
+        return sql.Trim().TrimEnd(';').TrimEnd();
+    }
 }

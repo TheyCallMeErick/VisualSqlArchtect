@@ -4,46 +4,6 @@ using VisualSqlArchitect.UI.Services;
 
 namespace VisualSqlArchitect.UI.ViewModels;
 
-public sealed record StartRecentProjectItem(
-    string DisplayName,
-    string Provider,
-    string LastOpenedLabel,
-    string? FilePath = null,
-    string? SnapshotSummary = null
-);
-
-public sealed record StartSavedConnectionItem(
-    string Id,
-    string Name,
-    string Provider,
-    string StatusLabel,
-    bool IsConnected
-);
-
-public sealed class StartTemplateItem : ViewModelBase
-{
-    private bool _isFavorite;
-
-    public StartTemplateItem(string name, string category, string description)
-    {
-        Name = name;
-        Category = category;
-        Description = description;
-    }
-
-    public string Name { get; }
-
-    public string Category { get; }
-
-    public string Description { get; }
-
-    public bool IsFavorite
-    {
-        get => _isFavorite;
-        set => Set(ref _isFavorite, value);
-    }
-}
-
 /// <summary>
 /// ViewModel for the startup home screen. Exposes lightweight data and intent commands.
 /// </summary>
@@ -84,6 +44,8 @@ public sealed class StartMenuViewModel : ViewModelBase
 
             OpenTemplateRequested?.Invoke(item);
         });
+
+        OpenSettingsCommand = new RelayCommand(() => OpenSettingsRequested?.Invoke());
 
         ToggleTemplateFavoriteCommand = new RelayCommand<StartTemplateItem>(item =>
         {
@@ -152,6 +114,8 @@ public sealed class StartMenuViewModel : ViewModelBase
 
     public RelayCommand<StartTemplateItem> ToggleTemplateFavoriteCommand { get; }
 
+    public RelayCommand OpenSettingsCommand { get; }
+
     public event Action? CreateNewDiagramRequested;
 
     public event Action? OpenConnectionsRequested;
@@ -163,6 +127,8 @@ public sealed class StartMenuViewModel : ViewModelBase
     public event Action<StartRecentProjectItem>? OpenRecentProjectRequested;
 
     public event Action<StartTemplateItem>? OpenTemplateRequested;
+
+    public event Action? OpenSettingsRequested;
 
     public void RefreshData(
         IEnumerable<ConnectionProfile>? runtimeProfiles = null,
@@ -256,8 +222,7 @@ public sealed class StartMenuViewModel : ViewModelBase
 
     private static string ProfilesFilePath =>
         Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "VisualSqlArchitect",
+            global::VisualSqlArchitect.UI.AppConstants.AppDataDirectory,
             "connections.json"
         );
 
@@ -268,11 +233,11 @@ public sealed class StartMenuViewModel : ViewModelBase
         if (delta.TotalMinutes < 1)
             return "agora";
         if (delta.TotalHours < 1)
-            return $"ha {(int)delta.TotalMinutes} min";
+            return $"há {(int)delta.TotalMinutes} min";
         if (delta.TotalDays < 1)
-            return $"ha {(int)delta.TotalHours} hora(s)";
+            return $"há {(int)delta.TotalHours} hora(s)";
         if (delta.TotalDays < 7)
-            return $"ha {(int)delta.TotalDays} dia(s)";
+            return $"há {(int)delta.TotalDays} dia(s)";
 
         return utc.ToLocalTime().ToString("dd/MM/yyyy");
     }
@@ -289,18 +254,18 @@ public sealed class StartMenuViewModel : ViewModelBase
             int conns = TryGetArrayCount(root, "Connections", "connections");
 
             if (nodes >= 0 && conns >= 0)
-                return $"{nodes} nos • {conns} conexoes";
+                return $"{nodes} nós • {conns} conexões";
             if (nodes >= 0)
-                return $"{nodes} nos";
+                return $"{nodes} nós";
             if (conns >= 0)
-                return $"{conns} conexoes";
+                return $"{conns} conexões";
         }
-        catch
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
         {
             // Keep fallback below.
         }
 
-        return "Snapshot indisponivel";
+        return "Snapshot indisponível";
     }
 
     private static int TryGetArrayCount(JsonElement root, params string[] names)

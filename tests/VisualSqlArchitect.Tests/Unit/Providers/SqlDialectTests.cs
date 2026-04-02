@@ -13,6 +13,7 @@ public class SqlDialectTests
     [InlineData(DatabaseProvider.Postgres)]
     [InlineData(DatabaseProvider.MySql)]
     [InlineData(DatabaseProvider.SqlServer)]
+    [InlineData(DatabaseProvider.SQLite)]
     public void WrapWithPreviewLimit_ProducesValidSQL(DatabaseProvider provider)
     {
         // Arrange
@@ -33,6 +34,7 @@ public class SqlDialectTests
     [InlineData(DatabaseProvider.Postgres, "LIMIT")]
     [InlineData(DatabaseProvider.MySql, "LIMIT")]
     [InlineData(DatabaseProvider.SqlServer, "TOP")]
+    [InlineData(DatabaseProvider.SQLite, "LIMIT")]
     public void WrapWithPreviewLimit_UsesCorrectSyntax(DatabaseProvider provider, string expectedKeyword)
     {
         // Arrange
@@ -50,6 +52,7 @@ public class SqlDialectTests
     [InlineData(DatabaseProvider.Postgres)]
     [InlineData(DatabaseProvider.MySql)]
     [InlineData(DatabaseProvider.SqlServer)]
+    [InlineData(DatabaseProvider.SQLite)]
     public void FormatPagination_ProducesValidSQL(DatabaseProvider provider)
     {
         // Arrange
@@ -66,6 +69,7 @@ public class SqlDialectTests
     [InlineData(DatabaseProvider.Postgres, "\"username\"")]
     [InlineData(DatabaseProvider.MySql, "`username`")]
     [InlineData(DatabaseProvider.SqlServer, "[username]")]
+    [InlineData(DatabaseProvider.SQLite, "\"username\"")]
     public void QuoteIdentifier_UsesCorrectQuotingStyle(DatabaseProvider provider, string expected)
     {
         // Arrange
@@ -82,6 +86,7 @@ public class SqlDialectTests
     [InlineData(DatabaseProvider.Postgres)]
     [InlineData(DatabaseProvider.MySql)]
     [InlineData(DatabaseProvider.SqlServer)]
+    [InlineData(DatabaseProvider.SQLite)]
     public void QuoteIdentifier_HandlesMultipleParts(DatabaseProvider provider)
     {
         // Arrange
@@ -131,6 +136,39 @@ public class SqlDialectTests
         Assert.Contains("FETCH", pagination.ToUpper());
     }
 
+    [Fact]
+    public void ApplyQueryHints_SqlServer_AppendsOptionClause()
+    {
+        var dialect = new SqlServerDialect();
+
+        string sql = dialect.ApplyQueryHints("SELECT * FROM users", "MAXDOP 1");
+
+        Assert.Contains("OPTION", sql.ToUpperInvariant());
+        Assert.Contains("MAXDOP 1", sql.ToUpperInvariant());
+    }
+
+    [Theory]
+    [InlineData(DatabaseProvider.Postgres)]
+    [InlineData(DatabaseProvider.MySql)]
+    public void ApplyQueryHints_SelectCommentDialects_InjectComment(DatabaseProvider provider)
+    {
+        ISqlDialect dialect = CreateDialect(provider);
+
+        string sql = dialect.ApplyQueryHints("SELECT id FROM users", "BKA(users)");
+
+        Assert.Contains("/*+", sql);
+    }
+
+    [Fact]
+    public void ApplyQueryHints_Sqlite_IsNoOp()
+    {
+        var dialect = new SqliteDialect();
+
+        string sql = dialect.ApplyQueryHints("SELECT * FROM users;", "ANY_HINT");
+
+        Assert.Equal("SELECT * FROM users", sql);
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────
 
     private static ISqlDialect CreateDialect(DatabaseProvider provider) =>
@@ -139,6 +177,7 @@ public class SqlDialectTests
             DatabaseProvider.Postgres => new PostgresDialect(),
             DatabaseProvider.MySql => new MySqlDialect(),
             DatabaseProvider.SqlServer => new SqlServerDialect(),
+            DatabaseProvider.SQLite => new SqliteDialect(),
             _ => throw new NotSupportedException($"Provider {provider} not supported in tests")
         };
 }

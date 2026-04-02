@@ -51,7 +51,7 @@ public sealed class QueryGraphBuilder(CanvasViewModel canvas, DatabaseProvider p
         );
         bool hasColumnListColumns = columnListConn is not null && _canvas.Connections.Any(c =>
             c.ToPin?.Owner == columnListConn.FromPin.Owner
-            && c.ToPin?.Name == "columns"
+            && IsProjectionInputPinName(c.ToPin?.Name)
         );
 
         bool hasDirectColumns = _canvas.Connections.Any(c =>
@@ -238,10 +238,10 @@ public sealed class QueryGraphBuilder(CanvasViewModel canvas, DatabaseProvider p
                 Alias: n.Alias,
                 TableFullName: n.Type == NodeType.TableSource ? n.Subtitle : null,
                 ColumnPins: n.Type == NodeType.TableSource
-                    ? n.OutputPins.ToDictionary(p => p.Name, p => p.Name)
+                    ? BuildColumnPinsMap(n)
                     : null,
                 ColumnPinTypes: n.Type == NodeType.TableSource
-                    ? n.OutputPins.ToDictionary(p => p.Name, p => p.DataType)
+                    ? BuildColumnPinTypesMap(n)
                     : null
             ))
             .ToList();
@@ -275,7 +275,7 @@ public sealed class QueryGraphBuilder(CanvasViewModel canvas, DatabaseProvider p
                 _canvas
                     .Connections.Where(c =>
                         c.ToPin?.Owner == columnListNode
-                        && c.ToPin?.Name == "columns"
+                        && IsProjectionInputPinName(c.ToPin?.Name)
                     )
                     .OrderBy(c => c.FromPin.Name, StringComparer.Ordinal)
                     .Select(c => new VisualSqlArchitect.Nodes.SelectBinding(
@@ -777,6 +777,34 @@ public sealed class QueryGraphBuilder(CanvasViewModel canvas, DatabaseProvider p
         return null;
     }
 
+    private static Dictionary<string, string> BuildColumnPinsMap(NodeViewModel node)
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (PinViewModel pin in node.OutputPins)
+        {
+            if (string.IsNullOrWhiteSpace(pin.Name) || map.ContainsKey(pin.Name))
+                continue;
+
+            map[pin.Name] = pin.Name;
+        }
+
+        return map;
+    }
+
+    private static Dictionary<string, PinDataType> BuildColumnPinTypesMap(NodeViewModel node)
+    {
+        var map = new Dictionary<string, PinDataType>(StringComparer.Ordinal);
+        foreach (PinViewModel pin in node.OutputPins)
+        {
+            if (string.IsNullOrWhiteSpace(pin.Name) || map.ContainsKey(pin.Name))
+                continue;
+
+            map[pin.Name] = pin.DataType;
+        }
+
+        return map;
+    }
+
     private HashSet<string> CollectUpstreamNodeIds(NodeViewModel sinkNode, bool includeCtes)
     {
         var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { sinkNode.Id };
@@ -987,7 +1015,9 @@ public sealed class QueryGraphBuilder(CanvasViewModel canvas, DatabaseProvider p
         {
             if (node.Type is NodeType.And or NodeType.Or)
             {
-                int inputCount = CountInputsByPrefix(node, "cond_");
+                int inputCount = CountInputsByName(node, "conditions");
+                if (inputCount == 0)
+                    inputCount = CountInputsByPrefix(node, "cond_");
                 if (inputCount == 0)
                 {
                     errors.Add($"{node.Title} node connected to WHERE/HAVING/QUALIFY has no conditions; it compiles to a constant expression.");
@@ -1172,7 +1202,16 @@ public sealed class QueryGraphBuilder(CanvasViewModel canvas, DatabaseProvider p
             && target == PinDataType.ColumnRef
             && connection.ToPin is not null
             && connection.ToPin.Owner.Type is NodeType.ColumnList or NodeType.ColumnSetBuilder
-            && connection.ToPin.Name.Equals("columns", StringComparison.OrdinalIgnoreCase);
+            && IsProjectionInputPinName(connection.ToPin.Name);
+    }
+
+    private static bool IsProjectionInputPinName(string? pinName)
+    {
+        if (string.IsNullOrWhiteSpace(pinName))
+            return false;
+
+        return pinName.Equals("columns", StringComparison.OrdinalIgnoreCase)
+            || pinName.Equals("metadata", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool ArePinsCompatible(PinDataType source, PinDataType target)

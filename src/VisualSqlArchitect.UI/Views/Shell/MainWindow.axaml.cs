@@ -5,6 +5,8 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Styling;
+using Microsoft.Extensions.DependencyInjection;
 using Material.Icons;
 using System.ComponentModel;
 using VisualSqlArchitect.UI.Serialization;
@@ -13,19 +15,15 @@ using VisualSqlArchitect.UI.Controls.Shell;
 using VisualSqlArchitect.UI.Services;
 using VisualSqlArchitect.UI.Services.Connection;
 using VisualSqlArchitect.UI.Services.Localization;
+using VisualSqlArchitect.UI.Services.Settings;
+using VisualSqlArchitect.UI.Services.Theming;
 using VisualSqlArchitect.UI.ViewModels;
 
 namespace VisualSqlArchitect.UI;
 
 public partial class MainWindow : Window
 {
-    private sealed class QueryTabState
-    {
-        public required string FallbackTitle { get; init; }
-        public string? SnapshotJson { get; set; }
-        public string? CurrentFilePath { get; set; }
-        public bool IsDirty { get; set; }
-    }
+    private readonly IServiceProvider _services;
 
     private ShellViewModel CurrentShell => DataContext as ShellViewModel
         ?? throw new InvalidOperationException("MainWindow DataContext must be a ShellViewModel.");
@@ -38,13 +36,12 @@ public partial class MainWindow : Window
     private bool _sidebarActionsWired;
     private bool _connectionActivationWired;
     private ConnectionWorkspaceModule? _connectionModule;
+    private SettingsWorkspaceModule? _settingsModule;
     private GridLength _lastLeftSidebarWidth = new(320);
     private GridLength _lastRightSidebarWidth = new(320);
     private static readonly GridLength CollapsedRailWidth = new(34);
 
-    private readonly List<QueryTabState> _queryTabs = [];
-    private int _activeQueryTabIndex;
-    private bool _isRestoringTab;
+    private QueryTabManagerViewModel QueryTabs => CurrentShell.QueryTabs;
 
     // Services
     private MainWindowLayoutService? _layoutService;
@@ -55,17 +52,31 @@ public partial class MainWindow : Window
     private PreviewService? _preview;
     private CommandPaletteFactory? _commandFactory;
     private PropertyChangedEventHandler? _windowTitleChangedHandler;
-    private PropertyChangedEventHandler? _databaseMetadataChangedHandler;
+    private readonly ThemeJsonSettingsService _themeJsonSettings;
 
     public MainWindow()
+        : this(
+            new ServiceCollection().AddVisualSqlArchitect().BuildServiceProvider(),
+            new ShellViewModel(),
+            new ThemeJsonSettingsService())
     {
+    }
+
+    public MainWindow(
+        IServiceProvider services,
+        ShellViewModel shell,
+        ThemeJsonSettingsService themeJsonSettings)
+    {
+        _services = services;
+        _themeJsonSettings = themeJsonSettings;
+
         InitializeComponent();
-        DataContext = new ShellViewModel();
+        DataContext = shell;
 
         WireHeaderMenus();
         WireMenuButtons();
         WireStartMenu();
-        Title = "Visual SQL Architect";
+        Title = AppConstants.AppDisplayName;
     }
 
     private void WireHeaderMenus()
@@ -139,16 +150,20 @@ public partial class MainWindow : Window
                     EnterCanvasMode();
                     _ = _fileOps?.SaveAsync();
                 }),
-                NewItem("Historico de arquivos", MaterialIconKind.History, () =>
+                NewItem("Histórico de arquivos", MaterialIconKind.History, () =>
                 {
                     EnterCanvasMode();
                     CurrentVm.FileHistory.Open();
                 }),
                 NewSeparator(),
                 NewItem("Atalhos de teclado", MaterialIconKind.Keyboard, () => new KeyboardShortcutsWindow().Show(this)),
-                NewItem("Alternar idioma", MaterialIconKind.Translate, () => LocalizationService.Instance.ToggleCulture()),
+                NewItem("Configurações", MaterialIconKind.CogOutline, () =>
+                {
+                    PopulateSettingsThemeJsonEditor();
+                    OpenSettings(keepStartVisible: false);
+                }),
                 NewSeparator(),
-                NewItem("Voltar para inicio", MaterialIconKind.Home, () =>
+                NewItem("Voltar para início", MaterialIconKind.Home, () =>
                 {
                     if (!_canvasInitialized)
                         return;
@@ -158,7 +173,7 @@ public partial class MainWindow : Window
                         CurrentVm.ConnectionManager.ActiveProfileId
                     );
                     CurrentShell.ReturnToStart();
-                    Title = "Visual SQL Architect";
+                    Title = AppConstants.AppDisplayName;
                 }),
             },
         };
@@ -215,6 +230,7 @@ public partial class MainWindow : Window
         CurrentShell.StartMenu.OpenSavedConnectionRequested += OnStartOpenSavedConnectionRequested;
         CurrentShell.StartMenu.OpenRecentProjectRequested += OnStartOpenRecentProjectRequested;
         CurrentShell.StartMenu.OpenTemplateRequested += OnStartOpenTemplateRequested;
+        CurrentShell.StartMenu.OpenSettingsRequested += OnStartOpenSettingsRequested;
     }
 
     private void EnterCanvasMode()
@@ -238,6 +254,135 @@ public partial class MainWindow : Window
         OpenConnectionsPanel(beginNewProfile: true, keepStartVisible: true);
     }
 
+    private void SettingsBackdrop_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        GetSettingsModule().CloseSettings();
+    }
+
+    private void SettingsDialog_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        e.Handled = true;
+    }
+
+    private void SettingsCloseBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        GetSettingsModule().CloseSettings();
+        e.Handled = true;
+    }
+
+    private void OnStartOpenSettingsRequested()
+    {
+        PopulateSettingsThemeJsonEditor();
+        OpenSettings(keepStartVisible: true);
+    }
+
+    private void OpenSettings(bool keepStartVisible)
+    {
+        GetSettingsModule().OpenSettings(keepStartVisible);
+    }
+
+    private void SettingsNavBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is not Button btn || btn.Tag is not string sectionRaw)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (Enum.TryParse<ShellViewModel.ESettingsSection>(sectionRaw, ignoreCase: true, out var section))
+            CurrentShell.SelectSettingsSection(section);
+
+        e.Handled = true;
+    }
+
+    private void SettingsThemeDarkBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (Application.Current is not null)
+            Application.Current.RequestedThemeVariant = ThemeVariant.Dark;
+
+        AppSettingsStore.SaveThemeVariant("Dark");
+        SetSettingsStatus("Tema escuro aplicado.", isError: false);
+
+        e.Handled = true;
+    }
+
+    private void SettingsThemeLightBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (Application.Current is not null)
+            Application.Current.RequestedThemeVariant = ThemeVariant.Light;
+
+        AppSettingsStore.SaveThemeVariant("Light");
+        SetSettingsStatus("Tema claro aplicado.", isError: false);
+
+        e.Handled = true;
+    }
+
+    private void SettingsToggleSnapBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        EnsureCanvasInitialized();
+        CurrentVm.ToggleSnapCommand.Execute(null);
+        SetSettingsStatus($"Snap atualizado: {CurrentVm.SnapToGridLabel}.", isError: false);
+        e.Handled = true;
+    }
+
+    private void SettingsToggleLanguageBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        LocalizationService.Instance.ToggleCulture();
+        SetSettingsStatus("Idioma alternado.", isError: false);
+        e.Handled = true;
+    }
+
+    private void SettingsApplyThemeJsonBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        TextBox? jsonEditor = this.FindControl<TextBox>("SettingsThemeJsonTextBox");
+        if (jsonEditor is null)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        string rawJson = jsonEditor.Text ?? string.Empty;
+        ThemeJsonOperationResult result = _themeJsonSettings.ApplyAndPersist(rawJson);
+        string warningSuffix = result.Warnings.Count > 0
+            ? $" (avisos: {string.Join(" | ", result.Warnings)})"
+            : string.Empty;
+        SetSettingsStatus(result.Message + warningSuffix, isError: !result.Success);
+        e.Handled = true;
+    }
+
+    private void SettingsRestoreDefaultThemeBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        ThemeJsonOperationResult result = _themeJsonSettings.RestoreDefault();
+        TextBox? jsonEditor = this.FindControl<TextBox>("SettingsThemeJsonTextBox");
+        if (jsonEditor is not null)
+            jsonEditor.Text = _themeJsonSettings.GetEditorJsonOrTemplate();
+
+        SetSettingsStatus(result.Message, isError: !result.Success);
+        e.Handled = true;
+    }
+
+    private void PopulateSettingsThemeJsonEditor()
+    {
+        TextBox? jsonEditor = this.FindControl<TextBox>("SettingsThemeJsonTextBox");
+        if (jsonEditor is null)
+            return;
+
+        jsonEditor.Text = _themeJsonSettings.GetEditorJsonOrTemplate();
+        SetSettingsStatus("Editor de tema pronto. Aplique para salvar e usar o tema.", isError: false);
+    }
+
+    private void SetSettingsStatus(string message, bool isError)
+    {
+        TextBlock? statusText = this.FindControl<TextBlock>("SettingsThemeStatusText");
+        if (statusText is null)
+            return;
+
+        statusText.Text = message;
+        statusText.Foreground = isError
+            ? new SolidColorBrush(Color.Parse("#F87171"))
+            : new SolidColorBrush(Color.Parse("#34D399"));
+    }
+
     private void OnStartOpenSavedConnectionRequested(StartSavedConnectionItem item)
     {
         if (GetConnectionModule().ConnectFromStartItem(item.Id))
@@ -259,11 +404,21 @@ public partial class MainWindow : Window
                 EnsureCanvasInitialized();
                 return CurrentVm.ConnectionManager;
             },
-            activateConnectionSidebar: () => CurrentVm.Sidebar.ActiveTab = SidebarTab.Connection,
+            activateConnectionSidebar: () => CurrentVm.Sidebar.ActiveTab = ESidebarTab.Connection,
             enterCanvas: EnterCanvasMode
         );
 
         return _connectionModule;
+    }
+
+    private SettingsWorkspaceModule GetSettingsModule()
+    {
+        _settingsModule ??= new SettingsWorkspaceModule(
+            getShell: () => CurrentShell,
+            enterCanvas: EnterCanvasMode
+        );
+
+        return _settingsModule;
     }
 
     private void WireConnectionActivation(ConnectionManagerViewModel connectionManager)
@@ -328,35 +483,25 @@ public partial class MainWindow : Window
             }
         };
 
-        _databaseMetadataChangedHandler = (_, e) =>
-        {
-            if (e.PropertyName == nameof(CanvasViewModel.DatabaseMetadata))
-                UpdateSchemaTree();
-        };
-
         vm.PropertyChanged += _windowTitleChangedHandler;
-        vm.PropertyChanged += _databaseMetadataChangedHandler;
     }
 
     private void DetachCanvasHandlers(CanvasViewModel vm)
     {
         if (_windowTitleChangedHandler is not null)
             vm.PropertyChanged -= _windowTitleChangedHandler;
-        if (_databaseMetadataChangedHandler is not null)
-            vm.PropertyChanged -= _databaseMetadataChangedHandler;
 
         _windowTitleChangedHandler = null;
-        _databaseMetadataChangedHandler = null;
     }
 
     private void InitializeServices(CanvasViewModel vm)
     {
-        _layoutService = new MainWindowLayoutService(this, vm);
-        _sessionService = new SessionManagementService(this, vm);
-        _fileOps = new FileOperationsService(this, vm);
-        _keyboardHandler = new KeyboardInputHandler(this, vm, _fileOps, CreateNewQueryTab);
-        _export = new ExportService(this, vm);
-        _preview = new PreviewService(this, vm);
+        _layoutService = ActivatorUtilities.CreateInstance<MainWindowLayoutService>(_services, this, vm);
+        _sessionService = ActivatorUtilities.CreateInstance<SessionManagementService>(_services, this, vm);
+        _fileOps = ActivatorUtilities.CreateInstance<FileOperationsService>(_services, this, vm);
+        _keyboardHandler = ActivatorUtilities.CreateInstance<KeyboardInputHandler>(_services, this, vm, _fileOps, (Action)CreateNewQueryTab);
+        _export = ActivatorUtilities.CreateInstance<ExportService>(_services, this, vm);
+        _preview = ActivatorUtilities.CreateInstance<PreviewService>(_services, this, vm);
         _commandFactory = new CommandPaletteFactory(
             this,
             vm,
@@ -372,89 +517,6 @@ public partial class MainWindow : Window
         _keyboardHandler.Wire();
         _preview.Wire();
         _commandFactory.RegisterAllCommands();
-    }
-
-    private void UpdateSchemaTree()
-    {
-        IBrush mutedBrush = ResourceBrush("TextMutedBrush", "#4A5568");
-        IBrush secondaryBrush = ResourceBrush("TextSecondaryBrush", "#8B95A8");
-        IBrush accentBrush = ResourceBrush("AccentBlueBrush", "#60A5FA");
-        IBrush warningBrush = ResourceBrush("BtnWarningFgBrush", "#FBBF24");
-        IBrush numberBrush = ResourceBrush("PinNumberBrush", "#4ADE80");
-
-        var schemaTree = this.FindControl<TreeView>("SchemaTree");
-        if (schemaTree is null || CurrentVm.DatabaseMetadata is null)
-            return;
-
-        schemaTree.Items.Clear();
-
-        foreach (var schema in CurrentVm.DatabaseMetadata.Schemas)
-        {
-            // Create schema node
-            var schemaItem = new TreeViewItem
-            {
-                Header = new StackPanel
-                {
-                    Orientation = Orientation.Horizontal,
-                    Spacing = 5,
-                    Children =
-                    {
-                        new Material.Icons.Avalonia.MaterialIcon { Kind = Material.Icons.MaterialIconKind.Database, Width = 12, Height = 12, Foreground = mutedBrush },
-                        new TextBlock { Text = schema.Name, FontWeight = FontWeight.Medium, Foreground = secondaryBrush, FontSize = 11 }
-                    }
-                },
-                IsExpanded = true
-            };
-
-            // Add tables to schema
-            foreach (var table in schema.Tables.OrderBy(t => t.Name))
-            {
-                var tableItem = new TreeViewItem
-                {
-                    Header = new StackPanel
-                    {
-                        Orientation = Orientation.Horizontal,
-                        Spacing = 4,
-                        Children =
-                        {
-                            new Material.Icons.Avalonia.MaterialIcon { Kind = Material.Icons.MaterialIconKind.Table, Width = 12, Height = 12, Foreground = accentBrush },
-                            new TextBlock { Text = table.Name, FontSize = 11 }
-                        }
-                    }
-                };
-
-                // Add columns to table
-                foreach (var column in table.Columns.OrderBy(c => c.OrdinalPosition))
-                {
-                    var columnItem = new TreeViewItem
-                    {
-                        Header = new StackPanel
-                        {
-                            Orientation = Orientation.Horizontal,
-                            Spacing = 3,
-                            Children =
-                            {
-                                new Material.Icons.Avalonia.MaterialIcon
-                                {
-                                    Kind = column.IsPrimaryKey ? Material.Icons.MaterialIconKind.Key : Material.Icons.MaterialIconKind.CircleSmall,
-                                    Width = 10,
-                                    Height = 10,
-                                    Foreground = column.IsPrimaryKey ? warningBrush : mutedBrush
-                                },
-                                new TextBlock { Text = column.Name, FontFamily = new FontFamily("Consolas,monospace"), FontSize = 10 },
-                                new TextBlock { Text = column.NativeType, Foreground = numberBrush, FontSize = 9 }
-                            }
-                        }
-                    };
-
-                    tableItem.Items.Add(columnItem);
-                }
-
-                schemaItem.Items.Add(tableItem);
-            }
-
-            schemaTree.Items.Add(schemaItem);
-        }
     }
 
     private static string CreateFreshCanvasSnapshot()
@@ -473,31 +535,30 @@ public partial class MainWindow : Window
 
     private void CaptureActiveTabState()
     {
-        if (_isRestoringTab || _activeQueryTabIndex < 0 || _activeQueryTabIndex >= _queryTabs.Count)
+        if (QueryTabs.IsRestoringTab)
             return;
 
-        QueryTabState activeTab = _queryTabs[_activeQueryTabIndex];
-        activeTab.SnapshotJson = CanvasSerializer.Serialize(CurrentVm);
-        activeTab.CurrentFilePath = CurrentVm.CurrentFilePath;
-        activeTab.IsDirty = CurrentVm.IsDirty;
+        QueryTabs.CaptureActive(
+            CanvasSerializer.Serialize(CurrentVm),
+            CurrentVm.CurrentFilePath,
+            CurrentVm.IsDirty
+        );
     }
 
     private void SyncActiveTabMetadataFromCanvas()
     {
-        if (_isRestoringTab || _activeQueryTabIndex < 0 || _activeQueryTabIndex >= _queryTabs.Count)
+        if (QueryTabs.IsRestoringTab)
             return;
 
-        QueryTabState activeTab = _queryTabs[_activeQueryTabIndex];
-        activeTab.CurrentFilePath = CurrentVm.CurrentFilePath;
-        activeTab.IsDirty = CurrentVm.IsDirty;
+        QueryTabs.SyncActiveMetadata(CurrentVm.CurrentFilePath, CurrentVm.IsDirty);
     }
 
     private void RestoreTabState(int tabIndex)
     {
-        if (tabIndex < 0 || tabIndex >= _queryTabs.Count)
+        QueryTabState? tab = QueryTabs.GetTab(tabIndex);
+        if (tab is null)
             return;
 
-        QueryTabState tab = _queryTabs[tabIndex];
         string snapshot = tab.SnapshotJson ?? CreateFreshCanvasSnapshot();
         CanvasLoadResult result = CanvasSerializer.Deserialize(snapshot, CurrentVm);
         if (!result.Success)
@@ -515,21 +576,23 @@ public partial class MainWindow : Window
 
     private void ActivateQueryTab(int tabIndex)
     {
-        if (tabIndex < 0 || tabIndex >= _queryTabs.Count || tabIndex == _activeQueryTabIndex)
+        if (tabIndex < 0 || tabIndex >= QueryTabs.Tabs.Count || tabIndex == QueryTabs.ActiveTabIndex)
             return;
 
         CaptureActiveTabState();
-        _activeQueryTabIndex = tabIndex;
 
-        _isRestoringTab = true;
+        if (!QueryTabs.TryActivate(tabIndex))
+            return;
+
+        QueryTabs.IsRestoringTab = true;
         try
         {
             RestoreTabState(tabIndex);
-                    CurrentVm.ConnectionManager.IsVisible = false;
+            CurrentVm.ConnectionManager.IsVisible = false;
         }
         finally
         {
-            _isRestoringTab = false;
+            QueryTabs.IsRestoringTab = false;
         }
 
         RefreshQueryTabsUi();
@@ -553,11 +616,11 @@ public partial class MainWindow : Window
 
         host.Children.Clear();
 
-        for (int i = 0; i < _queryTabs.Count; i++)
+        for (int i = 0; i < QueryTabs.Tabs.Count; i++)
         {
             int tabIndex = i;
-            QueryTabState tab = _queryTabs[i];
-            bool isActive = i == _activeQueryTabIndex;
+            QueryTabState tab = QueryTabs.Tabs[i];
+            bool isActive = i == QueryTabs.ActiveTabIndex;
 
             var title = new TextBlock
             {
@@ -631,16 +694,10 @@ public partial class MainWindow : Window
 
     private void InitializeQueryTabs()
     {
-        _queryTabs.Clear();
-        _activeQueryTabIndex = 0;
-        _queryTabs.Add(
-            new QueryTabState
-            {
-                FallbackTitle = "Consulta 1",
-                SnapshotJson = CanvasSerializer.Serialize(CurrentVm),
-                CurrentFilePath = CurrentVm.CurrentFilePath,
-                IsDirty = CurrentVm.IsDirty,
-            }
+        QueryTabs.Initialize(
+            CanvasSerializer.Serialize(CurrentVm),
+            CurrentVm.CurrentFilePath,
+            CurrentVm.IsDirty
         );
 
         RefreshQueryTabsUi();
@@ -648,22 +705,16 @@ public partial class MainWindow : Window
 
     private void ResetCurrentCanvas()
     {
-        if (_activeQueryTabIndex < 0 || _activeQueryTabIndex >= _queryTabs.Count)
-            return;
+        QueryTabs.ResetActive(CreateFreshCanvasSnapshot());
 
-        QueryTabState activeTab = _queryTabs[_activeQueryTabIndex];
-        activeTab.SnapshotJson = CreateFreshCanvasSnapshot();
-        activeTab.CurrentFilePath = null;
-        activeTab.IsDirty = false;
-
-        _isRestoringTab = true;
+        QueryTabs.IsRestoringTab = true;
         try
         {
-            RestoreTabState(_activeQueryTabIndex);
+            RestoreTabState(QueryTabs.ActiveTabIndex);
         }
         finally
         {
-            _isRestoringTab = false;
+            QueryTabs.IsRestoringTab = false;
         }
 
         RefreshQueryTabsUi();
@@ -673,27 +724,16 @@ public partial class MainWindow : Window
     {
         CaptureActiveTabState();
 
-        int tabNumber = _queryTabs.Count + 1;
-        _queryTabs.Add(
-            new QueryTabState
-            {
-                FallbackTitle = $"Consulta {tabNumber}",
-                SnapshotJson = CreateFreshCanvasSnapshot(),
-                CurrentFilePath = null,
-                IsDirty = false,
-            }
-        );
+        QueryTabs.AddNewTab(CreateFreshCanvasSnapshot());
 
-        _activeQueryTabIndex = _queryTabs.Count - 1;
-
-        _isRestoringTab = true;
+        QueryTabs.IsRestoringTab = true;
         try
         {
-            RestoreTabState(_activeQueryTabIndex);
+            RestoreTabState(QueryTabs.ActiveTabIndex);
         }
         finally
         {
-            _isRestoringTab = false;
+            QueryTabs.IsRestoringTab = false;
         }
 
         RefreshQueryTabsUi();
@@ -776,10 +816,9 @@ public partial class MainWindow : Window
                 CurrentVm.ConnectionManager.ActiveProfileId
             );
             CurrentShell.ReturnToStart();
-            Title = "Visual SQL Architect";
+            Title = AppConstants.AppDisplayName;
         });
         B("ShortcutsBtn", () => new KeyboardShortcutsWindow().Show(this));
-        B("LanguageToggleBtn", () => LocalizationService.Instance.ToggleCulture());
         B("ZoomInBtn", () =>
         {
             EnterCanvasMode();

@@ -72,4 +72,38 @@ public class ShellViewModelTests
         canvas.ConnectionManager.IsVisible = false;
         Assert.False(vm.IsConnectionManagerVisible);
     }
+
+    [Fact]
+    public void SettingsVisibility_OpenAndClose_Works()
+    {
+        var vm = new ShellViewModel();
+
+        Assert.False(vm.IsSettingsVisible);
+
+        vm.OpenSettings();
+        Assert.True(vm.IsSettingsVisible);
+
+        vm.CloseSettings();
+        Assert.False(vm.IsSettingsVisible);
+    }
+
+    [Fact]
+    public void SettingsSectionSelection_SwitchesFlags()
+    {
+        var vm = new ShellViewModel();
+
+        Assert.True(vm.IsAppearanceSectionSelected);
+        Assert.Equal("Themes", vm.SettingsSectionTitle);
+
+        vm.SelectSettingsSection(ShellViewModel.ESettingsSection.LanguageRegion);
+        Assert.True(vm.IsLanguageRegionSectionSelected);
+        Assert.False(vm.IsAppearanceSectionSelected);
+        Assert.Equal("Language & Region", vm.SettingsSectionTitle);
+
+        vm.SelectSettingsSection(ShellViewModel.ESettingsSection.Privacy);
+        Assert.True(vm.IsPrivacySectionSelected);
+        Assert.False(vm.IsLanguageRegionSectionSelected);
+        Assert.Equal("Privacy", vm.SettingsSectionTitle);
+        Assert.Equal("Trabalho em progresso.", vm.SettingsSectionSubtitle);
+    }
 }

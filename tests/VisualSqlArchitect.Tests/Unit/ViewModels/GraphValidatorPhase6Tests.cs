@@ -51,6 +51,6 @@ public class GraphValidatorPhase6Tests
 
         Assert.Contains(issues, i =>
             i.Code == "UNJUSTIFIED_EXPRESSION_PIN"
-            && i.Severity == IssueSeverity.Warning);
+            && i.Severity == EIssueSeverity.Warning);
     }
 }

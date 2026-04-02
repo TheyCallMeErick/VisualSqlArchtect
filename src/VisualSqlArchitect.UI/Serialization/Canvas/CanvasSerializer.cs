@@ -576,21 +576,15 @@ public static class CanvasSerializer
                     migratedLegacyProjectionPins++;
             }
 
-            // AND/OR dynamic pins: create cond_N on-the-fly if not yet present.
-            if (toPin is null && toNode.IsLogicGate && sc.ToPinName.StartsWith("cond_"))
+            // AND/OR migration: legacy cond_N pins are now normalized to the
+            // single variadic "conditions" input pin.
+            if (
+                toPin is null
+                && toNode.IsLogicGate
+                && sc.ToPinName.StartsWith("cond_", StringComparison.OrdinalIgnoreCase)
+            )
             {
-                var dynPin = new PinViewModel(
-                    new PinDescriptor(
-                        sc.ToPinName,
-                        PinDirection.Input,
-                        PinDataType.Boolean,
-                        IsRequired: false,
-                        Description: "Connect a boolean condition"
-                    ),
-                    toNode
-                );
-                toNode.InputPins.Add(dynPin);
-                toPin = dynPin;
+                toPin = toNode.InputPins.FirstOrDefault(p => p.Name == "conditions");
             }
 
             // WindowFunction dynamic pins: create partition_N/order_N on-the-fly if missing.

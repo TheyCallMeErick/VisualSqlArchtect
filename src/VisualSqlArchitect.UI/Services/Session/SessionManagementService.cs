@@ -25,10 +25,7 @@ public class SessionManagementService(Window window, CanvasViewModel vm)
     > ColumnLookup = CanvasViewModel.DemoCatalog.ToDictionary(t => t.FullName, t => t.Cols);
 
     private static string AppDataDir =>
-        Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "VisualSqlArchitect"
-        );
+        global::VisualSqlArchitect.UI.AppConstants.AppDataDirectory;
 
     private static string SessionFile => Path.Combine(AppDataDir, "last-session.vsaq");
     private static string SessionTmp => Path.Combine(AppDataDir, "last-session.vsaq.tmp");

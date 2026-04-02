@@ -125,7 +125,7 @@ public sealed class SqlSyntaxHighlighter
             {
                 int end = sql.IndexOf('\n', i);
                 string text = end < 0 ? sql[i..] : sql[i..end];
-                tokens.Add(new SqlToken(text, SqlTokenKind.Comment));
+                tokens.Add(new SqlToken(text, ESqlTokenKind.Comment));
                 i = end < 0 ? sql.Length : end;
                 continue;
             }
@@ -140,7 +140,7 @@ public sealed class SqlSyntaxHighlighter
                 )
                     j++;
                 j = Math.Min(j + 1, sql.Length);
-                tokens.Add(new SqlToken(sql[i..j], SqlTokenKind.Literal));
+                tokens.Add(new SqlToken(sql[i..j], ESqlTokenKind.Literal));
                 i = j;
                 continue;
             }
@@ -151,7 +151,7 @@ public sealed class SqlSyntaxHighlighter
                 int j = i + (ch == '-' ? 1 : 0);
                 while (j < sql.Length && (char.IsDigit(sql[j]) || sql[j] == '.'))
                     j++;
-                tokens.Add(new SqlToken(sql[i..j], SqlTokenKind.Literal));
+                tokens.Add(new SqlToken(sql[i..j], ESqlTokenKind.Literal));
                 i = j;
                 continue;
             }
@@ -192,10 +192,10 @@ public sealed class SqlSyntaxHighlighter
                     k++;
                 bool isCall = k < sql.Length && sql[k] == '(';
 
-                SqlTokenKind kind =
-                    (isCall && Functions.Contains(bare)) ? SqlTokenKind.Function
-                    : Keywords.Contains(bare.Split('.')[0]) ? SqlTokenKind.Keyword
-                    : SqlTokenKind.Identifier;
+                ESqlTokenKind kind =
+                    (isCall && Functions.Contains(bare)) ? ESqlTokenKind.Function
+                    : Keywords.Contains(bare.Split('.')[0]) ? ESqlTokenKind.Keyword
+                    : ESqlTokenKind.Identifier;
 
                 tokens.Add(new SqlToken(word, kind));
                 i = j;
@@ -208,7 +208,7 @@ public sealed class SqlSyntaxHighlighter
                 int j = i + 1;
                 if (j < sql.Length && sql[j] is '=' or '>' or '<')
                     j++;
-                tokens.Add(new SqlToken(sql[i..j], SqlTokenKind.Operator));
+                tokens.Add(new SqlToken(sql[i..j], ESqlTokenKind.Operator));
                 i = j;
                 continue;
             }
@@ -216,7 +216,7 @@ public sealed class SqlSyntaxHighlighter
             // Punctuation
             if (ch is '(' or ')' or ',' or ';' or '*')
             {
-                tokens.Add(new SqlToken(ch.ToString(), SqlTokenKind.Punctuation));
+                tokens.Add(new SqlToken(ch.ToString(), ESqlTokenKind.Punctuation));
                 i++;
                 continue;
             }
@@ -245,12 +245,12 @@ public sealed class SqlSyntaxHighlighter
                 ws++;
             if (ws > i)
             {
-                tokens.Add(new SqlToken(sql[i..ws], SqlTokenKind.Plain));
+                tokens.Add(new SqlToken(sql[i..ws], ESqlTokenKind.Plain));
                 i = ws;
             }
             else
             {
-                tokens.Add(new SqlToken(ch.ToString(), SqlTokenKind.Plain));
+                tokens.Add(new SqlToken(ch.ToString(), ESqlTokenKind.Plain));
                 i++;
             }
         }
