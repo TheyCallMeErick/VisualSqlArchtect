@@ -10,10 +10,7 @@ public static class TemplateFavoritesStore
     private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true };
 
     private static string AppDataDir =>
-        Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "VisualSqlArchitect"
-        );
+        global::VisualSqlArchitect.UI.AppConstants.AppDataDirectory;
 
     private static string FavoritesFilePath => Path.Combine(AppDataDir, "template-favorites.json");
 

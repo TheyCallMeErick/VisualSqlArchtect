@@ -2,7 +2,7 @@ using Avalonia;
 
 namespace VisualSqlArchitect.UI.ViewModels.UndoRedo.Commands;
 
-public sealed class AlignNodesCommand(IReadOnlyList<NodeViewModel> nodes, AlignMode mode)
+public sealed class AlignNodesCommand(IReadOnlyList<NodeViewModel> nodes, EAlignMode mode)
     : ICanvasCommand
 {
     private const double DefaultNodeW = 230;
@@ -28,7 +28,7 @@ public sealed class AlignNodesCommand(IReadOnlyList<NodeViewModel> nodes, AlignM
 
     private static IReadOnlyList<Point> ComputeTargets(
         IReadOnlyList<NodeViewModel> nodes,
-        AlignMode mode
+        EAlignMode mode
     )
     {
         double W(NodeViewModel n) => n.Width > 0 ? n.Width : DefaultNodeW;
@@ -38,49 +38,49 @@ public sealed class AlignNodesCommand(IReadOnlyList<NodeViewModel> nodes, AlignM
 
         switch (mode)
         {
-            case AlignMode.Left:
+            case EAlignMode.Left:
             {
                 double anchor = nodes.Min(n => n.Position.X);
                 for (int i = 0; i < nodes.Count; i++)
                     result[i] = new Point(anchor, nodes[i].Position.Y);
                 break;
             }
-            case AlignMode.Right:
+            case EAlignMode.Right:
             {
                 double anchor = nodes.Max(n => n.Position.X + W(n));
                 for (int i = 0; i < nodes.Count; i++)
                     result[i] = new Point(anchor - W(nodes[i]), nodes[i].Position.Y);
                 break;
             }
-            case AlignMode.Top:
+            case EAlignMode.Top:
             {
                 double anchor = nodes.Min(n => n.Position.Y);
                 for (int i = 0; i < nodes.Count; i++)
                     result[i] = new Point(nodes[i].Position.X, anchor);
                 break;
             }
-            case AlignMode.Bottom:
+            case EAlignMode.Bottom:
             {
                 double anchor = nodes.Max(n => n.Position.Y + H(n));
                 for (int i = 0; i < nodes.Count; i++)
                     result[i] = new Point(nodes[i].Position.X, anchor - H(nodes[i]));
                 break;
             }
-            case AlignMode.CenterH:
+            case EAlignMode.CenterH:
             {
                 double cy = nodes.Average(n => n.Position.Y + H(n) / 2.0);
                 for (int i = 0; i < nodes.Count; i++)
                     result[i] = new Point(nodes[i].Position.X, cy - H(nodes[i]) / 2.0);
                 break;
             }
-            case AlignMode.CenterV:
+            case EAlignMode.CenterV:
             {
                 double cx = nodes.Average(n => n.Position.X + W(n) / 2.0);
                 for (int i = 0; i < nodes.Count; i++)
                     result[i] = new Point(cx - W(nodes[i]) / 2.0, nodes[i].Position.Y);
                 break;
             }
-            case AlignMode.DistributeH:
+            case EAlignMode.DistributeH:
             {
                 var sorted = nodes.OrderBy(n => n.Position.X).ToList();
                 double left = sorted.First().Position.X;
@@ -96,7 +96,7 @@ public sealed class AlignNodesCommand(IReadOnlyList<NodeViewModel> nodes, AlignM
                 }
                 break;
             }
-            case AlignMode.DistributeV:
+            case EAlignMode.DistributeV:
             {
                 var sorted = nodes.OrderBy(n => n.Position.Y).ToList();
                 double top = sorted.First().Position.Y;

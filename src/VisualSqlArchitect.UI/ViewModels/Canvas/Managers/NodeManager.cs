@@ -15,7 +15,7 @@ public sealed class NodeManager(
     UndoRedoStack undoRedo,
     PropertyPanelViewModel propertyPanel,
     SearchMenuViewModel searchMenu
-)
+) : INodeManager
 {
     private readonly ObservableCollection<NodeViewModel> _nodes = nodes;
     private readonly ObservableCollection<ConnectionViewModel> _connections = connections;
@@ -172,7 +172,7 @@ public sealed class NodeManager(
     /// Populates the canvas with a pre-built demo graph for first-run experience.
     /// Clears undo history and dirty flag after building.
     /// </summary>
-    internal void SpawnDemoNodes(UndoRedoStack undoRedo)
+    public void SpawnDemoNodes(UndoRedoStack undoRedo)
     {
         var orders = new NodeViewModel(
             "public.orders",
@@ -258,7 +258,7 @@ public sealed class NodeManager(
                 default
             )
             {
-                ToPin = and.InputPins.First(p => p.Name == "cond_1"),
+                ToPin = and.InputPins.First(p => p.Name == "conditions"),
             }
         );
 

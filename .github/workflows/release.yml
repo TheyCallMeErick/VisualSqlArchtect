@@ -39,6 +39,12 @@ jobs:
 
       - name: Publish
         run: |
+          TAG="${{ github.event.inputs.tag }}"
+          if [ -z "$TAG" ]; then
+            TAG="${{ github.ref_name }}"
+          fi
+          VERSION="${TAG#v}"
+
           dotnet publish src/VisualSqlArchitect.UI/VisualSqlArchitect.UI.csproj \
             --configuration Release \
             --runtime ${{ matrix.rid }} \
@@ -46,6 +52,8 @@ jobs:
             --self-contained \
             --property:PublishSingleFile=true \
             --property:IncludeNativeLibrariesForSelfExtract=true \
+            --property:Version=$VERSION \
+            --property:InformationalVersion=$VERSION \
             --property:DebugType=none \
             --property:DebugSymbols=false
 

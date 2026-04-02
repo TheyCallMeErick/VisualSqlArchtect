@@ -385,3 +385,38 @@ Mitigacao: PRs pequenos por fase, com screenshots antes/depois.
 - PR 3: Sidebar migrada para tokens
 - PR 4: ajuste fino + remocao de hardcodes residuais
 - PR 5: suporte a tema JSON + schema + testes
+
+---
+
+## 9. Status de execucao (2026-04-01)
+
+Concluido ate agora:
+
+- Fase 1: tokens macro, tipografia semantica e variantes semanticas de botoes aplicadas.
+- Fase 2: shell principal migrada para tokens macro, com reducao de hardcodes.
+- Fase 3: sidebar migrada e refinada (tabs, footer, Connection, Schema, Nodes).
+- Fase 4: hardening visual concluido (contraste, foco visivel e estados disabled nos paineis principais).
+- Fase 5: pipeline de tema JSON implementado (`load -> validate -> map -> apply`), schema documentado e testes unitarios adicionados.
+
+Ajustes recentes validados:
+
+- Footer da sidebar: "+ Adicionar No" abre o mesmo fluxo do Shift+A.
+- Footer da sidebar: "+ Nova Conexao" abre aba de conexao e inicia novo perfil.
+- Schema: estado vazio de filtro separado do estado "Sem conexao" para evitar sobreposicao visual.
+
+Pendencias para fechar o plano:
+
+- Execucao manual guiada documentada em `docs/THEME_VISUAL_VALIDATION_CHECKLIST.md` para aceite final com tema customizado.
+
+Artefatos de validacao final criados:
+
+- Checklist visual/fallback: `docs/THEME_VISUAL_VALIDATION_CHECKLIST.md`.
+- Tema de contraste para verificacao: `src/VisualSqlArchitect.UI/Assets/Themes/user-theme.high-contrast.sample.json`.
+
+Checklist de acessibilidade visual (Fase 4) - status atual:
+
+- [x] Foco visivel para botoes de aba da sidebar (`Button.tab-button:focus-visible`).
+- [x] Foco visivel para inputs de busca da sidebar (`TextBox.sidebar-input:focus-visible`).
+- [x] Foco visivel para toggles da sidebar (`ToggleButton:focus-visible`).
+- [x] Estados vazios sem sobreposicao (Schema: sem conexao x filtro sem resultados).
+- [x] Revisao final de contraste em tema escuro (hover/disabled nos paineis macro e sidebar).

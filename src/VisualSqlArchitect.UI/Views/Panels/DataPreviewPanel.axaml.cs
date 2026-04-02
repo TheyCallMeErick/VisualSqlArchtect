@@ -25,8 +25,8 @@ public partial class DataPreviewPanel : UserControl
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
 
-        TabPreviewButton.Click += (_, _) => { if (_vm != null) _vm.ActiveTab = PreviewTab.DataPreview; };
-        TabSqlButton.Click     += (_, _) => { if (_vm != null) _vm.ActiveTab = PreviewTab.LiveSql; };
+        TabPreviewButton.Click += (_, _) => { if (_vm != null) _vm.ActiveTab = EPreviewTab.DataPreview; };
+        TabSqlButton.Click     += (_, _) => { if (_vm != null) _vm.ActiveTab = EPreviewTab.LiveSql; };
     }
 
     private DataPreviewViewModel? _vm;

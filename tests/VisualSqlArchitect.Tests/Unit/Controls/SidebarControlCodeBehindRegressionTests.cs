@@ -11,10 +11,10 @@ public class SidebarControlCodeBehindRegressionTests
         string source = ReadSidebarCodeBehind();
 
         Assert.Contains("if (_buttonsWired || DataContext is not SidebarViewModel vm)", source);
-        Assert.Contains("nodesButton.Click += (_, _) => vm.ActiveTab = SidebarTab.Nodes;", source);
-        Assert.Contains("connectionButton.Click += (_, _) => vm.ActiveTab = SidebarTab.Connection;", source);
-        Assert.Contains("schemaButton.Click += (_, _) => vm.ActiveTab = SidebarTab.Schema;", source);
-        Assert.Contains("vm.ActiveTab = SidebarTab.Diagnostics;", source);
+        Assert.Contains("nodesButton.Click += (_, _) => vm.ActiveTab = ESidebarTab.Nodes;", source);
+        Assert.Contains("connectionButton.Click += (_, _) => vm.ActiveTab = ESidebarTab.Connection;", source);
+        Assert.Contains("schemaButton.Click += (_, _) => vm.ActiveTab = ESidebarTab.Schema;", source);
+        Assert.Contains("vm.ActiveTab = ESidebarTab.Diagnostics;", source);
     }
 
     [Fact]

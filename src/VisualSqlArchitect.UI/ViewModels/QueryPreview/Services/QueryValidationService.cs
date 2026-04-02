@@ -98,7 +98,7 @@ public sealed class QueryValidationService
         {
             issues.Add(
                 new GuardIssue(
-                    GuardSeverity.Block,
+                    EGuardSeverity.Block,
                     $"UNSUPPORTED_{pw.FunctionName.Replace(" ", "_").ToUpperInvariant()}",
                     pw.Message,
                     pw.Suggestion

@@ -1,71 +1,8 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
-using Avalonia.Media;
 using VisualSqlArchitect.UI.Serialization;
 
 namespace VisualSqlArchitect.UI.ViewModels.Canvas;
-
-// ═════════════════════════════════════════════════════════════════════════════
-// DIFF ITEM  — one line in the diff view
-// ═════════════════════════════════════════════════════════════════════════════
-
-public enum DiffKind { Added, Removed, Modified }
-
-public sealed class DiffItemViewModel
-{
-    public DiffKind Kind { get; }
-    public string Description { get; }
-
-    public string Icon =>
-        Kind switch
-        {
-            DiffKind.Added    => "+",
-            DiffKind.Removed  => "−",
-            _                 => "~",
-        };
-
-    public Color KindColor =>
-        Kind switch
-        {
-            DiffKind.Added   => Color.Parse("#4ADE80"),
-            DiffKind.Removed => Color.Parse("#F87171"),
-            _                => Color.Parse("#FBBF24"),
-        };
-
-    public SolidColorBrush KindBrush => new(KindColor);
-
-    public DiffItemViewModel(DiffKind kind, string description)
-    {
-        Kind = kind;
-        Description = description;
-    }
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// VERSION ROW  — one entry in the history list
-// ═════════════════════════════════════════════════════════════════════════════
-
-public sealed class FlowVersionRowViewModel(FlowVersion version) : ViewModelBase
-{
-    public FlowVersion Version { get; } = version;
-
-    public string Id => Version.Id;
-    public string Label => Version.Label;
-    public string NodeCount => $"{Version.NodeCount} nodes, {Version.ConnectionCount} wires";
-
-    public string CreatedAtFormatted
-    {
-        get
-        {
-            if (DateTimeOffset.TryParse(Version.CreatedAt, out var dt))
-            {
-                var local = dt.ToLocalTime();
-                return local.ToString("yyyy-MM-dd  HH:mm:ss");
-            }
-            return Version.CreatedAt;
-        }
-    }
-}
 
 // ═════════════════════════════════════════════════════════════════════════════
 // OVERLAY VM
@@ -158,9 +95,9 @@ public sealed class FlowVersionOverlayViewModel : ViewModelBase
     public string DiffSummary =>
         DiffItems.Count == 0
             ? "No differences"
-            : $"{DiffItems.Count(i => i.Kind == DiffKind.Added)} added · "
-            + $"{DiffItems.Count(i => i.Kind == DiffKind.Removed)} removed · "
-            + $"{DiffItems.Count(i => i.Kind == DiffKind.Modified)} modified";
+            : $"{DiffItems.Count(i => i.Kind == EDiffKind.Added)} added · "
+            + $"{DiffItems.Count(i => i.Kind == EDiffKind.Removed)} removed · "
+            + $"{DiffItems.Count(i => i.Kind == EDiffKind.Modified)} modified";
 
     // ── Constructor ───────────────────────────────────────────────────────────
 
@@ -249,7 +186,7 @@ public sealed class FlowVersionOverlayViewModel : ViewModelBase
 
         if (from is null || to is null)
         {
-            DiffItems.Add(new DiffItemViewModel(DiffKind.Modified, "Could not parse one or both versions"));
+            DiffItems.Add(new DiffItemViewModel(EDiffKind.Modified, "Could not parse one or both versions"));
             return;
         }
 
@@ -264,7 +201,7 @@ public sealed class FlowVersionOverlayViewModel : ViewModelBase
         int toNodeDupCount   = toNodeGroups.Sum(g => Math.Max(0, g.Count() - 1));
         if (fromNodeDupCount > 0 || toNodeDupCount > 0)
             DiffItems.Add(new DiffItemViewModel(
-                DiffKind.Modified,
+                EDiffKind.Modified,
                 $"Duplicate NodeId entries detected (base={fromNodeDupCount}, head={toNodeDupCount}) — using first occurrence per NodeId"
             ));
 
@@ -272,10 +209,10 @@ public sealed class FlowVersionOverlayViewModel : ViewModelBase
         var toNodes   = toNodeGroups.ToDictionary(g => g.Key, g => g.First());
 
         foreach (var n in toNodes.Values.Where(n => !fromNodes.ContainsKey(n.NodeId)))
-            DiffItems.Add(new DiffItemViewModel(DiffKind.Added, $"Node added: {n.NodeType}{(n.Alias != null ? $" \"{n.Alias}\"" : "")}{(n.TableFullName != null ? $" ({n.TableFullName})" : "")}"));
+            DiffItems.Add(new DiffItemViewModel(EDiffKind.Added, $"Node added: {n.NodeType}{(n.Alias != null ? $" \"{n.Alias}\"" : "")}{(n.TableFullName != null ? $" ({n.TableFullName})" : "")}"));
 
         foreach (var n in fromNodes.Values.Where(n => !toNodes.ContainsKey(n.NodeId)))
-            DiffItems.Add(new DiffItemViewModel(DiffKind.Removed, $"Node removed: {n.NodeType}{(n.Alias != null ? $" \"{n.Alias}\"" : "")}{(n.TableFullName != null ? $" ({n.TableFullName})" : "")}"));
+            DiffItems.Add(new DiffItemViewModel(EDiffKind.Removed, $"Node removed: {n.NodeType}{(n.Alias != null ? $" \"{n.Alias}\"" : "")}{(n.TableFullName != null ? $" ({n.TableFullName})" : "")}"));
 
         foreach (var (id, toNode) in toNodes)
         {
@@ -284,22 +221,22 @@ public sealed class FlowVersionOverlayViewModel : ViewModelBase
 
             // Position change
             if (Math.Abs(toNode.X - fromNode.X) > 1 || Math.Abs(toNode.Y - fromNode.Y) > 1)
-                DiffItems.Add(new DiffItemViewModel(DiffKind.Modified, $"Node moved: {toNode.NodeType} \"{toNode.Alias ?? id[..8]}\""));
+                DiffItems.Add(new DiffItemViewModel(EDiffKind.Modified, $"Node moved: {toNode.NodeType} \"{toNode.Alias ?? id[..8]}\""));
 
             // Alias change
             if (toNode.Alias != fromNode.Alias)
-                DiffItems.Add(new DiffItemViewModel(DiffKind.Modified, $"Alias changed: \"{fromNode.Alias}\" → \"{toNode.Alias}\""));
+                DiffItems.Add(new DiffItemViewModel(EDiffKind.Modified, $"Alias changed: \"{fromNode.Alias}\" → \"{toNode.Alias}\""));
 
             // Parameter changes
             foreach (var (key, toVal) in toNode.Parameters)
             {
                 if (fromNode.Parameters.TryGetValue(key, out var fromVal) && fromVal != toVal)
-                    DiffItems.Add(new DiffItemViewModel(DiffKind.Modified, $"Param \"{key}\" changed: \"{Truncate(fromVal)}\" → \"{Truncate(toVal)}\""));
+                    DiffItems.Add(new DiffItemViewModel(EDiffKind.Modified, $"Param \"{key}\" changed: \"{Truncate(fromVal)}\" → \"{Truncate(toVal)}\""));
                 else if (!fromNode.Parameters.ContainsKey(key))
-                    DiffItems.Add(new DiffItemViewModel(DiffKind.Added, $"Param \"{key}\" added: \"{Truncate(toVal)}\""));
+                    DiffItems.Add(new DiffItemViewModel(EDiffKind.Added, $"Param \"{key}\" added: \"{Truncate(toVal)}\""));
             }
             foreach (var key in fromNode.Parameters.Keys.Where(k => !toNode.Parameters.ContainsKey(k)))
-                DiffItems.Add(new DiffItemViewModel(DiffKind.Removed, $"Param \"{key}\" removed"));
+                DiffItems.Add(new DiffItemViewModel(EDiffKind.Removed, $"Param \"{key}\" removed"));
         }
 
         // ── Connections ───────────────────────────────────────────────────────
@@ -314,7 +251,7 @@ public sealed class FlowVersionOverlayViewModel : ViewModelBase
         int toConnDupCount   = toConnGroups.Sum(g => Math.Max(0, g.Count() - 1));
         if (fromConnDupCount > 0 || toConnDupCount > 0)
             DiffItems.Add(new DiffItemViewModel(
-                DiffKind.Modified,
+                EDiffKind.Modified,
                 $"Duplicate connection keys detected (base={fromConnDupCount}, head={toConnDupCount}) — using first occurrence per key"
             ));
 
@@ -322,18 +259,18 @@ public sealed class FlowVersionOverlayViewModel : ViewModelBase
         var toConns   = toConnGroups.ToDictionary(g => g.Key, g => g.First());
 
         foreach (var c in toConns.Values.Where(c => !fromConns.ContainsKey(ConnKey(c))))
-            DiffItems.Add(new DiffItemViewModel(DiffKind.Added, $"Connection added: {c.FromPinName} → {c.ToPinName}"));
+            DiffItems.Add(new DiffItemViewModel(EDiffKind.Added, $"Connection added: {c.FromPinName} → {c.ToPinName}"));
 
         foreach (var c in fromConns.Values.Where(c => !toConns.ContainsKey(ConnKey(c))))
-            DiffItems.Add(new DiffItemViewModel(DiffKind.Removed, $"Connection removed: {c.FromPinName} → {c.ToPinName}"));
+            DiffItems.Add(new DiffItemViewModel(EDiffKind.Removed, $"Connection removed: {c.FromPinName} → {c.ToPinName}"));
 
         // ── Zoom / pan ────────────────────────────────────────────────────────
 
         if (Math.Abs(to.Zoom - from.Zoom) > 0.01)
-            DiffItems.Add(new DiffItemViewModel(DiffKind.Modified, $"Zoom: {from.Zoom:F2} → {to.Zoom:F2}"));
+            DiffItems.Add(new DiffItemViewModel(EDiffKind.Modified, $"Zoom: {from.Zoom:F2} → {to.Zoom:F2}"));
 
         if (DiffItems.Count == 0)
-            DiffItems.Add(new DiffItemViewModel(DiffKind.Modified, "No structural differences"));
+            DiffItems.Add(new DiffItemViewModel(EDiffKind.Modified, "No structural differences"));
 
         RaisePropertyChanged(nameof(HasDiffItems));
         RaisePropertyChanged(nameof(DiffSummary));

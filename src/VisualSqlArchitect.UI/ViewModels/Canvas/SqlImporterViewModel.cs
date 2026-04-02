@@ -10,53 +10,6 @@ using VisualSqlArchitect.UI.ViewModels.UndoRedo;
 
 namespace VisualSqlArchitect.UI.ViewModels.Canvas;
 
-// ─── Conversion report item ───────────────────────────────────────────────────
-
-public enum ImportItemStatus
-{
-    Imported,
-    Partial,
-    Skipped,
-}
-
-public sealed class ImportReportItem(
-    string label,
-    ImportItemStatus status,
-    string? note = null,
-    string? sourceNodeId = null)
-{
-    public string Label { get; } = label;
-    public ImportItemStatus Status { get; } = status;
-    public string? Note { get; } =
-        status is ImportItemStatus.Partial or ImportItemStatus.Skipped
-            ? (string.IsNullOrWhiteSpace(note) ? "Requires manual review." : note)
-            : note;
-    public string? SourceNodeId { get; } = sourceNodeId;
-    public bool CanFocusNode => !string.IsNullOrWhiteSpace(SourceNodeId);
-
-    public bool IsImported => Status == ImportItemStatus.Imported;
-    public bool IsPartial => Status == ImportItemStatus.Partial;
-    public bool IsSkipped => Status == ImportItemStatus.Skipped;
-
-    public string StatusIcon =>
-        Status switch
-        {
-            ImportItemStatus.Imported => "✓",
-            ImportItemStatus.Partial => "~",
-            ImportItemStatus.Skipped => "✗",
-            _ => "?",
-        };
-
-    public string StatusColor =>
-        Status switch
-        {
-            ImportItemStatus.Imported => "#34D399",
-            ImportItemStatus.Partial => "#FBBF24",
-            ImportItemStatus.Skipped => "#F87171",
-            _ => "#8B95A8",
-        };
-}
-
 // ─── SQL Importer ─────────────────────────────────────────────────────────────
 
 /// <summary>
@@ -358,7 +311,7 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
                 report.Add(
                     new ImportReportItem(
                         "CTE",
-                        ImportItemStatus.Imported,
+                        EImportItemStatus.Imported,
                         rewrittenCteCount == 1
                             ? "Single CTE rewritten to supported import shape."
                             : $"{rewrittenCteCount} chained CTEs rewritten to supported import shape."
@@ -404,7 +357,7 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
                     report.Add(
                         new ImportReportItem(
                             "CTE name diagnostics",
-                            ImportItemStatus.Partial,
+                            EImportItemStatus.Partial,
                             cteIssue
                         )
                     );
@@ -418,7 +371,7 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
                 report.Add(
                     new ImportReportItem(
                         "Correlated sub-query",
-                        ImportItemStatus.Partial,
+                        EImportItemStatus.Partial,
                         string.IsNullOrWhiteSpace(correlatedFields)
                             ? "Correlated sub-query is not yet supported and falls back to a safe partial import path."
                             : $"Correlated sub-query is not yet supported and falls back to a safe partial import path. External refs: {correlatedFields}."
@@ -430,7 +383,7 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
             report.Add(
                 new ImportReportItem(
                     "CTE / sub-query",
-                    ImportItemStatus.Skipped,
+                    EImportItemStatus.Skipped,
                     "CTEs and sub-queries are not supported"
                 )
             );
@@ -439,7 +392,7 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
             report.Add(
                 new ImportReportItem(
                     "Raw fallback",
-                    ImportItemStatus.Skipped,
+                    EImportItemStatus.Skipped,
                     "Raw fallback is disabled for CTE/sub-query blocks to avoid unsafe or ambiguous SQL materialization."
                 )
             );
@@ -461,7 +414,7 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
         if (Regex.IsMatch(sql, @"\bUNION\b", RegexOptions.IgnoreCase))
         {
             report.Add(
-                new ImportReportItem("UNION", ImportItemStatus.Skipped, "UNION is not supported")
+                new ImportReportItem("UNION", EImportItemStatus.Skipped, "UNION is not supported")
             );
             skipped++;
         }
@@ -644,7 +597,7 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
                 report.Add(
                     new ImportReportItem(
                         "WHERE EXISTS(sub-query)",
-                        ImportItemStatus.Imported,
+                        EImportItemStatus.Imported,
                         sourceNodeId: existsNode.Id
                     )
                 );
@@ -654,7 +607,7 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
                     report.Add(
                         new ImportReportItem(
                             "Correlation fields",
-                            ImportItemStatus.Imported,
+                            EImportItemStatus.Imported,
                             $"External references: {correlatedFields}",
                             existsNode.Id
                         )
@@ -695,7 +648,7 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
                 report.Add(
                     new ImportReportItem(
                         negate ? "WHERE value NOT IN(sub-query)" : "WHERE value IN(sub-query)",
-                        ImportItemStatus.Imported,
+                        EImportItemStatus.Imported,
                         sourceNodeId: inNode.Id
                     )
                 );
@@ -705,7 +658,7 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
                     report.Add(
                         new ImportReportItem(
                             "Correlation fields",
-                            ImportItemStatus.Imported,
+                            EImportItemStatus.Imported,
                             $"External references: {correlatedFields}",
                             inNode.Id
                         )
@@ -746,7 +699,7 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
                 report.Add(
                     new ImportReportItem(
                         "WHERE value op (scalar sub-query)",
-                        ImportItemStatus.Imported,
+                        EImportItemStatus.Imported,
                         sourceNodeId: scalarNode.Id
                     )
                 );
@@ -756,7 +709,7 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
                     report.Add(
                         new ImportReportItem(
                             "Correlation fields",
-                            ImportItemStatus.Imported,
+                            EImportItemStatus.Imported,
                             $"External references: {correlatedFields}",
                             scalarNode.Id
                         )
@@ -818,7 +771,7 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
                 report.Add(
                     new ImportReportItem(
                         $"WHERE {leftExpr} {op} '{rightExpr}'",
-                        ImportItemStatus.Imported,
+                        EImportItemStatus.Imported,
                         sourceNodeId: where.Id
                     )
                 );
@@ -836,7 +789,7 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
                 report.Add(
                     new ImportReportItem(
                         $"WHERE {Truncate(whereClause, 40)}",
-                        ImportItemStatus.Partial,
+                        EImportItemStatus.Partial,
                         "Complex condition — connect manually",
                         where.Id
                     )
@@ -909,7 +862,7 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
                 report.Add(
                     new ImportReportItem(
                         $"ORDER BY {Truncate(orderBy, 30)}",
-                        ImportItemStatus.Imported,
+                        EImportItemStatus.Imported,
                         sourceNodeId: result.Id
                     )
                 );
@@ -920,7 +873,7 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
                 report.Add(
                     new ImportReportItem(
                         $"ORDER BY {Truncate(orderBy, 30)}",
-                        ImportItemStatus.Partial,
+                        EImportItemStatus.Partial,
                         "Some sort terms could not be mapped and were skipped",
                         result.Id
                     )
@@ -932,7 +885,7 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
                 report.Add(
                     new ImportReportItem(
                         $"ORDER BY {Truncate(orderBy, 30)}",
-                        ImportItemStatus.Skipped,
+                        EImportItemStatus.Skipped,
                         "Unsupported sort expression — add manually"
                     )
                 );
@@ -990,7 +943,7 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
                 report.Add(
                     new ImportReportItem(
                         $"GROUP BY {Truncate(groupBy, 30)}",
-                        ImportItemStatus.Imported,
+                        EImportItemStatus.Imported,
                         sourceNodeId: result.Id
                     )
                 );
@@ -1001,7 +954,7 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
                 report.Add(
                     new ImportReportItem(
                         $"GROUP BY {Truncate(groupBy, 30)}",
-                        ImportItemStatus.Partial,
+                        EImportItemStatus.Partial,
                         "Some grouping terms could not be mapped and were skipped",
                         result.Id
                     )
@@ -1013,7 +966,7 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
                 report.Add(
                     new ImportReportItem(
                         $"GROUP BY {Truncate(groupBy, 30)}",
-                        ImportItemStatus.Skipped,
+                        EImportItemStatus.Skipped,
                         "Unsupported grouping expression — add manually"
                     )
                 );
@@ -1049,7 +1002,7 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
                 report.Add(
                     new ImportReportItem(
                         $"GROUP BY conflict: {Truncate(exprTrimmed, 40)}",
-                        ImportItemStatus.Partial,
+                        EImportItemStatus.Partial,
                         "Selected column is neither grouped nor aggregated"
                     )
                 );
@@ -1101,7 +1054,7 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
                 report.Add(
                     new ImportReportItem(
                         $"HAVING COUNT(*) {op} {rightExpr}",
-                        ImportItemStatus.Imported,
+                        EImportItemStatus.Imported,
                         sourceNodeId: comp.Id
                     )
                 );
@@ -1112,7 +1065,7 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
                 report.Add(
                     new ImportReportItem(
                         $"HAVING {Truncate(havingClause, 40)}",
-                        ImportItemStatus.Partial,
+                        EImportItemStatus.Partial,
                         "Complex HAVING expression — connect predicate manually",
                         result.Id
                     )
@@ -1132,7 +1085,7 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
             _canvas.Nodes.Add(top);
             SafeWire(result, "output", top, "input");
             report.Add(
-                new ImportReportItem($"LIMIT {limitVal}", ImportItemStatus.Imported, sourceNodeId: top.Id)
+                new ImportReportItem($"LIMIT {limitVal}", EImportItemStatus.Imported, sourceNodeId: top.Id)
             );
             imported++;
         }
@@ -1143,7 +1096,7 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
             report.Add(
                 new ImportReportItem(
                     "SELECT DISTINCT",
-                    ImportItemStatus.Imported,
+                    EImportItemStatus.Imported,
                     "ResultOutput distinct flag enabled",
                     result.Id
                 )

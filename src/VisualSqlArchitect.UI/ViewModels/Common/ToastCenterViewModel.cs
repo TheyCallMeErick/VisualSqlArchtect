@@ -1,19 +1,12 @@
 namespace VisualSqlArchitect.UI.ViewModels;
 
-public enum ToastSeverity
-{
-    Success,
-    Warning,
-    Error,
-}
-
 public sealed class ToastCenterViewModel : ViewModelBase
 {
     private bool _isVisible;
     private bool _isDetailsOpen;
     private string _message = string.Empty;
     private string? _details;
-    private ToastSeverity _severity;
+    private EToastSeverity _severity;
     private int _version;
     private CancellationTokenSource? _autoHideCts;
 
@@ -47,7 +40,7 @@ public sealed class ToastCenterViewModel : ViewModelBase
 
     public bool HasDetails => !string.IsNullOrWhiteSpace(_details);
 
-    public ToastSeverity Severity
+    public EToastSeverity Severity
     {
         get => _severity;
         private set
@@ -62,29 +55,29 @@ public sealed class ToastCenterViewModel : ViewModelBase
 
     public string SeverityLabel => _severity switch
     {
-        ToastSeverity.Success => "Success",
-        ToastSeverity.Warning => "Warning",
+        EToastSeverity.Success => "Success",
+        EToastSeverity.Warning => "Warning",
         _ => "Error",
     };
 
     public string SeverityIcon => _severity switch
     {
-        ToastSeverity.Success => "✔",
-        ToastSeverity.Warning => "⚠",
+        EToastSeverity.Success => "✔",
+        EToastSeverity.Warning => "⚠",
         _ => "✕",
     };
 
     public string AccentColor => _severity switch
     {
-        ToastSeverity.Success => "#22C55E",
-        ToastSeverity.Warning => "#F59E0B",
+        EToastSeverity.Success => "#22C55E",
+        EToastSeverity.Warning => "#F59E0B",
         _ => "#EF4444",
     };
 
     public string DetailsTitle => _severity switch
     {
-        ToastSeverity.Success => "Success Details",
-        ToastSeverity.Warning => "Warning Details",
+        EToastSeverity.Success => "Success Details",
+        EToastSeverity.Warning => "Warning Details",
         _ => "Error Details",
     };
 
@@ -100,15 +93,15 @@ public sealed class ToastCenterViewModel : ViewModelBase
     }
 
     public void ShowSuccess(string message, string? details = null) =>
-        Show(ToastSeverity.Success, message, details);
+        Show(EToastSeverity.Success, message, details);
 
     public void ShowError(string message, string? details = null) =>
-        Show(ToastSeverity.Error, message, details);
+        Show(EToastSeverity.Error, message, details);
 
     public void ShowWarning(string message, string? details = null) =>
-        Show(ToastSeverity.Warning, message, details);
+        Show(EToastSeverity.Warning, message, details);
 
-    private void Show(ToastSeverity severity, string message, string? details)
+    private void Show(EToastSeverity severity, string message, string? details)
     {
         _version++;
         CancelAutoHide();

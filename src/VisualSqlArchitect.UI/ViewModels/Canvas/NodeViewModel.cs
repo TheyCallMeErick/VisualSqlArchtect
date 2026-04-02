@@ -260,11 +260,11 @@ public sealed class NodeViewModel : ViewModelBase
     public IReadOnlyList<ValidationIssue> ValidationIssues => _validationIssues;
 
     /// <summary>True if this node has any validation errors.</summary>
-    public bool HasError => _validationIssues.Any(i => i.Severity == IssueSeverity.Error);
+    public bool HasError => _validationIssues.Any(i => i.Severity == EIssueSeverity.Error);
 
     /// <summary>True if this node has warnings (but no errors).</summary>
     public bool HasWarning =>
-        !HasError && _validationIssues.Any(i => i.Severity == IssueSeverity.Warning);
+        !HasError && _validationIssues.Any(i => i.Severity == EIssueSeverity.Warning);
 
     /// <summary>Formatted tooltip text showing all validation issues.</summary>
     public string? ValidationTooltip =>
@@ -272,7 +272,7 @@ public sealed class NodeViewModel : ViewModelBase
             ? string.Join(
                 "\n",
                 _validationIssues.Select(i =>
-                    $"{(i.Severity == IssueSeverity.Error ? "✕" : "⚠")} {i.Message}"
+                    $"{(i.Severity == EIssueSeverity.Error ? "✕" : "⚠")} {i.Message}"
                     + (i.Suggestion is not null ? $"\n   → {i.Suggestion}" : "")
                 )
             )
@@ -613,7 +613,6 @@ public sealed class NodeViewModel : ViewModelBase
     /// Create a new node from a NodeDefinition.
     /// Initializes all standard pins from the definition.
     /// For ColumnList, adds the special "columns" input pin.
-    /// For AND/OR gates, adds the initial "cond_1" input pin.
     /// </summary>
     public NodeViewModel(NodeDefinition def, Point pos)
     {
@@ -652,22 +651,6 @@ public sealed class NodeViewModel : ViewModelBase
                         IsRequired: false,
                         AllowMultiple: true,
                         Description: "Connect columns or expressions to include in the list"
-                    ),
-                    this
-                )
-            );
-
-        // AND/OR gates: add initial "cond_1" input pin
-        if (def.Type is NodeType.And or NodeType.Or)
-            InputPins.Insert(
-                0,
-                new PinViewModel(
-                    new PinDescriptor(
-                        "cond_1",
-                        PinDirection.Input,
-                        PinDataType.Boolean,
-                        IsRequired: false,
-                        Description: "Connect a boolean condition"
                     ),
                     this
                 )
@@ -783,12 +766,30 @@ public sealed class NodeViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Sync AND/OR gate pins: manage dynamic input pins for conditions.
+    /// Sync AND/OR gate pins: single variadic "conditions" pin, no dynamic slots.
     /// </summary>
-    internal void SyncLogicGatePins(IEnumerable<ConnectionViewModel> c)
+    internal void SyncLogicGatePins(IEnumerable<ConnectionViewModel> _)
     {
-        if (IsLogicGate)
-            SyncDynamicInputPins("cond_", PinDataType.Boolean, c);
+        if (!IsLogicGate)
+            return;
+
+        if (InputPins.Any(p => p.Name == "conditions"))
+            return;
+
+        InputPins.Insert(
+            0,
+            new PinViewModel(
+                new PinDescriptor(
+                    "conditions",
+                    PinDirection.Input,
+                    PinDataType.Boolean,
+                    IsRequired: false,
+                    AllowMultiple: true,
+                    Description: "Connect one or more boolean conditions"
+                ),
+                this
+            )
+        );
     }
 
     /// <summary>

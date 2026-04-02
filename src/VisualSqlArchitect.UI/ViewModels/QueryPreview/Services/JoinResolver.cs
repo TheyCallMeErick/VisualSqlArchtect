@@ -249,10 +249,10 @@ public sealed class JoinResolver
                     Alias: n.Alias,
                     TableFullName: n.Type == NodeType.TableSource ? n.Subtitle : null,
                     ColumnPins: n.Type == NodeType.TableSource
-                        ? n.OutputPins.ToDictionary(p => p.Name, p => p.Name)
+                        ? BuildColumnPinsMap(n)
                         : null,
                     ColumnPinTypes: n.Type == NodeType.TableSource
-                        ? n.OutputPins.ToDictionary(p => p.Name, p => p.DataType)
+                        ? BuildColumnPinTypesMap(n)
                         : null
                 ))
                 .ToList();
@@ -439,6 +439,34 @@ public sealed class JoinResolver
             sb.Append($"\n{j.Type} JOIN {j.TargetTable} ON {j.LeftColumn} = {j.RightColumn}");
 
         return sb.ToString();
+    }
+
+    private static Dictionary<string, string> BuildColumnPinsMap(NodeViewModel node)
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (PinViewModel pin in node.OutputPins)
+        {
+            if (string.IsNullOrWhiteSpace(pin.Name) || map.ContainsKey(pin.Name))
+                continue;
+
+            map[pin.Name] = pin.Name;
+        }
+
+        return map;
+    }
+
+    private static Dictionary<string, PinDataType> BuildColumnPinTypesMap(NodeViewModel node)
+    {
+        var map = new Dictionary<string, PinDataType>(StringComparer.Ordinal);
+        foreach (PinViewModel pin in node.OutputPins)
+        {
+            if (string.IsNullOrWhiteSpace(pin.Name) || map.ContainsKey(pin.Name))
+                continue;
+
+            map[pin.Name] = pin.DataType;
+        }
+
+        return map;
     }
 
     // Helper methods needed by TryResolveJoinOperand

@@ -8,7 +8,7 @@ namespace VisualSqlArchitect.UI.ViewModels.Canvas;
 /// Manages multi-selection and node alignment operations on the canvas.
 /// Handles user interactions related to selecting/deselecting nodes and aligning them.
 /// </summary>
-public sealed class SelectionManager
+public sealed class SelectionManager : ISelectionManager
 {
     private readonly ObservableCollection<NodeViewModel> _nodes;
     private readonly PropertyPanelViewModel _propertyPanel;
@@ -39,35 +39,35 @@ public sealed class SelectionManager
         DeselectAllCommand = new RelayCommand(DeselectAll);
 
         AlignLeftCommand = new RelayCommand(
-            () => AlignNodes(AlignMode.Left),
+            () => AlignNodes(EAlignMode.Left),
             () => HasAtLeastSelected(2)
         );
         AlignRightCommand = new RelayCommand(
-            () => AlignNodes(AlignMode.Right),
+            () => AlignNodes(EAlignMode.Right),
             () => HasAtLeastSelected(2)
         );
         AlignTopCommand = new RelayCommand(
-            () => AlignNodes(AlignMode.Top),
+            () => AlignNodes(EAlignMode.Top),
             () => HasAtLeastSelected(2)
         );
         AlignBottomCommand = new RelayCommand(
-            () => AlignNodes(AlignMode.Bottom),
+            () => AlignNodes(EAlignMode.Bottom),
             () => HasAtLeastSelected(2)
         );
         AlignCenterHCommand = new RelayCommand(
-            () => AlignNodes(AlignMode.CenterH),
+            () => AlignNodes(EAlignMode.CenterH),
             () => HasAtLeastSelected(2)
         );
         AlignCenterVCommand = new RelayCommand(
-            () => AlignNodes(AlignMode.CenterV),
+            () => AlignNodes(EAlignMode.CenterV),
             () => HasAtLeastSelected(2)
         );
         DistributeHCommand = new RelayCommand(
-            () => AlignNodes(AlignMode.DistributeH),
+            () => AlignNodes(EAlignMode.DistributeH),
             () => HasAtLeastSelected(3)
         );
         DistributeVCommand = new RelayCommand(
-            () => AlignNodes(AlignMode.DistributeV),
+            () => AlignNodes(EAlignMode.DistributeV),
             () => HasAtLeastSelected(3)
         );
     }
@@ -119,7 +119,7 @@ public sealed class SelectionManager
         return false;
     }
 
-    public void AlignNodes(AlignMode mode)
+    public void AlignNodes(EAlignMode mode)
     {
         List<NodeViewModel> sel = SelectedNodes();
         if (sel.Count < 2)

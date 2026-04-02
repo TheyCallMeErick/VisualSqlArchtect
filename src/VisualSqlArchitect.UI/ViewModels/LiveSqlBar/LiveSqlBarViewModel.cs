@@ -8,22 +8,6 @@ using VisualSqlArchitect.UI.ViewModels.QueryPreview.Services;
 
 namespace VisualSqlArchitect.UI.ViewModels;
 
-// ─── Token kinds for syntax-highlighted SQL display ───────────────────────────
-
-public enum SqlTokenKind
-{
-    Keyword, // SELECT, FROM, WHERE, JOIN, AS, ON, AND, OR …
-    Identifier, // table.column, alias names
-    Literal, // '…', numbers
-    Operator, // =, <>, >, BETWEEN, LIKE …
-    Punctuation, // ( ) , ;
-    Function, // UPPER(, CAST(, JSON_VALUE(…
-    Comment, // -- …
-    Plain, // whitespace, unknown
-}
-
-public sealed record SqlToken(string Text, SqlTokenKind Kind);
-
 // ─── Live SQL bar view model ──────────────────────────────────────────────────
 
 /// <summary>

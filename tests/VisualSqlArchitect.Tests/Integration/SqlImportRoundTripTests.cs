@@ -24,7 +24,7 @@ public class SqlImportRoundTripTests
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, r =>
             r.Label.Contains("LIMIT", StringComparison.OrdinalIgnoreCase)
-            && r.Status == ImportItemStatus.Imported);
+            && r.Status == EImportItemStatus.Imported);
         Assert.Contains("select", sql, StringComparison.OrdinalIgnoreCase);
         Assert.False(string.IsNullOrWhiteSpace(sql));
     }
@@ -65,7 +65,7 @@ public class SqlImportRoundTripTests
         Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, r =>
-            r.Status == ImportItemStatus.Imported
+            r.Status == EImportItemStatus.Imported
             && r.Label.Contains("JOIN", StringComparison.OrdinalIgnoreCase));
     }
 
@@ -85,7 +85,7 @@ public class SqlImportRoundTripTests
         Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, r =>
-            r.Status == ImportItemStatus.Imported
+            r.Status == EImportItemStatus.Imported
             && r.Label.Contains("ORDER BY", StringComparison.OrdinalIgnoreCase));
         Assert.Contains("ORDER BY", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("DESC", sql, StringComparison.OrdinalIgnoreCase);
@@ -109,7 +109,7 @@ public class SqlImportRoundTripTests
         Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, r =>
-            r.Status == ImportItemStatus.Imported
+            r.Status == EImportItemStatus.Imported
             && r.Label.Contains("ORDER BY", StringComparison.OrdinalIgnoreCase));
         Assert.Contains("ORDER BY", sqlUpper, StringComparison.Ordinal);
 
@@ -136,7 +136,7 @@ public class SqlImportRoundTripTests
         Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, r =>
-            r.Status == ImportItemStatus.Imported
+            r.Status == EImportItemStatus.Imported
             && r.Label.Contains("ORDER BY", StringComparison.OrdinalIgnoreCase));
         Assert.Contains("ORDER BY", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("DESC", sql, StringComparison.OrdinalIgnoreCase);
@@ -161,7 +161,7 @@ public class SqlImportRoundTripTests
         Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, r =>
-            r.Status == ImportItemStatus.Imported
+            r.Status == EImportItemStatus.Imported
             && r.Label.Contains("GROUP BY", StringComparison.OrdinalIgnoreCase));
         Assert.Contains("GROUP BY", sqlUpper, StringComparison.Ordinal);
 
@@ -189,7 +189,7 @@ public class SqlImportRoundTripTests
         Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, r =>
-            r.Status == ImportItemStatus.Imported
+            r.Status == EImportItemStatus.Imported
             && r.Label.Contains("HAVING COUNT(*)", StringComparison.OrdinalIgnoreCase));
         Assert.Contains("GROUP BY", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("HAVING", sql, StringComparison.OrdinalIgnoreCase);
@@ -213,7 +213,7 @@ public class SqlImportRoundTripTests
         Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, r =>
-            r.Status == ImportItemStatus.Imported
+            r.Status == EImportItemStatus.Imported
             && r.Label.Contains("EXISTS", StringComparison.OrdinalIgnoreCase));
         Assert.Contains("EXISTS", sql, StringComparison.OrdinalIgnoreCase);
     }
@@ -235,7 +235,7 @@ public class SqlImportRoundTripTests
         Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, r =>
-            r.Status == ImportItemStatus.Imported
+            r.Status == EImportItemStatus.Imported
             && r.Label.Contains(" IN(", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(" IN ", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("SELECT", sql, StringComparison.OrdinalIgnoreCase);
@@ -258,7 +258,7 @@ public class SqlImportRoundTripTests
         Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, r =>
-            r.Status == ImportItemStatus.Imported
+            r.Status == EImportItemStatus.Imported
             && r.Label.Contains("scalar sub-query", StringComparison.OrdinalIgnoreCase));
         Assert.Contains("SELECT MAX", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(">", sql, StringComparison.OrdinalIgnoreCase);

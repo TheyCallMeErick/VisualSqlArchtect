@@ -58,6 +58,20 @@ public sealed class SqliteDialect : ISqlDialect
         return string.Join(" ", parts);
     }
 
+    public string ApplyQueryHints(string sql, string? queryHints)
+    {
+        _ = queryHints;
+        return TrimTrailingSemicolon(sql);
+    }
+
     public string QuoteIdentifier(string identifier) =>
         $"\"{identifier.Replace("\"", "\"\"")}\"";
+
+    private static string TrimTrailingSemicolon(string sql)
+    {
+        if (string.IsNullOrWhiteSpace(sql))
+            return string.Empty;
+
+        return sql.Trim().TrimEnd(';').TrimEnd();
+    }
 }

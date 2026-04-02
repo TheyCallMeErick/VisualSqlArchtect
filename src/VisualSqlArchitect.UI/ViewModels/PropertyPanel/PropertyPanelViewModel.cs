@@ -7,66 +7,6 @@ using VisualSqlArchitect.UI.ViewModels.UndoRedo.Commands;
 
 namespace VisualSqlArchitect.UI.ViewModels;
 
-// ─── Parameter row ────────────────────────────────────────────────────────────
-
-/// <summary>
-/// A single editable parameter row in the property panel.
-/// Bound to one <see cref="NodeParameter"/> on the selected node.
-/// </summary>
-public sealed class ParameterRowViewModel(NodeParameter param, string? currentValue) : ViewModelBase
-{
-    private string? _value = currentValue ?? param.DefaultValue;
-    private bool _isDirty;
-
-    public string Name { get; } = param.Name;
-    public ParameterKind Kind { get; } = param.Kind;
-    public string? Description { get; } = param.Description;
-    public IReadOnlyList<string>? EnumValues { get; } = param.EnumValues;
-
-    // ── Visibility helpers (one True per kind) ────────────────────────────────
-    public bool IsText => Kind is ParameterKind.Text or ParameterKind.JsonPath;
-    public bool IsNumber => Kind == ParameterKind.Number;
-    public bool IsBoolean => Kind == ParameterKind.Boolean;
-    public bool IsEnum => Kind is ParameterKind.Enum or ParameterKind.CastType;
-    public bool IsDateTime => Kind == ParameterKind.DateTime;
-    public bool IsDate => Kind == ParameterKind.Date;
-    public string? Value
-    {
-        get => _value;
-        set
-        {
-            if (Set(ref _value, value))
-                IsDirty = true;
-        }
-    }
-
-    public bool IsDirty
-    {
-        get => _isDirty;
-        private set => Set(ref _isDirty, value);
-    }
-
-    public void MarkClean() => IsDirty = false;
-}
-
-// ─── Pin info row ─────────────────────────────────────────────────────────────
-
-public sealed class PinInfoRowViewModel(PinViewModel pin)
-{
-    public string Name => pin.Name;
-    public string TypeLabel => pin.DataType.ToString();
-    public string Direction => pin.Direction.ToString();
-    public bool Connected => pin.IsConnected;
-    public Avalonia.Media.Color Color => pin.PinColor;
-    public Avalonia.Media.SolidColorBrush ColorBrush => pin.PinBrush;
-}
-
-public enum PropertyPanelTab
-{
-    Properties,
-    ProjectSettings,
-}
-
 // ─── Property panel ──────────────────────────────────────────────────────────
 
 /// <summary>
@@ -81,7 +21,7 @@ public sealed class PropertyPanelViewModel : ViewModelBase
     private string _lastRawSql = string.Empty;
     private string? _sqlTraceFragment;
     private string? _sqlTraceContext;
-    private PropertyPanelTab _activeTab = PropertyPanelTab.Properties;
+    private EPropertyPanelTab _activeTab = EPropertyPanelTab.Properties;
     private string _selectedNamingConvention = "snake_case";
     private bool _enforceAliasNaming = true;
     private bool _warnOnReservedKeywords = true;
@@ -98,9 +38,9 @@ public sealed class PropertyPanelViewModel : ViewModelBase
             RaisePropertyChanged(nameof(NodeAliasLabel));
         };
 
-        SelectPropertiesTabCommand = new RelayCommand(() => ActiveTab = PropertyPanelTab.Properties);
+        SelectPropertiesTabCommand = new RelayCommand(() => ActiveTab = EPropertyPanelTab.Properties);
         SelectProjectSettingsTabCommand = new RelayCommand(() =>
-            ActiveTab = PropertyPanelTab.ProjectSettings
+            ActiveTab = EPropertyPanelTab.ProjectSettings
         );
     }
 
@@ -132,7 +72,7 @@ public sealed class PropertyPanelViewModel : ViewModelBase
         private set => Set(ref _panelTitle, value);
     }
 
-    public PropertyPanelTab ActiveTab
+    public EPropertyPanelTab ActiveTab
     {
         get => _activeTab;
         set
@@ -145,8 +85,8 @@ public sealed class PropertyPanelViewModel : ViewModelBase
         }
     }
 
-    public bool ShowPropertiesTab => ActiveTab == PropertyPanelTab.Properties;
-    public bool ShowProjectSettingsTab => ActiveTab == PropertyPanelTab.ProjectSettings;
+    public bool ShowPropertiesTab => ActiveTab == EPropertyPanelTab.Properties;
+    public bool ShowProjectSettingsTab => ActiveTab == EPropertyPanelTab.ProjectSettings;
 
     public IReadOnlyList<string> NamingConventionOptions { get; } =
     [

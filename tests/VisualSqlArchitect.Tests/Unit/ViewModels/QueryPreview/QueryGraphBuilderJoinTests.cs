@@ -340,11 +340,142 @@ public class QueryGraphBuilderJoinTests
         Assert.Contains("customer_id", sql, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void BuildSql_TableSourceWithDuplicateOutputPinName_DoesNotThrow()
+    {
+        var canvas = new CanvasViewModel();
+        canvas.Nodes.Clear();
+        canvas.Connections.Clear();
+
+        NodeViewModel orders = Table("public.orders", "id", "customer_id");
+        AddDuplicateOutputPin(orders, "id", PinDataType.Number);
+
+        NodeViewModel columnList = Node(NodeType.ColumnList);
+        NodeViewModel result = Node(NodeType.ResultOutput);
+
+        Connect(canvas, orders, "id", columnList, "columns");
+        Connect(canvas, columnList, "result", result, "columns");
+
+        canvas.Nodes.Add(orders);
+        canvas.Nodes.Add(columnList);
+        canvas.Nodes.Add(result);
+
+        var sut = new QueryGraphBuilder(canvas, DatabaseProvider.Postgres);
+
+        (string sql, List<string> errors) = sut.BuildSql();
+
+        Assert.NotNull(sql);
+        Assert.DoesNotContain(errors, e =>
+            e.Contains("same key", StringComparison.OrdinalIgnoreCase)
+            || e.Contains("already been added", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildSql_JoinConditionCompilation_WithDuplicateOutputPinName_DoesNotThrow()
+    {
+        var canvas = new CanvasViewModel();
+        canvas.Nodes.Clear();
+        canvas.Connections.Clear();
+
+        NodeViewModel orders = Table("public.orders", "id", "customer_id");
+        NodeViewModel customers = Table("public.customers", "id", "customer_id");
+        AddDuplicateOutputPin(orders, "customer_id", PinDataType.Number);
+
+        NodeViewModel eq1 = Node(NodeType.Equals);
+        NodeViewModel eq2 = Node(NodeType.Equals);
+        NodeViewModel and = Node(NodeType.And);
+
+        NodeViewModel join = Node(NodeType.Join);
+        join.Parameters["join_type"] = "INNER";
+        join.Parameters["right_source"] = "public.customers c";
+
+        NodeViewModel columnList = Node(NodeType.ColumnList);
+        NodeViewModel result = Node(NodeType.ResultOutput);
+
+        Connect(canvas, orders, "customer_id", eq1, "left");
+        Connect(canvas, customers, "id", eq1, "right");
+        Connect(canvas, orders, "id", eq2, "left");
+        Connect(canvas, customers, "customer_id", eq2, "right");
+        Connect(canvas, eq1, "result", and, "conditions");
+        Connect(canvas, eq2, "result", and, "conditions");
+        Connect(canvas, and, "result", join, "condition");
+
+        Connect(canvas, orders, "id", columnList, "columns");
+        Connect(canvas, columnList, "result", result, "columns");
+
+        canvas.Nodes.Add(orders);
+        canvas.Nodes.Add(customers);
+        canvas.Nodes.Add(eq1);
+        canvas.Nodes.Add(eq2);
+        canvas.Nodes.Add(and);
+        canvas.Nodes.Add(join);
+        canvas.Nodes.Add(columnList);
+        canvas.Nodes.Add(result);
+
+        var sut = new QueryGraphBuilder(canvas, DatabaseProvider.Postgres);
+
+        (string sql, List<string> errors) = sut.BuildSql();
+
+        Assert.NotNull(sql);
+        Assert.DoesNotContain(errors, e =>
+            e.Contains("same key", StringComparison.OrdinalIgnoreCase)
+            || e.Contains("already been added", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildSql_ColumnListLegacyMetadataPin_IsAcceptedAsProjectionInput()
+    {
+        var canvas = new CanvasViewModel();
+        canvas.Nodes.Clear();
+        canvas.Connections.Clear();
+
+        NodeViewModel orders = Table("public.orders", "id", "customer_id");
+        NodeViewModel columnList = Node(NodeType.ColumnList);
+        NodeViewModel result = Node(NodeType.ResultOutput);
+
+        AddLegacyProjectionPin(columnList, "metadata");
+
+        Connect(canvas, orders, "id", columnList, "metadata");
+        Connect(canvas, columnList, "result", result, "columns");
+
+        canvas.Nodes.Add(orders);
+        canvas.Nodes.Add(columnList);
+        canvas.Nodes.Add(result);
+
+        var sut = new QueryGraphBuilder(canvas, DatabaseProvider.Postgres);
+
+        (string sql, List<string> errors) = sut.BuildSql();
+
+        Assert.DoesNotContain("Connect columns via Column List", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(errors, e =>
+            e.Contains("Connect columns via Column List", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static NodeViewModel Node(NodeType type) =>
         new(NodeDefinitionRegistry.Get(type), new Point(0, 0));
 
     private static NodeViewModel Table(string tableName, params string[] columns) =>
         new(tableName, columns.Select(c => (c, PinDataType.Number)), new Point(0, 0));
+
+    private static void AddDuplicateOutputPin(NodeViewModel node, string pinName, PinDataType dataType)
+    {
+        var duplicatePin = new PinViewModel(
+            new PinDescriptor(pinName, PinDirection.Output, dataType),
+            node
+        );
+
+        node.OutputPins.Add(duplicatePin);
+    }
+
+    private static void AddLegacyProjectionPin(NodeViewModel node, string pinName)
+    {
+        var pin = new PinViewModel(
+            new PinDescriptor(pinName, PinDirection.Input, PinDataType.ColumnRef, IsRequired: false, AllowMultiple: true),
+            node
+        );
+
+        node.InputPins.Add(pin);
+    }
 
     private static void Connect(
         CanvasViewModel canvas,

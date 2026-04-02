@@ -41,6 +41,7 @@ public sealed class QueryGeneratorService(DatabaseProvider provider, ISqlFunctio
     private readonly DatabaseProvider _provider = provider;
     private readonly ISqlFunctionRegistry _registry = registry;
     private readonly Compiler _compiler = CreateCompiler(provider);
+    private readonly Providers.Dialects.ISqlDialect _dialect = ProviderRegistry.CreateDefault().GetDialect(provider);
     private readonly EmitContext _emitCtx = new EmitContext(provider, registry);
 
     public static QueryGeneratorService Create(DatabaseProvider provider) =>
@@ -187,42 +188,7 @@ public sealed class QueryGeneratorService(DatabaseProvider provider, ISqlFunctio
     }
 
     private string ApplyQueryHints(string sql, string? queryHints)
-    {
-        if (!QueryHintSyntax.TryNormalize(_provider, queryHints, out string hints, out _)
-            || string.IsNullOrWhiteSpace(hints))
-            return sql;
-
-        string baseSql = TrimTrailingSemicolon(sql);
-        return _provider switch
-        {
-            DatabaseProvider.SqlServer => ApplySqlServerHints(baseSql, hints),
-            DatabaseProvider.MySql => ApplySelectCommentHints(baseSql, hints),
-            DatabaseProvider.Postgres => ApplySelectCommentHints(baseSql, hints),
-            _ => baseSql,
-        };
-    }
-
-    private static string ApplySqlServerHints(string sql, string hints)
-    {
-        if (sql.Contains(" OPTION (", StringComparison.OrdinalIgnoreCase))
-            return sql;
-
-        string normalized = hints.StartsWith("OPTION", StringComparison.OrdinalIgnoreCase)
-            ? hints
-            : $"OPTION ({hints})";
-
-        return $"{sql}\n{normalized}";
-    }
-
-    private static string ApplySelectCommentHints(string sql, string hints)
-    {
-        int selectIndex = sql.IndexOf("SELECT", StringComparison.OrdinalIgnoreCase);
-        if (selectIndex < 0)
-            return sql;
-
-        int insertAt = selectIndex + 6; // after SELECT
-        return sql.Insert(insertAt, $" /*+ {hints} */");
-    }
+        => _dialect.ApplyQueryHints(sql, queryHints);
 
     private string ApplyPivotOperation(string sql, string? pivotMode, string? pivotConfig)
     {

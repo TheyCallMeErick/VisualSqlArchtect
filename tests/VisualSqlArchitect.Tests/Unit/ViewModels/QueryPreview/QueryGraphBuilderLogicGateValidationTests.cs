@@ -50,7 +50,7 @@ public class QueryGraphBuilderLogicGateValidationTests
         NodeViewModel result = Node(NodeType.ResultOutput);
 
         Connect(canvas, orders, "id", isNull, "value");
-        Connect(canvas, isNull, "result", orNode, "cond_1");
+        Connect(canvas, isNull, "result", orNode, "conditions");
 
         Connect(canvas, orders, "id", columnList, "columns");
         Connect(canvas, columnList, "result", result, "columns");

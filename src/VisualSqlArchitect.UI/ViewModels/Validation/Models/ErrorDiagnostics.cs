@@ -4,7 +4,7 @@ namespace VisualSqlArchitect.UI.ViewModels;
 
 // ── Error model ───────────────────────────────────────────────────────────────
 
-public enum ErrorCategory
+public enum EErrorCategory
 {
     Connection,
     Authorization,
@@ -17,7 +17,7 @@ public enum ErrorCategory
 }
 
 public sealed record DiagnosticResult(
-    ErrorCategory Category,
+    EErrorCategory Category,
     string CategoryLabel,
     string CategoryIcon,
     string FriendlyMessage,
@@ -57,7 +57,7 @@ public static partial class ErrorDiagnostics
             || lower.Contains("blocked in")
         )
             return Make(
-                ErrorCategory.SafePreview,
+                EErrorCategory.SafePreview,
                 NodeIconCatalog.DiagSafePreview,
                 "Blocked by Safe Preview Mode",
                 "This SQL contains a data-mutating command and cannot be executed in preview.",
@@ -79,7 +79,7 @@ public static partial class ErrorDiagnostics
             )
         )
             return Make(
-                ErrorCategory.Connection,
+                EErrorCategory.Connection,
                 NodeIconCatalog.DiagConnection,
                 "Connection failed",
                 "Could not reach the database server. The host may be down, unreachable, or blocking connections.",
@@ -102,7 +102,7 @@ public static partial class ErrorDiagnostics
             )
         )
             return Make(
-                ErrorCategory.Authorization,
+                EErrorCategory.Authorization,
                 NodeIconCatalog.DiagAuthorization,
                 "Authorization error",
                 "The current credentials do not have permission to perform this operation.",
@@ -123,7 +123,7 @@ public static partial class ErrorDiagnostics
             )
         )
             return Make(
-                ErrorCategory.Timeout,
+                EErrorCategory.Timeout,
                 NodeIconCatalog.DiagTimeout,
                 "Query timeout",
                 "The query took too long to complete and was cancelled by the server or client.",
@@ -146,7 +146,7 @@ public static partial class ErrorDiagnostics
             )
         )
             return Make(
-                ErrorCategory.Schema,
+                EErrorCategory.Schema,
                 NodeIconCatalog.DiagSchema,
                 "Schema error",
                 "A referenced table, column, or object could not be found in the database.",
@@ -169,7 +169,7 @@ public static partial class ErrorDiagnostics
             )
         )
             return Make(
-                ErrorCategory.Syntax,
+                EErrorCategory.Syntax,
                 NodeIconCatalog.DiagSyntax,
                 "SQL syntax error",
                 "The query contains a syntax error and could not be parsed by the database engine.",
@@ -190,7 +190,7 @@ public static partial class ErrorDiagnostics
             )
         )
             return Make(
-                ErrorCategory.Compatibility,
+                EErrorCategory.Compatibility,
                 NodeIconCatalog.DiagCompatibility,
                 "Compatibility error",
                 "A function, operator, or syntax construct is not supported by the active database provider.",
@@ -200,7 +200,7 @@ public static partial class ErrorDiagnostics
 
         // ── Fallback ──────────────────────────────────────────────────────────
         return Make(
-            ErrorCategory.Unknown,
+            EErrorCategory.Unknown,
             NodeIconCatalog.DiagUnknown,
             "Unexpected error",
             "An error occurred while running the preview query.",
@@ -212,7 +212,7 @@ public static partial class ErrorDiagnostics
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private static DiagnosticResult Make(
-        ErrorCategory cat,
+        EErrorCategory cat,
         string icon,
         string label,
         string friendly,

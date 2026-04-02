@@ -21,10 +21,7 @@ public class MainWindowLayoutService(Window window, CanvasViewModel vm) : IDispo
     private bool _isWired;
 
     private static string AppDataDir =>
-        Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "VisualSqlArchitect"
-        );
+        global::VisualSqlArchitect.UI.AppConstants.AppDataDirectory;
 
     private static string LayoutFile => Path.Combine(AppDataDir, "layout.json");
 

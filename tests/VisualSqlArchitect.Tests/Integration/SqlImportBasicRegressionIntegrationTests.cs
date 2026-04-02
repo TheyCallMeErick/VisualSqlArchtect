@@ -21,7 +21,7 @@ public class SqlImportBasicRegressionIntegrationTests
         Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, r =>
-            r.Status == ImportItemStatus.Imported
+            r.Status == EImportItemStatus.Imported
             && r.Label.Contains("WHERE", StringComparison.OrdinalIgnoreCase));
         Assert.Contains("select", canvas.LiveSql.RawSql, StringComparison.OrdinalIgnoreCase);
     }
@@ -60,7 +60,7 @@ public class SqlImportBasicRegressionIntegrationTests
         Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, r =>
-            r.Status == ImportItemStatus.Imported
+            r.Status == EImportItemStatus.Imported
             && r.Label.Contains("SELECT", StringComparison.OrdinalIgnoreCase));
         Assert.Contains("select", canvas.LiveSql.RawSql, StringComparison.OrdinalIgnoreCase);
     }
@@ -82,16 +82,16 @@ public class SqlImportBasicRegressionIntegrationTests
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.True(canvas.SqlImporter.ReportImportedCount >= 4);
         Assert.Contains(canvas.SqlImporter.Report, r =>
-            r.Status == ImportItemStatus.Imported
+            r.Status == EImportItemStatus.Imported
             && r.Label.Contains("FROM:", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(canvas.SqlImporter.Report, r =>
-            r.Status == ImportItemStatus.Imported
+            r.Status == EImportItemStatus.Imported
             && r.Label.Contains("JOIN", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(canvas.SqlImporter.Report, r =>
-            r.Status == ImportItemStatus.Imported
+            r.Status == EImportItemStatus.Imported
             && r.Label.Contains("WHERE", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(canvas.SqlImporter.Report, r =>
-            r.Status == ImportItemStatus.Imported
+            r.Status == EImportItemStatus.Imported
             && r.Label.Contains("SELECT", StringComparison.OrdinalIgnoreCase));
     }
 

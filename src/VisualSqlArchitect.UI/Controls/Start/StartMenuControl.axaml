@@ -3,6 +3,7 @@
              xmlns:vm="using:VisualSqlArchitect.UI.ViewModels"
              xmlns:start="using:VisualSqlArchitect.UI.Controls.Start"
              xmlns:shell="using:VisualSqlArchitect.UI.Controls.Shell"
+             xmlns:mi="using:Material.Icons.Avalonia"
              x:Class="VisualSqlArchitect.UI.Controls.Start.StartMenuControl"
              x:DataType="vm:StartMenuViewModel"
              x:Name="Root">
@@ -223,14 +224,6 @@
                         Title="Visual SQL Architect"
                         ShowBrandBadge="True"
                         ShowWindowControls="True">
-      <shell:AppHeaderBar.CenterContent>
-        <StackPanel Orientation="Horizontal" Spacing="{StaticResource StartSpaceLG}" HorizontalAlignment="Center" VerticalAlignment="Center">
-          <TextBlock Classes="nav active" Text="Inicio"/>
-          <TextBlock Classes="nav" Text="Conexoes"/>
-          <TextBlock Classes="nav" Text="Projetos Recentes"/>
-          <TextBlock Classes="nav" Text="Explorar Templates"/>
-        </StackPanel>
-      </shell:AppHeaderBar.CenterContent>
       <shell:AppHeaderBar.RightContent>
         <StackPanel Orientation="Horizontal" Spacing="{StaticResource StartSpaceSM}" VerticalAlignment="Center">
           <Button Classes="tips-pill" Content="Dicas">
@@ -244,9 +237,13 @@
               </StackPanel>
             </ToolTip.Tip>
           </Button>
-          <TextBlock Classes="meta" Text="Ajuda"/>
-          <TextBlock Classes="meta" Text="Configuracoes"/>
-          <TextBlock Classes="version" Text="v1.0.0"/>
+          <Button Classes="icon-ghost"
+                  Padding="7,4"
+                  ToolTip.Tip="Configuracoes"
+                  VerticalAlignment="Center"
+                  Command="{Binding OpenSettingsCommand}">
+            <mi:MaterialIcon Kind="CogOutline" Width="14" Height="14"/>
+          </Button>
         </StackPanel>
       </shell:AppHeaderBar.RightContent>
     </shell:AppHeaderBar>

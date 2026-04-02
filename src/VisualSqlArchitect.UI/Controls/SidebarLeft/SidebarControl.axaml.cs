@@ -34,21 +34,21 @@ public partial class SidebarControl : UserControl
 
         if (nodesButton != null)
         {
-            nodesButton.Click += (_, _) => vm.ActiveTab = SidebarTab.Nodes;
+            nodesButton.Click += (_, _) => vm.ActiveTab = ESidebarTab.Nodes;
         }
         if (connectionButton != null)
         {
-            connectionButton.Click += (_, _) => vm.ActiveTab = SidebarTab.Connection;
+            connectionButton.Click += (_, _) => vm.ActiveTab = ESidebarTab.Connection;
         }
         if (schemaButton != null)
         {
-            schemaButton.Click += (_, _) => vm.ActiveTab = SidebarTab.Schema;
+            schemaButton.Click += (_, _) => vm.ActiveTab = ESidebarTab.Schema;
         }
         if (diagnosticsButton != null)
         {
             diagnosticsButton.Click += (_, _) =>
             {
-                vm.ActiveTab = SidebarTab.Diagnostics;
+                vm.ActiveTab = ESidebarTab.Diagnostics;
                 vm.Diagnostics.RunChecksCommand.Execute(null);
             };
         }
@@ -105,17 +105,17 @@ public partial class SidebarControl : UserControl
         }, DispatcherPriority.Background);
     }
 
-    private async Task AnimateActiveTabAsync(SidebarTab tab)
+    private async Task AnimateActiveTabAsync(ESidebarTab tab)
     {
         if (_isAnimatingTab)
             return;
 
         Control? target = tab switch
         {
-            SidebarTab.Nodes => this.FindControl<Control>("NodesControl"),
-            SidebarTab.Connection => this.FindControl<Control>("ConnectionControl"),
-            SidebarTab.Schema => this.FindControl<Control>("SchemaControl"),
-            SidebarTab.Diagnostics => this.FindControl<Control>("DiagnosticsControl"),
+            ESidebarTab.Nodes => this.FindControl<Control>("NodesControl"),
+            ESidebarTab.Connection => this.FindControl<Control>("ConnectionControl"),
+            ESidebarTab.Schema => this.FindControl<Control>("SchemaControl"),
+            ESidebarTab.Diagnostics => this.FindControl<Control>("DiagnosticsControl"),
             _ => null,
         };
 

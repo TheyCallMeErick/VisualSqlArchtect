@@ -10,7 +10,7 @@ namespace VisualSqlArchitect.UI.ViewModels;
 /// </summary>
 public sealed class ConnectionViewModel : ViewModelBase
 {
-    public enum WireDashKind
+    public enum EWireDashKind
     {
         Solid,
         LongDash,
@@ -73,13 +73,13 @@ public sealed class ConnectionViewModel : ViewModelBase
     /// <summary>Opacity increases when highlighted.</summary>
     public double WireOpacity => IsHighlighted ? 1.0 : 0.75;
 
-    public WireDashKind DashKind =>
+    public EWireDashKind DashKind =>
         FromPin.EffectiveDataType switch
         {
-            PinDataType.ColumnSet => WireDashKind.LongDash,
-            PinDataType.RowSet => WireDashKind.WideDash,
-            PinDataType.Expression => WireDashKind.Dotted,
-            _ => WireDashKind.Solid,
+            PinDataType.ColumnSet => EWireDashKind.LongDash,
+            PinDataType.RowSet => EWireDashKind.WideDash,
+            PinDataType.Expression => EWireDashKind.Dotted,
+            _ => EWireDashKind.Solid,
         };
 
     /// <summary>Thickness varies by pin family and increases when highlighted.</summary>

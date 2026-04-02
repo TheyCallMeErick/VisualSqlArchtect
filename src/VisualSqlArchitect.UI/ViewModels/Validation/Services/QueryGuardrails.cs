@@ -2,14 +2,14 @@ namespace VisualSqlArchitect.UI.ViewModels;
 
 // ── Guardrail model ───────────────────────────────────────────────────────────
 
-public enum GuardSeverity
+public enum EGuardSeverity
 {
     Warning,
     Block,
 }
 
 public sealed record GuardIssue(
-    GuardSeverity Severity,
+    EGuardSeverity Severity,
     string Code,
     string Message,
     string Suggestion
@@ -66,7 +66,7 @@ public static partial class QueryGuardrails
         if (!hasLimit)
             issues.Add(
                 new GuardIssue(
-                    GuardSeverity.Warning,
+                    EGuardSeverity.Warning,
                     "NO_LIMIT",
                     "Query has no row limit — may return very large result sets",
                     "Add LIMIT <n> (PostgreSQL/MySQL) or TOP <n> (SQL Server) to cap result size"
@@ -88,7 +88,7 @@ public static partial class QueryGuardrails
         if (hasStar)
             issues.Add(
                 new GuardIssue(
-                    GuardSeverity.Warning,
+                    EGuardSeverity.Warning,
                     "SELECT_STAR",
                     "SELECT * fetches all columns — may be slow on wide tables and obscures schema intent",
                     "Specify only the columns you need (e.g. SELECT id, name, created_at)"
@@ -117,7 +117,7 @@ public static partial class QueryGuardrails
         if (!hasWhere && !hasHaving && !hasGroupBy && !hasLimit && sql.Contains(" FROM "))
             issues.Add(
                 new GuardIssue(
-                    GuardSeverity.Warning,
+                    EGuardSeverity.Warning,
                     "NO_FILTER",
                     "Query has no WHERE / HAVING clause or row limit — may perform a full table scan",
                     "Add a WHERE condition to filter rows, or connect a TOP / LIMIT node to cap the result size"

@@ -54,7 +54,7 @@ public sealed class ProviderRegistry : IProviderRegistry
 
     public ISqlDialect GetDialect(DatabaseProvider provider)
     {
-        if (!_dialects.TryGetValue(provider, out ISqlDialect? dialect)) 
+        if (!_dialects.TryGetValue(provider, out ISqlDialect? dialect))
             throw new NotSupportedException("Provider " + provider.ToString() + " is not registered.");
         return dialect;
     }
@@ -84,5 +84,6 @@ public sealed class ProviderRegistry : IProviderRegistry
         RegisterProvider(DatabaseProvider.Postgres, new PostgresDialect(), new PostgresMetadataQueries(), new PostgresFunctionFragments());
         RegisterProvider(DatabaseProvider.MySql, new MySqlDialect(), new MySqlMetadataQueries(), new MySqlFunctionFragments());
         RegisterProvider(DatabaseProvider.SqlServer, new SqlServerDialect(), new SqlServerMetadataQueries(), new SqlServerFunctionFragments());
+        RegisterProvider(DatabaseProvider.SQLite, new SqliteDialect(), new SqliteMetadataQueries(), new SqliteFunctionFragments());
     }
 }

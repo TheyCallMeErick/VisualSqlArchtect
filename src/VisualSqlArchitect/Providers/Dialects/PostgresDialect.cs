@@ -1,5 +1,8 @@
 namespace VisualSqlArchitect.Providers.Dialects;
 
+using VisualSqlArchitect.Core;
+using VisualSqlArchitect.QueryEngine;
+
 /// <summary>
 /// Implementação de ISqlDialect para PostgreSQL.
 /// Usa Information Schema views compatível com PostgreSQL 9.6+
@@ -92,6 +95,29 @@ public sealed class PostgresDialect : ISqlDialect
         return string.Join(" ", parts);
     }
 
+    public string ApplyQueryHints(string sql, string? queryHints)
+    {
+        if (!QueryHintSyntax.TryNormalize(DatabaseProvider.Postgres, queryHints, out string hints, out _)
+            || string.IsNullOrWhiteSpace(hints))
+            return TrimTrailingSemicolon(sql);
+
+        string baseSql = TrimTrailingSemicolon(sql);
+        int selectIndex = baseSql.IndexOf("SELECT", StringComparison.OrdinalIgnoreCase);
+        if (selectIndex < 0)
+            return baseSql;
+
+        int insertAt = selectIndex + 6;
+        return baseSql.Insert(insertAt, $" /*+ {hints} */");
+    }
+
     public string QuoteIdentifier(string identifier) =>
         $"\"{identifier.Replace("\"", "\"\"")}\"";
+
+    private static string TrimTrailingSemicolon(string sql)
+    {
+        if (string.IsNullOrWhiteSpace(sql))
+            return string.Empty;
+
+        return sql.Trim().TrimEnd(';').TrimEnd();
+    }
 }

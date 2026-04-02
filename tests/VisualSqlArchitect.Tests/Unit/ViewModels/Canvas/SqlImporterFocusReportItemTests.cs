@@ -28,7 +28,7 @@ public class SqlImporterFocusReportItemTests
     public void FocusReportItem_WhenItemHasNoNodeLink_ReturnsFalse()
     {
         var canvas = new CanvasViewModel();
-        var item = new ImportReportItem("No link", ImportItemStatus.Skipped, "reason");
+        var item = new ImportReportItem("No link", EImportItemStatus.Skipped, "reason");
 
         bool focused = canvas.SqlImporter.FocusReportItem(item);
 

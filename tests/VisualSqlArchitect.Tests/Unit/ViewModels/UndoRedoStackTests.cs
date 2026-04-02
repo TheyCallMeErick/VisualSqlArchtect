@@ -199,7 +199,7 @@ public class UndoRedoStackTests
             e =>
                 e.Name == "Undo/Redo Transaction"
                 && e.Details.Contains("Bulk Move", StringComparison.Ordinal)
-                && e.Status == DiagnosticStatus.Warning
+                && e.Status == EDiagnosticStatus.Warning
         );
     }
 

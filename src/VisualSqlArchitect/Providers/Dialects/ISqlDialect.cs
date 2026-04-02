@@ -52,6 +52,12 @@ public interface ISqlDialect
     /// </summary>
     string FormatPagination(int? limit, int? offset);
 
+    /// <summary>
+    /// Applies provider-specific query hints to the SQL statement.
+    /// Returns the original SQL when hints are invalid or unsupported.
+    /// </summary>
+    string ApplyQueryHints(string sql, string? queryHints);
+
     #endregion
 
     #region Identifier Quoting

@@ -4,14 +4,14 @@ using VisualSqlArchitect.UI.ViewModels;
 
 namespace VisualSqlArchitect.UI.Converters;
 
-/// <summary>Converts a SqlTokenKind enum value to bool for CSS class binding.</summary>
+/// <summary>Converts a ESqlTokenKind enum value to bool for CSS class binding.</summary>
 public sealed class SqlTokenKindConverter : IValueConverter
 {
     public static readonly SqlTokenKindConverter Instance = new();
 
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
-        if (value is SqlTokenKind kind && parameter is string param)
+        if (value is ESqlTokenKind kind && parameter is string param)
             return kind.ToString().Equals(param, StringComparison.Ordinal);
         return false;
     }

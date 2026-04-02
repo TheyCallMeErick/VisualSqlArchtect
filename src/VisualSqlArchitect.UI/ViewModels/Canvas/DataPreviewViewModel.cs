@@ -3,21 +3,6 @@ using VisualSqlArchitect.UI.Services;
 
 namespace VisualSqlArchitect.UI.ViewModels.Canvas;
 
-// ── Tab selection ──────────────────────────────────────────────────────────────
-
-public enum PreviewTab { DataPreview, LiveSql }
-
-// ── Execution state machine ────────────────────────────────────────────────────
-
-public enum PreviewExecutionState
-{
-    Idle,
-    Running,
-    Done,
-    Cancelled,
-    Failed,
-}
-
 /// <summary>
 /// Manages the SQL execution preview panel.
 /// Displays query results, execution diagnostics, error messages, loading states,
@@ -35,9 +20,9 @@ public sealed class DataPreviewViewModel : ViewModelBase
     private int _rows;
     private long _ms;
     private DiagnosticResult? _diagnostic;
-    private PreviewExecutionState _state = PreviewExecutionState.Idle;
+    private EPreviewExecutionState _state = EPreviewExecutionState.Idle;
     private long _elapsedMs;
-    private PreviewTab _activeTab = PreviewTab.DataPreview;
+    private EPreviewTab _activeTab = EPreviewTab.DataPreview;
 
     // ── Visibility ────────────────────────────────────────────────────────────
 
@@ -49,7 +34,7 @@ public sealed class DataPreviewViewModel : ViewModelBase
 
     // ── Tab selection ─────────────────────────────────────────────────────────
 
-    public PreviewTab ActiveTab
+    public EPreviewTab ActiveTab
     {
         get => _activeTab;
         set
@@ -60,12 +45,12 @@ public sealed class DataPreviewViewModel : ViewModelBase
         }
     }
 
-    public bool ShowDataPreview => _activeTab == PreviewTab.DataPreview;
-    public bool ShowLiveSql => _activeTab == PreviewTab.LiveSql;
+    public bool ShowDataPreview => _activeTab == EPreviewTab.DataPreview;
+    public bool ShowLiveSql => _activeTab == EPreviewTab.LiveSql;
 
     // ── Execution state ───────────────────────────────────────────────────────
 
-    public PreviewExecutionState CurrentState
+    public EPreviewExecutionState CurrentState
     {
         get => _state;
         private set
@@ -79,10 +64,10 @@ public sealed class DataPreviewViewModel : ViewModelBase
     }
 
     /// <summary>Whether a query is currently executing (alias for Running state).</summary>
-    public bool IsLoading => _state == PreviewExecutionState.Running;
+    public bool IsLoading => _state == EPreviewExecutionState.Running;
 
     /// <summary>Whether the last run was explicitly cancelled.</summary>
-    public bool IsCancelled => _state == PreviewExecutionState.Cancelled;
+    public bool IsCancelled => _state == EPreviewExecutionState.Cancelled;
 
     // ── Live elapsed time (updated during run) ────────────────────────────────
 
@@ -92,7 +77,7 @@ public sealed class DataPreviewViewModel : ViewModelBase
         set
         {
             Set(ref _elapsedMs, value);
-            if (_state == PreviewExecutionState.Running)
+            if (_state == EPreviewExecutionState.Running)
                 RaisePropertyChanged(nameof(StatusText));
         }
     }
@@ -188,19 +173,19 @@ public sealed class DataPreviewViewModel : ViewModelBase
 
     public string StatusText => _state switch
     {
-        PreviewExecutionState.Running   => $"Running… {_elapsedMs}ms",
-        PreviewExecutionState.Cancelled => "Cancelled",
-        PreviewExecutionState.Failed    => "Error",
-        PreviewExecutionState.Done      => $"{_rows} rows · {_ms}ms",
+        EPreviewExecutionState.Running   => $"Running… {_elapsedMs}ms",
+        EPreviewExecutionState.Cancelled => "Cancelled",
+        EPreviewExecutionState.Failed    => "Error",
+        EPreviewExecutionState.Done      => $"{_rows} rows · {_ms}ms",
         _                               => "Ready",
     };
 
     public string StatusColor => _state switch
     {
-        PreviewExecutionState.Running   => "#60A5FA",
-        PreviewExecutionState.Cancelled => "#FBBF24",
-        PreviewExecutionState.Failed    => "#EF4444",
-        PreviewExecutionState.Done      => "#4ADE80",
+        EPreviewExecutionState.Running   => "#60A5FA",
+        EPreviewExecutionState.Cancelled => "#FBBF24",
+        EPreviewExecutionState.Failed    => "#EF4444",
+        EPreviewExecutionState.Done      => "#4ADE80",
         _                               => "#4A5568",
     };
 
@@ -237,7 +222,7 @@ public sealed class DataPreviewViewModel : ViewModelBase
     {
         System.Diagnostics.Debug.WriteLine($"[DataPreviewViewModel] ShowLoading called, panel will be visible");
         QueryText = sql;
-        CurrentState = PreviewExecutionState.Running;
+        CurrentState = EPreviewExecutionState.Running;
         ErrorMessage = null;
         ResultData = null;
         Diagnostic = null;
@@ -269,7 +254,7 @@ public sealed class DataPreviewViewModel : ViewModelBase
         Diagnostic = null;
 
         System.Console.WriteLine($"[ShowResults] Before CurrentState=Done: StatusText={StatusText}");
-        CurrentState = PreviewExecutionState.Done;
+        CurrentState = EPreviewExecutionState.Done;
         System.Console.WriteLine($"[ShowResults] After CurrentState=Done: StatusText={StatusText}, HasData={HasData}, IsVisible={IsVisible}");
 
         System.Diagnostics.Debug.WriteLine($"[DataPreviewViewModel] ✓ ShowResults completed: State=Done, HasData={HasData}, IsVisible={IsVisible}");
@@ -281,7 +266,7 @@ public sealed class DataPreviewViewModel : ViewModelBase
     {
         Diagnostic = ErrorDiagnostics.Classify(msg, ex);
         ErrorMessage = Diagnostic.FriendlyMessage;
-        CurrentState = PreviewExecutionState.Failed;
+        CurrentState = EPreviewExecutionState.Failed;
         ErrorNotified?.Invoke(ErrorMessage ?? msg, DiagnosticTechnical ?? ex?.ToString());
     }
 
@@ -290,6 +275,6 @@ public sealed class DataPreviewViewModel : ViewModelBase
     {
         ErrorMessage = null;
         Diagnostic = null;
-        CurrentState = PreviewExecutionState.Cancelled;
+        CurrentState = EPreviewExecutionState.Cancelled;
     }
 }

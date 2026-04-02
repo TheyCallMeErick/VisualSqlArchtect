@@ -61,9 +61,10 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable
     // Tracks per-node PropertyChanged handlers so they can be removed when a node is deleted.
     private readonly Dictionary<NodeViewModel, PropertyChangedEventHandler> _nodeValidationHandlers = new();
 
-    private readonly NodeManager _nodeManager;
-    private readonly PinManager _pinManager;
-    private readonly SelectionManager _selectionManager;
+    private readonly INodeManager _nodeManager;
+    private readonly IPinManager _pinManager;
+    private readonly ISelectionManager _selectionManager;
+    private readonly ILocalizationService _localizationService;
     private readonly NodeLayoutManager _layoutManager;
     private readonly ValidationManager _validationManager;
 
@@ -153,7 +154,7 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable
     public string CteEditorBreadcrumb =>
         _cteEditorSession is null
             ? string.Empty
-            : $"{LocalizationService.Instance["main.cteEditor.editingPrefix"]}{_cteEditorSession.CteDisplayName}";
+            : $"{_localizationService["main.cteEditor.editingPrefix"]}{_cteEditorSession.CteDisplayName}";
 
     // ── Layout properties (delegated to NodeLayoutManager) ────────────────────
 
@@ -229,17 +230,27 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable
     // ── Constructor ───────────────────────────────────────────────────────────
 
     public CanvasViewModel()
+        : this(null, null, null, null)
+    {
+    }
+
+    public CanvasViewModel(
+        INodeManager? nodeManager,
+        IPinManager? pinManager,
+        ISelectionManager? selectionManager,
+        ILocalizationService? localizationService)
     {
         UndoRedo = new UndoRedoStack(this);
         SearchMenu = new SearchMenuViewModel();
         PropertyPanel = new PropertyPanelViewModel(UndoRedo);
         Diagnostics = new AppDiagnosticsViewModel(this);
+        _localizationService = localizationService ?? LocalizationService.Instance;
 
         // Initialise managers
-        _nodeManager = new NodeManager(Nodes, Connections, UndoRedo, PropertyPanel, SearchMenu);
-        _selectionManager = new SelectionManager(Nodes, PropertyPanel, UndoRedo);
+        _nodeManager = nodeManager ?? new NodeManager(Nodes, Connections, UndoRedo, PropertyPanel, SearchMenu);
+        _selectionManager = selectionManager ?? new SelectionManager(Nodes, PropertyPanel, UndoRedo);
         _layoutManager = new NodeLayoutManager(this, UndoRedo);
-        _pinManager = new PinManager(Nodes, Connections, UndoRedo);
+        _pinManager = pinManager ?? new PinManager(Nodes, Connections, UndoRedo);
         _validationManager = new ValidationManager(this);
 
         // Forward layout manager changes through this ViewModel so bindings observing
@@ -275,10 +286,10 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable
 
         _localizationPropertyChangedHandler = (_, e) =>
         {
-            if (e.PropertyName is "" or "Item[]" or nameof(LocalizationService.CurrentCulture))
+            if (e.PropertyName is "" or "Item[]" or nameof(ILocalizationService.CurrentCulture))
                 RaisePropertyChanged(nameof(CteEditorBreadcrumb));
         };
-        LocalizationService.Instance.PropertyChanged += _localizationPropertyChangedHandler;
+        _localizationService.PropertyChanged += _localizationPropertyChangedHandler;
 
         // Build commands
         UndoCommand = new RelayCommand(UndoRedo.Undo, () => UndoRedo.CanUndo);
@@ -292,7 +303,7 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable
         );
         OpenDiagnosticsCommand = new RelayCommand(() =>
         {
-            Sidebar.ActiveTab = SidebarTab.Diagnostics;
+            Sidebar.ActiveTab = ESidebarTab.Diagnostics;
             Diagnostics.RunChecksCommand.Execute(null);
         });
         TogglePreviewCommand = new RelayCommand(DataPreview.Toggle);
@@ -1198,41 +1209,158 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable
 
     private void OnJoinAccepted(object? _, JoinSuggestion suggestion)
     {
-        NodeViewModel? fromTable = Nodes.FirstOrDefault(n =>
-            n.Subtitle == suggestion.ExistingTable
-            || n.Title == suggestion.ExistingTable.Split('.').Last()
-        );
-        NodeViewModel? toTable = Nodes.FirstOrDefault(n =>
-            n.Subtitle == suggestion.NewTable
-            || n.Title == suggestion.NewTable.Split('.').Last()
-        );
-        if (fromTable is null || toTable is null)
+        NodeViewModel? existingTable = FindTableSourceNode(suggestion.ExistingTable);
+        NodeViewModel? newTable = FindTableSourceNode(suggestion.NewTable);
+        if (existingTable is null || newTable is null)
             return;
 
-        if (!TrySplitJoinClauseOnEquality(suggestion.OnClause, out string leftExpr, out string rightExpr))
+        if (!TryParseQualifiedColumn(suggestion.LeftColumn, out string? leftSource, out string leftColumn)
+            || !TryParseQualifiedColumn(suggestion.RightColumn, out string? rightSource, out string rightColumn))
             return;
 
-        string leftCol = leftExpr.Split('.').Last();
-        string rightCol = rightExpr.Split('.').Last();
+        NodeViewModel leftTable = ResolveSourceNode(leftSource, existingTable, newTable, leftColumn);
+        NodeViewModel rightTable = ResolveSourceNode(rightSource, newTable, existingTable, rightColumn);
 
-        PinViewModel? fromPin =
-            fromTable.OutputPins.FirstOrDefault(p =>
-                p.Name.Equals(leftCol, StringComparison.OrdinalIgnoreCase)
-            )
-            ?? toTable.OutputPins.FirstOrDefault(p =>
-                p.Name.Equals(leftCol, StringComparison.OrdinalIgnoreCase)
-            );
+        PinViewModel? leftPin = leftTable.OutputPins.FirstOrDefault(p =>
+            p.Name.Equals(leftColumn, StringComparison.OrdinalIgnoreCase));
+        PinViewModel? rightPin = rightTable.OutputPins.FirstOrDefault(p =>
+            p.Name.Equals(rightColumn, StringComparison.OrdinalIgnoreCase));
 
-        PinViewModel? toPin =
-            toTable.InputPins.FirstOrDefault(p =>
-                p.Name.Equals(rightCol, StringComparison.OrdinalIgnoreCase)
-            )
-            ?? fromTable.InputPins.FirstOrDefault(p =>
-                p.Name.Equals(rightCol, StringComparison.OrdinalIgnoreCase)
-            );
+        if (leftPin is null || rightPin is null)
+            return;
 
-        if (fromPin is not null && toPin is not null)
-            ConnectPins(fromPin, toPin);
+        if (HasJoinBetween(leftPin, rightPin))
+            return;
+
+        double joinX = Math.Max(leftTable.Position.X, rightTable.Position.X) + 360;
+        double joinY = (leftTable.Position.Y + rightTable.Position.Y) / 2.0;
+        NodeViewModel joinNode = SpawnNode(
+            NodeDefinitionRegistry.Get(NodeType.Join),
+            new Point(joinX, joinY)
+        );
+
+        string normalizedJoinType = string.IsNullOrWhiteSpace(suggestion.JoinType)
+            ? "INNER"
+            : suggestion.JoinType.Trim().ToUpperInvariant();
+        joinNode.Parameters["join_type"] = normalizedJoinType;
+        joinNode.RaiseParameterChanged("join_type");
+
+        PinViewModel? joinLeft = joinNode.InputPins.FirstOrDefault(p => p.Name == "left");
+        PinViewModel? joinRight = joinNode.InputPins.FirstOrDefault(p => p.Name == "right");
+        if (joinLeft is null || joinRight is null)
+            return;
+
+        ConnectPins(leftPin, joinLeft);
+        ConnectPins(rightPin, joinRight);
+    }
+
+    private NodeViewModel? FindTableSourceNode(string tableRef)
+    {
+        string full = tableRef.Trim();
+        string shortName = full.Split('.').Last();
+
+        return Nodes.FirstOrDefault(n =>
+            n.Type == NodeType.TableSource
+            && (
+                n.Subtitle.Equals(full, StringComparison.OrdinalIgnoreCase)
+                || n.Title.Equals(shortName, StringComparison.OrdinalIgnoreCase)
+                || (!string.IsNullOrWhiteSpace(n.Alias)
+                    && n.Alias.Equals(shortName, StringComparison.OrdinalIgnoreCase))
+            ));
+    }
+
+    private static bool TryParseQualifiedColumn(
+        string expression,
+        out string? source,
+        out string column)
+    {
+        source = null;
+        column = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(expression))
+            return false;
+
+        string normalized = expression.Trim();
+        int lastDot = normalized.LastIndexOf('.');
+        if (lastDot <= 0 || lastDot >= normalized.Length - 1)
+            return false;
+
+        source = normalized[..lastDot].Trim();
+        column = normalized[(lastDot + 1)..].Trim();
+
+        if (column.Length == 0)
+            return false;
+
+        source = source
+            .Trim('"')
+            .Trim('`')
+            .Trim('[', ']');
+
+        column = column
+            .Trim('"')
+            .Trim('`')
+            .Trim('[', ']');
+
+        return source.Length > 0 && column.Length > 0;
+    }
+
+    private static NodeViewModel ResolveSourceNode(
+        string? sourceRef,
+        NodeViewModel preferred,
+        NodeViewModel fallback,
+        string expectedColumn)
+    {
+        if (!string.IsNullOrWhiteSpace(sourceRef) && MatchesSource(preferred, sourceRef))
+            return preferred;
+
+        if (!string.IsNullOrWhiteSpace(sourceRef) && MatchesSource(fallback, sourceRef))
+            return fallback;
+
+        if (preferred.OutputPins.Any(p => p.Name.Equals(expectedColumn, StringComparison.OrdinalIgnoreCase)))
+            return preferred;
+
+        return fallback;
+    }
+
+    private static bool MatchesSource(NodeViewModel node, string sourceRef)
+    {
+        string full = node.Subtitle;
+        string shortName = node.Title;
+        string alias = node.Alias ?? string.Empty;
+
+        if (full.Equals(sourceRef, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (shortName.Equals(sourceRef, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (!string.IsNullOrWhiteSpace(alias)
+            && alias.Equals(sourceRef, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        string fullShort = full.Split('.').Last();
+        return fullShort.Equals(sourceRef, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool HasJoinBetween(PinViewModel leftPin, PinViewModel rightPin)
+    {
+        foreach (NodeViewModel node in Nodes.Where(n => n.Type == NodeType.Join))
+        {
+            ConnectionViewModel? leftConn = Connections.FirstOrDefault(c =>
+                c.ToPin?.Owner == node && c.ToPin.Name == "left");
+            ConnectionViewModel? rightConn = Connections.FirstOrDefault(c =>
+                c.ToPin?.Owner == node && c.ToPin.Name == "right");
+
+            if (leftConn is null || rightConn is null)
+                continue;
+
+            bool sameOrientation = leftConn.FromPin == leftPin && rightConn.FromPin == rightPin;
+            bool reversedOrientation = leftConn.FromPin == rightPin && rightConn.FromPin == leftPin;
+            if (sameOrientation || reversedOrientation)
+                return true;
+        }
+
+        return false;
     }
 
     public void NotifySuccess(string message, string? details = null) =>
@@ -1272,7 +1400,7 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable
             _layoutManager.PropertyChanged -= _layoutManagerPropertyChangedHandler;
 
         if (_localizationPropertyChangedHandler is not null)
-            LocalizationService.Instance.PropertyChanged -= _localizationPropertyChangedHandler;
+            _localizationService.PropertyChanged -= _localizationPropertyChangedHandler;
 
         // Unsubscribe from AutoJoin events
         if (AutoJoin is not null)

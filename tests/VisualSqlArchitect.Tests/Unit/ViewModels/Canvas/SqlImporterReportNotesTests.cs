@@ -9,9 +9,9 @@ public class SqlImporterReportNotesTests
     [Fact]
     public void ImportReportItem_PartialOrSkippedWithoutNote_AddsDefaultJustification()
     {
-        var partial = new ImportReportItem("partial", ImportItemStatus.Partial);
-        var skipped = new ImportReportItem("skipped", ImportItemStatus.Skipped, " ");
-        var imported = new ImportReportItem("imported", ImportItemStatus.Imported);
+        var partial = new ImportReportItem("partial", EImportItemStatus.Partial);
+        var skipped = new ImportReportItem("skipped", EImportItemStatus.Skipped, " ");
+        var imported = new ImportReportItem("imported", EImportItemStatus.Imported);
 
         Assert.False(string.IsNullOrWhiteSpace(partial.Note));
         Assert.False(string.IsNullOrWhiteSpace(skipped.Note));
@@ -54,7 +54,7 @@ public class SqlImporterReportNotesTests
 
         Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(canvas.SqlImporter.Report, item =>
-            item.Status == ImportItemStatus.Partial
+            item.Status == EImportItemStatus.Partial
             && item.Label.Contains("GROUP BY conflict", StringComparison.OrdinalIgnoreCase)
             && (item.Note ?? string.Empty).Contains("neither grouped nor aggregated", StringComparison.OrdinalIgnoreCase));
     }
