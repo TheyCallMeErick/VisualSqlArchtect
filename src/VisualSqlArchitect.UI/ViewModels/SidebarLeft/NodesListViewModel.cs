@@ -149,7 +149,9 @@ public sealed class NodesListViewModel : ViewModelBase
         {
             if (Set(ref _searchQuery, value))
             {
+                InitializeGroups(_spawnNode);
                 RaisePropertyChanged(nameof(ShowIntro));
+                RaisePropertyChanged(nameof(HasResults));
             }
         }
     }
@@ -168,13 +170,17 @@ public sealed class NodesListViewModel : ViewModelBase
     /// Filtered and grouped node types, ready for display.
     /// </summary>
     public ObservableCollection<NodeTypeGroupViewModel> FilteredGroups { get; } = new();
+    public bool HasResults => FilteredGroups.Count > 0;
+
+    private readonly Action<NodeDefinition, Point> _spawnNode;
 
     public NodesListViewModel(Action<NodeDefinition, Point> spawnNode)
     {
+        _spawnNode = spawnNode;
         ClearSearchCommand = new RelayCommand(() => SearchQuery = "");
 
         // Build initial groups
-        InitializeGroups(spawnNode);
+        InitializeGroups(_spawnNode);
     }
 
     private void InitializeGroups(Action<NodeDefinition, Point> spawnNode)
@@ -222,6 +228,8 @@ public sealed class NodesListViewModel : ViewModelBase
                 FilteredGroups.Add(group);
             }
         }
+
+        RaisePropertyChanged(nameof(HasResults));
     }
 
     private static string GetCategoryColor(NodeCategory cat) => cat switch

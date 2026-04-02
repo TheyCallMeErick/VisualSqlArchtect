@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Text.RegularExpressions;
 using Material.Icons;
 using VisualSqlArchitect.Nodes;
+using VisualSqlArchitect.UI.Services.Localization;
 using VisualSqlArchitect.UI.ViewModels.UndoRedo.Commands;
 
 namespace VisualSqlArchitect.UI.ViewModels;
@@ -60,13 +61,19 @@ public sealed class PinInfoRowViewModel(PinViewModel pin)
     public Avalonia.Media.SolidColorBrush ColorBrush => pin.PinBrush;
 }
 
+public enum PropertyPanelTab
+{
+    Properties,
+    ProjectSettings,
+}
+
 // ─── Property panel ──────────────────────────────────────────────────────────
 
 /// <summary>
 /// Bound to the right-side panel. Shows details and editable parameters for
 /// the currently selected node, or a multi-selection summary.
 /// </summary>
-public sealed class PropertyPanelViewModel(UndoRedoStack undo) : ViewModelBase
+public sealed class PropertyPanelViewModel : ViewModelBase
 {
     private NodeViewModel? _selectedNode;
     private bool _isVisible;
@@ -74,8 +81,31 @@ public sealed class PropertyPanelViewModel(UndoRedoStack undo) : ViewModelBase
     private string _lastRawSql = string.Empty;
     private string? _sqlTraceFragment;
     private string? _sqlTraceContext;
+    private PropertyPanelTab _activeTab = PropertyPanelTab.Properties;
+    private string _selectedNamingConvention = "snake_case";
+    private bool _enforceAliasNaming = true;
+    private bool _warnOnReservedKeywords = true;
+    private string _maxAliasLength = "64";
 
-    private readonly UndoRedoStack _undo = undo;
+    private readonly UndoRedoStack _undo;
+    private readonly LocalizationService _loc = LocalizationService.Instance;
+
+    public PropertyPanelViewModel(UndoRedoStack undo)
+    {
+        _undo = undo;
+        _loc.PropertyChanged += (_, _) =>
+        {
+            RaisePropertyChanged(nameof(NodeAliasLabel));
+        };
+
+        SelectPropertiesTabCommand = new RelayCommand(() => ActiveTab = PropertyPanelTab.Properties);
+        SelectProjectSettingsTabCommand = new RelayCommand(() =>
+            ActiveTab = PropertyPanelTab.ProjectSettings
+        );
+    }
+
+    public RelayCommand SelectPropertiesTabCommand { get; }
+    public RelayCommand SelectProjectSettingsTabCommand { get; }
 
     // ── Sub-collections ───────────────────────────────────────────────────────
     public ObservableCollection<ParameterRowViewModel> Parameters { get; } = [];
@@ -100,6 +130,53 @@ public sealed class PropertyPanelViewModel(UndoRedoStack undo) : ViewModelBase
     {
         get => _panelTitle;
         private set => Set(ref _panelTitle, value);
+    }
+
+    public PropertyPanelTab ActiveTab
+    {
+        get => _activeTab;
+        set
+        {
+            if (Set(ref _activeTab, value))
+            {
+                RaisePropertyChanged(nameof(ShowPropertiesTab));
+                RaisePropertyChanged(nameof(ShowProjectSettingsTab));
+            }
+        }
+    }
+
+    public bool ShowPropertiesTab => ActiveTab == PropertyPanelTab.Properties;
+    public bool ShowProjectSettingsTab => ActiveTab == PropertyPanelTab.ProjectSettings;
+
+    public IReadOnlyList<string> NamingConventionOptions { get; } =
+    [
+        "snake_case",
+        "camelCase",
+        "PascalCase",
+    ];
+
+    public string SelectedNamingConvention
+    {
+        get => _selectedNamingConvention;
+        set => Set(ref _selectedNamingConvention, value);
+    }
+
+    public bool EnforceAliasNaming
+    {
+        get => _enforceAliasNaming;
+        set => Set(ref _enforceAliasNaming, value);
+    }
+
+    public bool WarnOnReservedKeywords
+    {
+        get => _warnOnReservedKeywords;
+        set => Set(ref _warnOnReservedKeywords, value);
+    }
+
+    public string MaxAliasLength
+    {
+        get => _maxAliasLength;
+        set => Set(ref _maxAliasLength, value);
     }
 
     // ── SQL Trace ─────────────────────────────────────────────────────────────
@@ -150,6 +227,8 @@ public sealed class PropertyPanelViewModel(UndoRedoStack undo) : ViewModelBase
 
     public string NodeTitle => SelectedNode?.Title ?? string.Empty;
     public string NodeCategory => SelectedNode?.Category.ToString() ?? string.Empty;
+    public string NodeTypeLabel => SelectedNode?.Type.ToString() ?? string.Empty;
+    public string NodeTypeSubtitle => SelectedNode?.Subtitle ?? string.Empty;
     public string NodeAlias
     {
         get => SelectedNode?.Alias ?? string.Empty;
@@ -159,6 +238,17 @@ public sealed class PropertyPanelViewModel(UndoRedoStack undo) : ViewModelBase
                 SelectedNode.Alias = string.IsNullOrWhiteSpace(value) ? null : value;
         }
     }
+
+    public string NodeAliasLabel =>
+        IsSourceAliasNode(SelectedNode?.Type)
+            ? _loc["property.sourceAlias"]
+            : _loc["property.outputAlias"];
+
+    /// <summary>
+    /// True when alias editing is meaningful for the selected node type.
+    /// Hides the alias input for structural/predicate/output nodes where alias has no effect.
+    /// </summary>
+    public bool ShowAliasEditor => SelectedNode is not null && SupportsAliasEditor(SelectedNode.Type);
 
     public Avalonia.Media.LinearGradientBrush? HeaderGradient => SelectedNode?.HeaderGradient;
 
@@ -180,12 +270,21 @@ public sealed class PropertyPanelViewModel(UndoRedoStack undo) : ViewModelBase
         RebuildRows(node);
         RecomputeTrace();
         RaisePropertyChanged(nameof(HasNode));
+        RaisePropertyChanged(nameof(HasParams));
+        RaisePropertyChanged(nameof(HasInputs));
+        RaisePropertyChanged(nameof(HasOutputs));
         RaisePropertyChanged(nameof(NodeTitle));
         RaisePropertyChanged(nameof(NodeCategory));
+        RaisePropertyChanged(nameof(NodeTypeLabel));
+        RaisePropertyChanged(nameof(NodeTypeSubtitle));
         RaisePropertyChanged(nameof(NodeAlias));
+        RaisePropertyChanged(nameof(NodeAliasLabel));
+        RaisePropertyChanged(nameof(ShowAliasEditor));
         RaisePropertyChanged(nameof(HeaderGradient));
         RaisePropertyChanged(nameof(CategoryIcon));
         RaisePropertyChanged(nameof(CategoryIconKind));
+        RaisePropertyChanged(nameof(ShowPropertiesTab));
+        RaisePropertyChanged(nameof(ShowProjectSettingsTab));
     }
 
     public void ShowMultiSelection(IReadOnlyList<NodeViewModel> nodes)
@@ -201,6 +300,15 @@ public sealed class PropertyPanelViewModel(UndoRedoStack undo) : ViewModelBase
         RaisePropertyChanged(nameof(HasSqlTrace));
         IsVisible = true;
         RaisePropertyChanged(nameof(HasNode));
+        RaisePropertyChanged(nameof(HasParams));
+        RaisePropertyChanged(nameof(HasInputs));
+        RaisePropertyChanged(nameof(HasOutputs));
+        RaisePropertyChanged(nameof(NodeTypeLabel));
+        RaisePropertyChanged(nameof(NodeTypeSubtitle));
+        RaisePropertyChanged(nameof(NodeAliasLabel));
+        RaisePropertyChanged(nameof(ShowAliasEditor));
+        RaisePropertyChanged(nameof(ShowPropertiesTab));
+        RaisePropertyChanged(nameof(ShowProjectSettingsTab));
     }
 
     public void Clear()
@@ -216,7 +324,45 @@ public sealed class PropertyPanelViewModel(UndoRedoStack undo) : ViewModelBase
         RaisePropertyChanged(nameof(HasSqlTrace));
         IsVisible = false;
         RaisePropertyChanged(nameof(HasNode));
+        RaisePropertyChanged(nameof(HasParams));
+        RaisePropertyChanged(nameof(HasInputs));
+        RaisePropertyChanged(nameof(HasOutputs));
+        RaisePropertyChanged(nameof(NodeTypeLabel));
+        RaisePropertyChanged(nameof(NodeTypeSubtitle));
+        RaisePropertyChanged(nameof(NodeAliasLabel));
+        RaisePropertyChanged(nameof(ShowAliasEditor));
+        RaisePropertyChanged(nameof(ShowPropertiesTab));
+        RaisePropertyChanged(nameof(ShowProjectSettingsTab));
     }
+
+    private static bool IsSourceAliasNode(NodeType? type) =>
+        type is NodeType.TableSource or NodeType.Subquery or NodeType.CteSource;
+
+    private static bool SupportsAliasEditor(NodeType type) => type switch
+    {
+        // Source aliases
+        NodeType.TableSource or NodeType.Subquery or NodeType.CteSource => true,
+
+        // Explicit alias / scalar transforms / computed expressions
+        NodeType.Alias
+            or NodeType.Upper or NodeType.Lower or NodeType.Trim or NodeType.Substring
+            or NodeType.RegexMatch or NodeType.RegexReplace or NodeType.RegexExtract
+            or NodeType.Concat or NodeType.StringLength or NodeType.Replace
+            or NodeType.Round or NodeType.Abs or NodeType.Ceil or NodeType.Floor
+            or NodeType.Add or NodeType.Subtract or NodeType.Multiply or NodeType.Divide
+            or NodeType.Modulo or NodeType.DateAdd or NodeType.DateDiff or NodeType.DatePart
+            or NodeType.DateFormat
+            or NodeType.CountStar or NodeType.CountDistinct or NodeType.Sum or NodeType.Avg
+            or NodeType.Min or NodeType.Max or NodeType.StringAgg or NodeType.WindowFunction
+            or NodeType.Cast or NodeType.ColumnRefCast or NodeType.ScalarFromColumn
+            or NodeType.JsonExtract or NodeType.JsonValue or NodeType.JsonArrayLength
+            or NodeType.Case or NodeType.NullFill or NodeType.EmptyFill or NodeType.ValueMap
+            or NodeType.ValueNumber or NodeType.ValueString or NodeType.ValueDateTime
+            or NodeType.ValueBoolean or NodeType.SystemDate or NodeType.SystemDateTime
+            or NodeType.CurrentDate or NodeType.CurrentTime => true,
+
+        _ => false,
+    };
 
     // ── Parameter building ────────────────────────────────────────────────────
 
@@ -267,6 +413,7 @@ public sealed class PropertyPanelViewModel(UndoRedoStack undo) : ViewModelBase
         {
             SelectedNode.Parameters.TryGetValue(row.Name, out string? old);
             _undo.Execute(new EditParameterCommand(SelectedNode, row.Name, old, row.Value));
+
             row.MarkClean();
         }
     }
@@ -287,6 +434,16 @@ public sealed class PropertyPanelViewModel(UndoRedoStack undo) : ViewModelBase
                     return ("Source table in FROM / JOIN clause", m.Value.Trim());
                 return ("Source table", $"Table: {name}");
             }
+            case NodeType.RowSetJoin:
+                return ("RowSet join", "rowset LEFT/INNER/RIGHT/FULL JOIN rowset ON condition");
+            case NodeType.RowSetFilter:
+                return ("RowSet filter", "WHERE condition(s) over input rowset");
+            case NodeType.RowSetAggregate:
+                return ("RowSet aggregate", "GROUP BY + aggregate metrics over input rowset");
+            case NodeType.CteSource:
+                return ("CTE source", "FROM cte_name AS alias");
+            case NodeType.CteDefinition:
+                return ("CTE definition", "WITH cte_name AS (SELECT ... FROM source_table)");
             case NodeType.WhereOutput or NodeType.CompileWhere:
             {
                 Match m = Regex.Match(sql,
@@ -321,6 +478,8 @@ public sealed class PropertyPanelViewModel(UndoRedoStack undo) : ViewModelBase
                 break;
             }
             case NodeType.ColumnList:
+            case NodeType.ColumnSetBuilder:
+            case NodeType.ColumnSetMerge:
             {
                 Match m = Regex.Match(sql,
                     @"SELECT\s+(.+?)\s+FROM",
@@ -335,6 +494,10 @@ public sealed class PropertyPanelViewModel(UndoRedoStack undo) : ViewModelBase
             }
             case NodeType.CountStar:
                 return ("Aggregate function", "COUNT(*)");
+            case NodeType.ColumnRefCast:
+                return ("Column cast", "CAST(column AS type)");
+            case NodeType.ScalarFromColumn:
+                return ("Scalar extraction", "Use a column reference as scalar expression");
             case NodeType.CountDistinct:
                 return ("Aggregate function", "COUNT(DISTINCT ...)");
             case NodeType.Sum:
@@ -345,6 +508,10 @@ public sealed class PropertyPanelViewModel(UndoRedoStack undo) : ViewModelBase
                 return ("Aggregate function", "MIN(...)");
             case NodeType.Max:
                 return ("Aggregate function", "MAX(...)");
+            case NodeType.StringAgg:
+                return ("Aggregate function", "STRING_AGG(..., ', ')");
+            case NodeType.WindowFunction:
+                return ("Window function", "ROW_NUMBER/RANK/DENSE_RANK/NTILE/LAG/LEAD/FIRST_VALUE/LAST_VALUE OVER (...) ");
             case NodeType.And:
                 return ("Logic gate", "... AND ...");
             case NodeType.Or:
@@ -411,6 +578,14 @@ public sealed class PropertyPanelViewModel(UndoRedoStack undo) : ViewModelBase
                 return ("Math transform", "col / value");
             case NodeType.Modulo:
                 return ("Math transform", "col % value");
+            case NodeType.DateAdd:
+                return ("Date arithmetic", "DATEADD(unit, amount, date)");
+            case NodeType.DateDiff:
+                return ("Date arithmetic", "DATEDIFF(unit, start, end)");
+            case NodeType.DatePart:
+                return ("Date arithmetic", "DATEPART(unit, date)");
+            case NodeType.DateFormat:
+                return ("Date arithmetic", "FORMAT(date, pattern)");
             case NodeType.Cast:
                 return ("Type cast", "CAST(col AS type)");
             case NodeType.Alias:
@@ -433,6 +608,12 @@ public sealed class PropertyPanelViewModel(UndoRedoStack undo) : ViewModelBase
             case NodeType.ValueNumber or NodeType.ValueString
                 or NodeType.ValueDateTime or NodeType.ValueBoolean:
                 return ("Literal value", $"Value: {node.Title}");
+            case NodeType.SystemDate or NodeType.SystemDateTime:
+                return ("System date/time", "CURRENT_TIMESTAMP / NOW() / GETDATE()");
+            case NodeType.CurrentDate:
+                return ("System date", "CURRENT_DATE / CURDATE() / CAST(GETDATE() AS DATE)");
+            case NodeType.CurrentTime:
+                return ("System time", "CURRENT_TIME / CURTIME() / CAST(GETDATE() AS TIME)");
         }
         return (null, null);
     }

@@ -1,0 +1,34 @@
+using System.Diagnostics;
+using VisualSqlArchitect.UI.ViewModels;
+using Xunit;
+
+namespace VisualSqlArchitect.Tests.Unit.Performance;
+
+public class StartupPerformanceSmokeTests
+{
+    [Fact]
+    public void ShellInitialization_StaysWithinStartupBudget()
+    {
+        var sw = Stopwatch.StartNew();
+        var shell = new ShellViewModel();
+        sw.Stop();
+
+        Assert.NotNull(shell);
+        Assert.True(sw.ElapsedMilliseconds < 1500,
+            $"Shell startup exceeded baseline budget: {sw.ElapsedMilliseconds}ms");
+    }
+
+    [Fact]
+    public void FirstCanvasInitialization_StaysWithinBaselineBudget()
+    {
+        var shell = new ShellViewModel();
+
+        var sw = Stopwatch.StartNew();
+        shell.EnterCanvas();
+        sw.Stop();
+
+        Assert.NotNull(shell.Canvas);
+        Assert.True(sw.ElapsedMilliseconds < 4000,
+            $"First canvas initialization exceeded baseline budget: {sw.ElapsedMilliseconds}ms");
+    }
+}

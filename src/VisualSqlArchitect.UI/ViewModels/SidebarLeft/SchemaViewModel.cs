@@ -123,8 +123,14 @@ public sealed class SchemaViewModel : ViewModelBase
     public bool HasConnection
     {
         get => _hasConnection;
-        set => Set(ref _hasConnection, value);
+        set
+        {
+            if (Set(ref _hasConnection, value))
+                RaisePropertyChanged(nameof(ShowFilterEmptyState));
+        }
     }
+
+    public bool ShowFilterEmptyState => HasConnection && Categories.Count == 0;
 
     /// <summary>
     /// The database metadata to display.
@@ -160,7 +166,10 @@ public sealed class SchemaViewModel : ViewModelBase
         Categories.Clear();
 
         if (Metadata is null || Metadata.Schemas.Count == 0)
+        {
+            RaisePropertyChanged(nameof(ShowFilterEmptyState));
             return;
+        }
 
         // Create category viewmodels - using Material Icon Kind names
         var tablesCategory = new SchemaCategoryViewModel("Tables", "Table", "#60A5FA");
@@ -196,17 +205,7 @@ public sealed class SchemaViewModel : ViewModelBase
                 {
                     var columns = table.Columns.Select(c =>
                     {
-                        // Map ColumnMetadata.DataType to PinDataType
-                        var pinType = c.DataType?.ToLower() switch
-                        {
-                            "int" or "integer" or "bigint" or "smallint" => PinDataType.Number,
-                            "varchar" or "text" or "char" or "string" => PinDataType.Text,
-                            "bool" or "boolean" or "bit" => PinDataType.Boolean,
-                            "decimal" or "numeric" or "float" or "double" => PinDataType.Number,
-                            "datetime" or "timestamp" or "date" or "time" => PinDataType.DateTime,
-                            "json" or "jsonb" => PinDataType.Json,
-                            _ => PinDataType.Any
-                        };
+                        var pinType = MapSqlTypeToPinDataType(c.DataType);
                         return (c.Name, pinType);
                     });
 
@@ -285,6 +284,24 @@ public sealed class SchemaViewModel : ViewModelBase
                 "Triggers not yet supported", "⚡", "(feature coming soon)"));
             Categories.Add(triggersCategory);
         }
+
+        RaisePropertyChanged(nameof(ShowFilterEmptyState));
+    }
+
+    public static PinDataType MapSqlTypeToPinDataType(string? rawType)
+    {
+        string normalized = (rawType ?? string.Empty).Trim().ToLowerInvariant();
+
+        return normalized switch
+        {
+            "int" or "integer" or "bigint" or "smallint" or "tinyint" => PinDataType.Integer,
+            "decimal" or "numeric" or "float" or "double" or "real" or "money" => PinDataType.Decimal,
+            "varchar" or "nvarchar" or "text" or "char" or "nchar" or "string" => PinDataType.Text,
+            "bool" or "boolean" or "bit" => PinDataType.Boolean,
+            "datetime" or "timestamp" or "date" or "time" => PinDataType.DateTime,
+            "json" or "jsonb" => PinDataType.Json,
+            _ => PinDataType.Expression,
+        };
     }
 }
 
