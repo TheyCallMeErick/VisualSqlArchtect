@@ -1,11 +1,12 @@
+﻿
 using Avalonia;
 using VisualSqlArchitect.Core;
 using VisualSqlArchitect.Nodes;
 using VisualSqlArchitect.UI.ViewModels;
-using VisualSqlArchitect.UI.ViewModels.QueryPreview.Services;
+using VisualSqlArchitect.UI.Services.QueryPreview;
+using static VisualSqlArchitect.Tests.Unit.ViewModels.QueryPreview.QueryPreviewTestNodeFactory;
 
 namespace VisualSqlArchitect.Tests.Unit.ViewModels.QueryPreview;
-
 public class QueryGraphBuilderJoinTests
 {
     [Fact]
@@ -451,11 +452,60 @@ public class QueryGraphBuilderJoinTests
             e.Contains("Connect columns via Column List", StringComparison.OrdinalIgnoreCase));
     }
 
-    private static NodeViewModel Node(NodeType type) =>
-        new(NodeDefinitionRegistry.Get(type), new Point(0, 0));
+    [Fact]
+    public void BuildSql_DirectWildcardToResultColumns_DoesNotRequireColumnList()
+    {
+        var canvas = new CanvasViewModel();
+        canvas.Nodes.Clear();
+        canvas.Connections.Clear();
 
-    private static NodeViewModel Table(string tableName, params string[] columns) =>
-        new(tableName, columns.Select(c => (c, PinDataType.Number)), new Point(0, 0));
+        NodeViewModel orders = Table("public.orders", "id", "customer_id");
+        NodeViewModel result = Node(NodeType.ResultOutput);
+
+        Connect(canvas, orders, "*", result, "columns");
+
+        canvas.Nodes.Add(orders);
+        canvas.Nodes.Add(result);
+
+        var sut = new QueryGraphBuilder(canvas, DatabaseProvider.Postgres);
+
+        (string sql, List<string> errors) = sut.BuildSql();
+
+        Assert.DoesNotContain("Connect columns via Column List", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(errors, e =>
+            e.Contains("Connect columns via Column List", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("select", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("orders", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("*", sql, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildSql_WildcardConnectedToColumnList_GeneratesWildcardProjection()
+    {
+        var canvas = new CanvasViewModel();
+        canvas.Nodes.Clear();
+        canvas.Connections.Clear();
+
+        NodeViewModel orders = Table("public.orders", "id", "customer_id");
+        NodeViewModel columnList = Node(NodeType.ColumnList);
+        NodeViewModel result = Node(NodeType.ResultOutput);
+
+        Connect(canvas, orders, "*", columnList, "columns");
+        Connect(canvas, columnList, "result", result, "columns");
+
+        canvas.Nodes.Add(orders);
+        canvas.Nodes.Add(columnList);
+        canvas.Nodes.Add(result);
+
+        var sut = new QueryGraphBuilder(canvas, DatabaseProvider.Postgres);
+
+        (string sql, List<string> errors) = sut.BuildSql();
+
+        Assert.Empty(errors);
+        Assert.Contains("select", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("orders", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("*", sql, StringComparison.OrdinalIgnoreCase);
+    }
 
     private static void AddDuplicateOutputPin(NodeViewModel node, string pinName, PinDataType dataType)
     {
@@ -476,21 +526,8 @@ public class QueryGraphBuilderJoinTests
 
         node.InputPins.Add(pin);
     }
-
-    private static void Connect(
-        CanvasViewModel canvas,
-        NodeViewModel fromNode,
-        string fromPin,
-        NodeViewModel toNode,
-        string toPin)
-    {
-        PinViewModel from = fromNode.OutputPins.First(p => p.Name == fromPin);
-        PinViewModel to = toNode.InputPins.FirstOrDefault(p => p.Name == toPin)
-            ?? toNode.OutputPins.First(p => p.Name == toPin);
-
-        canvas.Connections.Add(new ConnectionViewModel(from, from.AbsolutePosition, to.AbsolutePosition)
-        {
-            ToPin = to,
-        });
-    }
 }
+
+
+
+

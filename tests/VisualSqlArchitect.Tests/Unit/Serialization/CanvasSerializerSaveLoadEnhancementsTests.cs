@@ -19,6 +19,7 @@ public class CanvasSerializerSaveLoadEnhancementsTests
         try
         {
             var vm = new CanvasViewModel();
+            vm.InitializeDemoNodes();
             vm.Nodes[0].Parameters["blob"] = new string('x', CanvasSerializer.CompressionThresholdBytes * 2);
 
             await CanvasSerializer.SaveToFileAsync(path, vm, description: "large-payload");

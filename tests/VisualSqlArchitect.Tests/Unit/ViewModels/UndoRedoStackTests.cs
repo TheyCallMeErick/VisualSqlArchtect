@@ -1,5 +1,7 @@
+﻿using VisualSqlArchitect.UI.Services.Benchmark;
 using VisualSqlArchitect.UI.ViewModels;
 using VisualSqlArchitect.UI.ViewModels.UndoRedo;
+using VisualSqlArchitect.UI.Services.Localization;
 using Xunit;
 
 namespace VisualSqlArchitect.Tests.Unit.ViewModels;
@@ -10,7 +12,7 @@ namespace VisualSqlArchitect.Tests.Unit.ViewModels;
 /// </summary>
 public class UndoRedoStackTests
 {
-    // ── Mock ICanvasCommand ───────────────────────────────────────────────────────
+    // â”€â”€ Mock ICanvasCommand â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private class MockCommand(string description) : ICanvasCommand
     {
@@ -37,7 +39,7 @@ public class UndoRedoStackTests
         public ICanvasCommand? TryMerge(ICanvasCommand other) => null;
     }
 
-    // ── Tests ─────────────────────────────────────────────────────────────────
+    // â”€â”€ Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public void Undo_WithSingleCommand_RemovesFromStack()
@@ -186,21 +188,71 @@ public class UndoRedoStackTests
         var stack = new UndoRedoStack(canvas);
         var values = new List<int>();
 
-        int before = canvas.Diagnostics.Entries.Count;
+        int before = canvas.Diagnostics.SnapshotEntries().Count;
 
         stack.BeginTransaction("Bulk Move");
         stack.Execute(new StateCommand(values, 1));
 
         stack.RollbackTransaction();
 
-        Assert.True(canvas.Diagnostics.Entries.Count > before);
+        IReadOnlyList<AppDiagnosticEntry> entries = canvas.Diagnostics.SnapshotEntries();
+        string expectedArea = LocalizationService.Instance["diagnostics.area.undoRedoTransaction"];
+        Assert.True(entries.Count > before);
         Assert.Contains(
-            canvas.Diagnostics.Entries,
+            entries,
             e =>
-                e.Name == "Undo/Redo Transaction"
+                e.Name == expectedArea
                 && e.Details.Contains("Bulk Move", StringComparison.Ordinal)
                 && e.Status == EDiagnosticStatus.Warning
         );
+    }
+
+    [Fact]
+    public void BeginTransaction_WhenAlreadyOpen_ThrowsInvalidOperation()
+    {
+        var canvas = new CanvasViewModel();
+        var stack = new UndoRedoStack(canvas);
+        stack.BeginTransaction("First");
+
+        Assert.Throws<InvalidOperationException>(() => stack.BeginTransaction("Second"));
+    }
+
+    [Fact]
+    public void TransactionScope_DisposeWithoutCommit_RollsBack()
+    {
+        var canvas = new CanvasViewModel();
+        var stack = new UndoRedoStack(canvas);
+        var values = new List<int>();
+
+        using (stack.BeginTransaction("Scoped"))
+        {
+            stack.Execute(new StateCommand(values, 1));
+            stack.Execute(new StateCommand(values, 2));
+        }
+
+        Assert.Empty(values);
+        Assert.False(stack.InTransaction);
+    }
+
+    [Fact]
+    public void TransactionScope_Commit_PersistsAsSingleUndoEntry()
+    {
+        var canvas = new CanvasViewModel();
+        var stack = new UndoRedoStack(canvas);
+        var values = new List<int>();
+
+        using var tx = stack.BeginTransaction("Scoped");
+        stack.Execute(new StateCommand(values, 1));
+        stack.Execute(new StateCommand(values, 2));
+        tx.Commit();
+
+        Assert.Equal([1, 2], values);
+        Assert.True(stack.CanUndo);
+        Assert.Equal("Scoped", stack.UndoDescription);
+
+        stack.Undo();
+        Assert.Empty(values);
+        Assert.False(stack.CanUndo);
     }
 
     [Fact]
@@ -298,3 +350,4 @@ public class UndoRedoStackTests
         Assert.Equal("Cmd218", stack.UndoDescription);
     }
 }
+

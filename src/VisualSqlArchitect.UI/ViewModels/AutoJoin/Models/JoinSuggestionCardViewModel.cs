@@ -1,11 +1,13 @@
 using System.Windows.Input;
 using Avalonia.Media;
 using VisualSqlArchitect.Metadata;
+using VisualSqlArchitect.UI.Services.Localization;
 
 namespace VisualSqlArchitect.UI.ViewModels;
 
-public sealed class JoinSuggestionCardViewModel : ViewModelBase
+public sealed class JoinSuggestionCardViewModel : ViewModelBase, IDisposable
 {
+    private readonly ILocalizationService _localization;
     private bool _isAccepted;
     private bool _isDismissed;
 
@@ -13,7 +15,7 @@ public sealed class JoinSuggestionCardViewModel : ViewModelBase
 
     public string TablePair => $"{Suggestion.ExistingTable}  ↔  {Suggestion.NewTable}";
     public string OnClause => Suggestion.OnClause;
-    public string JoinType => Suggestion.JoinType + " JOIN";
+    public string JoinType => $"{Suggestion.JoinType} {_localization["autoJoin.joinKeyword"]}";
     public string Rationale => Suggestion.Rationale;
     public string ScoreLabel => $"{Suggestion.Score * 100:F0}%";
     public bool IsCatalogFk => Suggestion.Confidence >= JoinConfidence.CatalogDefinedFk;
@@ -33,10 +35,10 @@ public sealed class JoinSuggestionCardViewModel : ViewModelBase
     public string ConfidenceLabel =>
         Suggestion.Confidence switch
         {
-            >= JoinConfidence.CatalogDefinedFk => "FK Constraint",
-            >= JoinConfidence.CatalogDefinedReverse => "FK (Reverse)",
-            >= JoinConfidence.HeuristicStrong => "Naming Match",
-            _ => "Weak Match",
+            >= JoinConfidence.CatalogDefinedFk => _localization["autoJoin.confidence.fkConstraint"],
+            >= JoinConfidence.CatalogDefinedReverse => _localization["autoJoin.confidence.fkReverse"],
+            >= JoinConfidence.HeuristicStrong => _localization["autoJoin.confidence.namingMatch"],
+            _ => _localization["autoJoin.confidence.weakMatch"],
         };
 
     public bool IsAccepted
@@ -59,9 +61,11 @@ public sealed class JoinSuggestionCardViewModel : ViewModelBase
     public event EventHandler<JoinSuggestion>? Accepted;
     public event EventHandler<JoinSuggestion>? Dismissed;
 
-    public JoinSuggestionCardViewModel(JoinSuggestion suggestion)
+    public JoinSuggestionCardViewModel(JoinSuggestion suggestion, ILocalizationService? localization = null)
     {
         Suggestion = suggestion;
+        _localization = localization ?? LocalizationService.Instance;
+        _localization.PropertyChanged += OnLocalizationChanged;
         AcceptCommand = new RelayCommand(Accept);
         DismissCommand = new RelayCommand(Dismiss);
     }
@@ -78,5 +82,22 @@ public sealed class JoinSuggestionCardViewModel : ViewModelBase
         IsDismissed = true;
         RaisePropertyChanged(nameof(IsVisible));
         Dismissed?.Invoke(this, Suggestion);
+    }
+
+    public void RefreshLocalization()
+    {
+        RaisePropertyChanged(nameof(JoinType));
+        RaisePropertyChanged(nameof(ConfidenceLabel));
+    }
+
+    private void OnLocalizationChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is "" or "Item[]" or nameof(ILocalizationService.CurrentCulture))
+            RefreshLocalization();
+    }
+
+    public void Dispose()
+    {
+        _localization.PropertyChanged -= OnLocalizationChanged;
     }
 }

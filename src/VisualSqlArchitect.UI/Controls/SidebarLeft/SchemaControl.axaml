@@ -29,10 +29,13 @@
     </Style>
 
     <Style Selector="Border.schema-header-card">
+      <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
+      <Setter Property="RenderTransform" Value="scale(1)"/>
       <Setter Property="Transitions">
         <Transitions>
           <BrushTransition Property="Background" Duration="0:0:0.12"/>
           <BrushTransition Property="BorderBrush" Duration="0:0:0.12"/>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.12"/>
         </Transitions>
       </Setter>
     </Style>
@@ -40,13 +43,17 @@
     <Style Selector="Border.schema-header-card:pointerover">
       <Setter Property="Background" Value="{StaticResource MacroBg2Brush}"/>
       <Setter Property="BorderBrush" Value="{StaticResource AccentBlueBrush}"/>
+      <Setter Property="RenderTransform" Value="scale(1.008)"/>
     </Style>
 
     <Style Selector="Border.schema-object-card">
+      <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
+      <Setter Property="RenderTransform" Value="scale(1)"/>
       <Setter Property="Transitions">
         <Transitions>
           <BrushTransition Property="Background" Duration="0:0:0.12"/>
           <BrushTransition Property="BorderBrush" Duration="0:0:0.12"/>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.12"/>
         </Transitions>
       </Setter>
     </Style>
@@ -54,6 +61,7 @@
     <Style Selector="Border.schema-object-card:pointerover">
       <Setter Property="Background" Value="{StaticResource MacroBg1Brush}"/>
       <Setter Property="BorderBrush" Value="{StaticResource AccentBlueBrush}"/>
+      <Setter Property="RenderTransform" Value="scale(1.01)"/>
     </Style>
 
     <Style Selector="Border.schema-object-card.expanded">
@@ -85,7 +93,7 @@
       <Border Background="{StaticResource MacroBg2Brush}" BorderBrush="{StaticResource MacroBorderSubtleBrush}" BorderThickness="1" CornerRadius="{StaticResource StartRadiusButton}" Padding="10,8">
         <DockPanel>
           <mi:MaterialIcon DockPanel.Dock="Left" Kind="Magnify" Foreground="{StaticResource TextSecondaryBrush}" Width="17" Height="17" VerticalAlignment="Center" Margin="0,0,7,0"/>
-          <TextBox DockPanel.Dock="Left" Classes="sidebar-input" Text="{Binding FilterQuery}" Watermark="{Binding [schema.search], Source={x:Static loc:LocalizationService.Instance}}" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" Foreground="{StaticResource TextPrimaryBrush}" Padding="0" FontSize="11" FontFamily="monospace"/>
+          <TextBox DockPanel.Dock="Left" Classes="sidebar-input" Text="{Binding FilterQuery}" Watermark="{Binding [schema.search], Source={x:Static loc:LocalizationService.Instance}}" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" Foreground="{StaticResource TextPrimaryBrush}" Padding="0" FontSize="11" FontFamily="{StaticResource MonoFont}"/>
         </DockPanel>
       </Border>
     </Border>
@@ -108,7 +116,11 @@
                       <mi:MaterialIcon Kind="{Binding Icon, Converter={StaticResource StringToIconConverter}}" Width="18" Height="18" Foreground="{Binding Color}"/>
                       <StackPanel VerticalAlignment="Center" Spacing="2">
                         <TextBlock Text="{Binding Name}" Classes="schema-title"/>
-                        <TextBlock Text="{Binding Count, StringFormat='{}︸ {0} item(s)'}" Classes="schema-meta" Opacity="0.6"/>
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                          <TextBlock Text="︸" Classes="schema-meta" Opacity="0.6"/>
+                          <TextBlock Text="{Binding Count}" Classes="schema-meta" Opacity="0.6"/>
+                          <TextBlock Text="{Binding [schema.itemsSuffix], Source={x:Static loc:LocalizationService.Instance}}" Classes="schema-meta" Opacity="0.6"/>
+                        </StackPanel>
                       </StackPanel>
                     </StackPanel>
                   </DockPanel>
@@ -119,6 +131,60 @@
                     <DataTemplate DataType="vm:SchemaObjectViewModel">
                       <StackPanel Spacing="0">
                         <Border Padding="13,10" MinHeight="46" Background="{StaticResource MacroBg2Brush}" BorderBrush="{StaticResource MacroBorderSubtleBrush}" BorderThickness="1,0,1,0" Cursor="Hand" Classes="schema-object-card" Classes.expanded="{Binding IsExpanded}">
+                          <ToolTip.Tip>
+                            <Border Background="{StaticResource MacroBg1Brush}"
+                                    BorderBrush="{StaticResource MacroBorderSubtleBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="{StaticResource StartRadiusCard}"
+                                    Padding="10"
+                                    MaxWidth="360">
+                              <StackPanel Spacing="6">
+                                <TextBlock Text="{Binding Name}"
+                                           Classes="schema-title"/>
+                                <TextBlock Text="{Binding SubText}"
+                                           Classes="schema-meta"
+                                           TextWrapping="Wrap"/>
+
+                                <TextBlock Text="{Binding [tooltip.tableColumns], Source={x:Static loc:LocalizationService.Instance}}"
+                                           FontSize="{StaticResource FontSizeMeta}"
+                                           FontWeight="{StaticResource FontWeightStrong}"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           IsVisible="{Binding IsExpandable}"/>
+
+                                <ItemsControl ItemsSource="{Binding Children}" IsVisible="{Binding IsExpandable}">
+                                  <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="vm:SchemaObjectViewModel">
+                                      <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <mi:MaterialIcon Grid.Column="0"
+                                                         Kind="{Binding Icon, Converter={StaticResource StringToIconConverter}}"
+                                                         Width="14"
+                                                         Height="14"
+                                                         VerticalAlignment="Center"
+                                                         Foreground="{Binding BadgeColor}"/>
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding Name}"
+                                                   Margin="8,0,0,0"
+                                                   FontSize="{StaticResource FontSizeMeta}"
+                                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                                   VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2"
+                                                   Text="{Binding DataType}"
+                                                   FontFamily="{StaticResource MonoFont}"
+                                                   FontSize="{StaticResource FontSizeMeta}"
+                                                   Foreground="{Binding BadgeColor}"
+                                                   VerticalAlignment="Center"/>
+                                      </Grid>
+                                    </DataTemplate>
+                                  </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <TextBlock Text="{Binding [tooltip.tableColumns.none], Source={x:Static loc:LocalizationService.Instance}}"
+                                           FontSize="{StaticResource FontSizeMeta}"
+                                           Foreground="{StaticResource TextMutedBrush}"
+                                           IsVisible="{Binding IsExpandable, Converter={x:Static BoolConverters.Not}}"/>
+                              </StackPanel>
+                            </Border>
+                          </ToolTip.Tip>
                           <DockPanel LastChildFill="True">
                             <Button DockPanel.Dock="Right" Command="{Binding AddNodeCommand}" IsVisible="{Binding AddNodeCommand, Converter={x:Static ObjectConverters.IsNotNull}}" Classes="success" Padding="6,2" FontSize="{StaticResource FontSizeMeta}" CornerRadius="{StaticResource StartRadiusButton}" Margin="8,0,0,0" Opacity="0.9">
                               <mi:MaterialIcon Kind="Plus" Width="14" Height="14"/>
@@ -144,7 +210,7 @@
                               <Border Padding="13,8" MinHeight="40" Background="{StaticResource MacroBg1Brush}" BorderBrush="{StaticResource MacroBorderSubtleBrush}" BorderThickness="1,0,1,0" Cursor="Hand" Margin="0" Classes="schema-object-card">
                                 <DockPanel Margin="18,0,0,0">
                                   <Border DockPanel.Dock="Right" Background="{Binding BadgeColor}" CornerRadius="{StaticResource StartRadiusButton}" Padding="6,3" Opacity="0.25" Margin="9,0,0,0">
-                                    <TextBlock Text="{Binding DataType}" Foreground="{Binding BadgeColor}" FontSize="{StaticResource FontSizeMeta}" FontWeight="{StaticResource FontWeightStrong}" FontFamily="monospace"/>
+                                    <TextBlock Text="{Binding DataType}" Foreground="{Binding BadgeColor}" FontSize="{StaticResource FontSizeMeta}" FontWeight="{StaticResource FontWeightStrong}" FontFamily="{StaticResource MonoFont}"/>
                                   </Border>
                                   <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                     <mi:MaterialIcon Kind="{Binding Icon, Converter={StaticResource StringToIconConverter}}" Width="15" Height="15" VerticalAlignment="Center" Foreground="{Binding BadgeColor}"/>
@@ -172,7 +238,7 @@
 
     <StackPanel Grid.Row="2" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" IsVisible="{Binding ShowFilterEmptyState}" Classes="schema-empty-state">
       <TextBlock Text="{Binding [schema.search], Source={x:Static loc:LocalizationService.Instance}}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="{StaticResource FontSizeMeta}" Opacity="0.8"/>
-      <TextBlock Text="Nenhum objeto encontrado para o filtro atual" Foreground="{StaticResource TextPrimaryBrush}" FontSize="{StaticResource FontSizeBody}" FontWeight="{StaticResource FontWeightStrong}"/>
+      <TextBlock Text="{Binding [schema.emptyFiltered], Source={x:Static loc:LocalizationService.Instance}}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="{StaticResource FontSizeBody}" FontWeight="{StaticResource FontWeightStrong}"/>
     </StackPanel>
 
     <!-- No Connection -->

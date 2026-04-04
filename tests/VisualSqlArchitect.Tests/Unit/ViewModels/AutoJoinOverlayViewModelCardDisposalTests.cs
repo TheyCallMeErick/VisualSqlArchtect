@@ -1,3 +1,4 @@
+﻿using VisualSqlArchitect.UI.Services.Benchmark;
 using VisualSqlArchitect.UI.ViewModels;
 using VisualSqlArchitect.Metadata;
 using Xunit;
@@ -239,3 +240,4 @@ public class AutoJoinOverlayViewModelCardDisposalTests
         Assert.Empty(overlay.Cards);
     }
 }
+

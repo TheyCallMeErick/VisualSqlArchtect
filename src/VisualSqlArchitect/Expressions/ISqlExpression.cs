@@ -21,6 +21,11 @@ public enum PinDataType
     ColumnRef,
     ColumnSet,
     RowSet,
+    TableDef,
+    ColumnDef,
+    Constraint,
+    IndexDef,
+    AlterOp,
     Expression, // untyped SQL fragment — accepted by any slot
 }
 

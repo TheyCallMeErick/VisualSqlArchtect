@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Diagnostics;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using VisualSqlArchitect.UI.Services.Localization;
 
 namespace VisualSqlArchitect.UI.Serialization;
 
@@ -34,6 +36,7 @@ public record SavedSnippet(
 public static class SnippetStore
 {
     public static event Action<string>? WarningRaised;
+    private static readonly ILogger _logger = NullLogger.Instance;
 
     private static readonly JsonSerializerOptions _opts = new()
     {
@@ -61,7 +64,13 @@ public static class SnippetStore
         }
         catch (Exception ex)
         {
-            RaiseWarning($"Failed to load snippets from '{path}': {ex.Message}");
+            RaiseWarning(
+                string.Format(
+                    L("snippetStore.warning.loadFailed", "Failed to load snippets from '{0}': {1}"),
+                    path,
+                    ex.Message
+                )
+            );
             return [];
         }
     }
@@ -75,14 +84,25 @@ public static class SnippetStore
         }
         catch (Exception ex)
         {
-            RaiseWarning($"Failed to save snippets: {ex.Message}");
+            RaiseWarning(
+                string.Format(
+                    L("snippetStore.warning.saveFailed", "Failed to save snippets: {0}"),
+                    ex.Message
+                )
+            );
         }
     }
 
     private static void RaiseWarning(string message)
     {
-        Debug.WriteLine($"[SnippetStore] {message}");
+        _logger.LogWarning("[SnippetStore] {Message}", message);
         WarningRaised?.Invoke(message);
+    }
+
+    private static string L(string key, string fallback)
+    {
+        string value = LocalizationService.Instance[key];
+        return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
     }
 
     /// <summary>Appends a new snippet and persists to disk.</summary>

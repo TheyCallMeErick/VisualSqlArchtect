@@ -1,3 +1,5 @@
+﻿using VisualSqlArchitect.UI.Services.Canvas.AutoJoin;
+using VisualSqlArchitect.UI.Services.Explain;
 using System.Reflection;
 using Avalonia;
 using VisualSqlArchitect.Metadata;
@@ -99,9 +101,16 @@ public class CanvasAutoJoinAcceptanceJoinTypesTests
 
     private static void InvokeJoinAccepted(CanvasViewModel canvas, JoinSuggestion suggestion)
     {
-        MethodInfo method = typeof(CanvasViewModel)
-            .GetMethod("OnJoinAccepted", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        FieldInfo controllerField = typeof(CanvasViewModel)
+            .GetField("_autoJoinController", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        object? controller = controllerField.GetValue(canvas);
+        Assert.NotNull(controller);
 
-        method.Invoke(canvas, [null, suggestion]);
+        MethodInfo method = controller.GetType()
+            .GetMethod("ApplyJoinSuggestion", BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        method.Invoke(controller, [suggestion]);
     }
 }
+
+

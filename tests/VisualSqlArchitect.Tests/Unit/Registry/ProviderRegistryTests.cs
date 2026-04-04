@@ -23,6 +23,7 @@ public class ProviderRegistryTests
         Assert.True(registry.IsProviderRegistered(DatabaseProvider.Postgres));
         Assert.True(registry.IsProviderRegistered(DatabaseProvider.MySql));
         Assert.True(registry.IsProviderRegistered(DatabaseProvider.SqlServer));
+        Assert.True(registry.IsProviderRegistered(DatabaseProvider.SQLite));
     }
 
     [Theory]
@@ -122,6 +123,23 @@ public class ProviderRegistryTests
     }
 
     [Fact]
+    public async Task CreateFunctionRegistry_ConcurrentCalls_ReturnSameInstance()
+    {
+        var registry = ProviderRegistry.CreateDefault();
+
+        Task<ISqlFunctionRegistry>[] tasks =
+        [
+            Task.Run(() => registry.CreateFunctionRegistry(DatabaseProvider.Postgres)),
+            Task.Run(() => registry.CreateFunctionRegistry(DatabaseProvider.Postgres)),
+            Task.Run(() => registry.CreateFunctionRegistry(DatabaseProvider.Postgres)),
+            Task.Run(() => registry.CreateFunctionRegistry(DatabaseProvider.Postgres)),
+        ];
+
+        ISqlFunctionRegistry[] results = await Task.WhenAll(tasks);
+        Assert.All(results, item => Assert.Same(results[0], item));
+    }
+
+    [Fact]
     public void GetRegisteredProviders_ReturnsAllProviders()
     {
         // Arrange
@@ -162,5 +180,23 @@ public class ProviderRegistryTests
 
         // Act & Assert
         Assert.Throws<NotSupportedException>(() => registry.GetDialect(DatabaseProvider.Postgres));
+    }
+
+    [Fact]
+    public void Constructor_WithRegistrations_BuildsRegistryFromInjectedSet()
+    {
+        var registrations = new IProviderRegistration[]
+        {
+            new ProviderRegistration(
+                DatabaseProvider.Postgres,
+                new PostgresDialect(),
+                new PostgresMetadataQueries(),
+                new PostgresFunctionFragments()
+            ),
+        };
+        var registry = new ProviderRegistry(registrations);
+
+        Assert.True(registry.IsProviderRegistered(DatabaseProvider.Postgres));
+        Assert.False(registry.IsProviderRegistered(DatabaseProvider.MySql));
     }
 }

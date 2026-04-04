@@ -10,17 +10,20 @@ namespace VisualSqlArchitect.Expressions;
 /// </summary>
 public sealed class EmitContext(DatabaseProvider provider, ISqlFunctionRegistry registry)
 {
+    private readonly Providers.Dialects.ISqlDialect _dialect =
+        new ProviderRegistry(DefaultProviderRegistrations.CreateAll()).GetDialect(provider);
+
     public DatabaseProvider Provider { get; } = provider;
     public ISqlFunctionRegistry Registry { get; } = registry;
 
-    public string QuoteIdentifier(string id) =>
-        Provider switch
-        {
-            DatabaseProvider.SqlServer => $"[{id}]",
-            DatabaseProvider.MySql => $"`{id}`",
-            DatabaseProvider.Postgres => $"\"{id}\"",
-            _ => id,
-        };
+    public EmitContext(DatabaseProvider provider, ISqlFunctionRegistry registry, IProviderRegistry providerRegistry)
+        : this(provider, registry)
+    {
+        ArgumentNullException.ThrowIfNull(providerRegistry);
+        _dialect = providerRegistry.GetDialect(provider);
+    }
 
-    public static string QuoteLiteral(string value) => $"'{value.Replace("'", "''")}'";
+    public string QuoteIdentifier(string id) => _dialect.QuoteIdentifier(id);
+
+    public static string QuoteLiteral(string value) => SqlStringUtility.QuoteLiteral(value);
 }

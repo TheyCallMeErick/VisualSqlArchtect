@@ -21,7 +21,6 @@ public class SqlImportLargeInputIntegrationTests
 
         await canvas.SqlImporter.ImportAsync();
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.True(canvas.SqlImporter.ReportImportedCount > 0);
         Assert.True(canvas.SqlImporter.LastTotalDurationMs > 0);

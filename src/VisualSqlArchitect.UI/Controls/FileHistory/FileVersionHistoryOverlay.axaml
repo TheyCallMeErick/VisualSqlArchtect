@@ -78,7 +78,10 @@
                     </StackPanel>
                     <StackPanel Grid.Column="1" Spacing="2" HorizontalAlignment="Right">
                       <TextBlock Text="{Binding SizeLabel}" Foreground="#60A5FA" FontSize="10" HorizontalAlignment="Right"/>
-                      <TextBlock Text="{Binding IsCompressed, StringFormat='Compressed: {0}'}" Foreground="#4A5568" FontSize="9" HorizontalAlignment="Right"/>
+                      <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Right">
+                        <TextBlock Text="{Binding [fileHistory.compressedLabel], Source={x:Static loc:LocalizationService.Instance}}" Foreground="#4A5568" FontSize="9"/>
+                        <TextBlock Text="{Binding IsCompressed}" Foreground="#4A5568" FontSize="9"/>
+                      </StackPanel>
                     </StackPanel>
                   </Grid>
                 </DataTemplate>

@@ -1,71 +1,35 @@
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using VisualSqlArchitect.Core;
-using VisualSqlArchitect.Metadata.Inspectors;
 
 namespace VisualSqlArchitect.Metadata;
 
-// ─── Inspector factory ────────────────────────────────────────────────────────
-
-public static class InspectorFactory
+public sealed class MetadataServiceOptions
 {
-    public static IDatabaseInspector Create(ConnectionConfig config) =>
-        config.Provider switch
-        {
-            DatabaseProvider.SqlServer => new SqlServerInspector(config),
-            DatabaseProvider.MySql => new MySqlInspector(config),
-            DatabaseProvider.Postgres => new PostgresInspector(config),
-            _ => throw new NotSupportedException($"No inspector for '{config.Provider}'."),
-        };
-}
+    public const string CacheTtlSecondsEnvVar = "VSA_METADATA_CACHE_TTL_SECONDS";
+    public static readonly TimeSpan DefaultCacheTtl = TimeSpan.FromMinutes(5);
 
-// ─── Cache entry ──────────────────────────────────────────────────────────────
+    public TimeSpan CacheTtl { get; set; } = ResolveCacheTtlFromEnvironment();
 
-internal record CacheEntry(DbMetadata Metadata, DateTimeOffset ExpiresAt);
-
-// ─── Thread-safe HashSet wrapper ─────────────────────────────────────────────
-
-internal sealed class ConcurrentStringSet
-{
-    private readonly HashSet<string> _inner = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Lock _lock = new();
-
-    public void Add(string item)
+    internal static TimeSpan ResolveEffectiveCacheTtl(IOptions<MetadataServiceOptions>? options)
     {
-        lock (_lock)
-            _inner.Add(item);
+        TimeSpan configured = options?.Value.CacheTtl ?? TimeSpan.Zero;
+        if (configured > TimeSpan.Zero)
+            return configured;
+
+        return ResolveCacheTtlFromEnvironment();
     }
 
-    public void Remove(string item)
+    private static TimeSpan ResolveCacheTtlFromEnvironment()
     {
-        lock (_lock)
-            _inner.Remove(item);
-    }
+        string? raw = Environment.GetEnvironmentVariable(CacheTtlSecondsEnvVar);
+        if (!string.IsNullOrWhiteSpace(raw) && int.TryParse(raw, out int seconds) && seconds > 0)
+            return TimeSpan.FromSeconds(seconds);
 
-    public bool Contains(string item)
-    {
-        lock (_lock)
-            return _inner.Contains(item);
-    }
-
-    public IReadOnlyList<string> Snapshot()
-    {
-        lock (_lock)
-            return _inner.ToList();
-    }
-
-    public int Count
-    {
-        get
-        {
-            lock (_lock)
-                return _inner.Count;
-        }
+        return DefaultCacheTtl;
     }
 }
-
-// ─── Service ──────────────────────────────────────────────────────────────────
 
 /// <summary>
 /// Coordinates schema inspection, TTL caching, and auto-join detection.
@@ -87,26 +51,45 @@ internal sealed class ConcurrentStringSet
 /// </summary>
 public sealed class MetadataService(
     IDatabaseInspector inspector,
-    TimeSpan? cacheTtl = null,
-    ILogger<MetadataService>? logger = null
+    IOptions<MetadataServiceOptions>? options = null,
+    ILogger<MetadataService>? logger = null,
+    ICanvasTableTracker? canvasTableTracker = null,
+    IJoinSuggestionEngine? joinSuggestionEngine = null,
+    IMetadataSnapshotCache? snapshotCache = null
 ) : IDisposable
 {
     private readonly IDatabaseInspector _inspector =
         inspector ?? throw new ArgumentNullException(nameof(inspector));
     private readonly ILogger<MetadataService> _logger =
         logger ?? NullLogger<MetadataService>.Instance;
-    private readonly TimeSpan _cacheTtl = cacheTtl ?? TimeSpan.FromMinutes(5);
+    private readonly ICanvasTableTracker _canvasTableTracker = canvasTableTracker ?? new CanvasTableTracker();
+    private readonly IJoinSuggestionEngine _joinSuggestionEngine =
+        joinSuggestionEngine ?? new AutoJoinSuggestionEngine();
+    private readonly IMetadataSnapshotCache _snapshotCache =
+        snapshotCache ?? new MetadataSnapshotCache(MetadataServiceOptions.ResolveEffectiveCacheTtl(options));
 
-    private volatile CacheEntry? _cache;
-    private readonly SemaphoreSlim _fetchLock = new(1, 1);
-    private readonly ConcurrentStringSet _canvasTables = new();
     private bool _disposed;
 
     public static MetadataService Create(
         ConnectionConfig config,
-        TimeSpan? cacheTtl = null,
-        ILogger<MetadataService>? logger = null
-    ) => new(InspectorFactory.Create(config), cacheTtl, logger);
+        IOptions<MetadataServiceOptions>? options = null,
+        ILogger<MetadataService>? logger = null,
+        IDatabaseInspectorFactory? inspectorFactory = null,
+        ICanvasTableTracker? canvasTableTracker = null,
+        IJoinSuggestionEngine? joinSuggestionEngine = null,
+        IMetadataSnapshotCache? snapshotCache = null
+    )
+    {
+        IDatabaseInspectorFactory factory = inspectorFactory ?? DatabaseInspectorFactory.CreateDefault();
+        return new(
+            factory.Create(config),
+            options,
+            logger,
+            canvasTableTracker,
+            joinSuggestionEngine,
+            snapshotCache
+        );
+    }
 
     // ── Schema retrieval ──────────────────────────────────────────────────────
 
@@ -120,48 +103,33 @@ public sealed class MetadataService(
         CancellationToken ct = default
     )
     {
-        // Fast path — check outside the lock first
-        CacheEntry? cached = _cache;
-        if (!forceRefresh && IsFresh(cached))
-            return cached!.Metadata;
+        return await _snapshotCache.GetOrLoadAsync(
+            async loadCt =>
+            {
+                _logger.LogInformation(
+                    "[MetadataService] Introspecting {Provider} — {Db}",
+                    _inspector.Provider,
+                    "(live)"
+                );
 
-        await _fetchLock.WaitAsync(ct);
-        try
-        {
-            // Double-check after acquiring
-            cached = _cache;
-            if (!forceRefresh && IsFresh(cached))
-                return cached!.Metadata;
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                DbMetadata metadata = await _inspector.InspectAsync(loadCt);
+                sw.Stop();
 
-            _logger.LogInformation(
-                "[MetadataService] Introspecting {Provider} — {Db}",
-                _inspector.Provider,
-                "(live)"
-            );
+                _logger.LogInformation(
+                    "[MetadataService] Done — {T} tables · {V} views · {FK} FKs in {Ms}ms",
+                    metadata.TotalTables,
+                    metadata.TotalViews,
+                    metadata.TotalForeignKeys,
+                    sw.ElapsedMilliseconds
+                );
 
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-            DbMetadata metadata = await _inspector.InspectAsync(ct);
-            sw.Stop();
-
-            _logger.LogInformation(
-                "[MetadataService] Done — {T} tables · {V} views · {FK} FKs in {Ms}ms",
-                metadata.TotalTables,
-                metadata.TotalViews,
-                metadata.TotalForeignKeys,
-                sw.ElapsedMilliseconds
-            );
-
-            _cache = new CacheEntry(metadata, DateTimeOffset.UtcNow.Add(_cacheTtl));
-            return metadata;
-        }
-        finally
-        {
-            _fetchLock.Release();
-        }
+                return metadata;
+            },
+            forceRefresh,
+            ct
+        );
     }
-
-    private static bool IsFresh(CacheEntry? entry) =>
-        entry is not null && DateTimeOffset.UtcNow < entry.ExpiresAt;
 
     // ── Single-table refresh ──────────────────────────────────────────────────
 
@@ -177,9 +145,7 @@ public sealed class MetadataService(
     {
         TableMetadata fresh = await _inspector.InspectTableAsync(schema, table, ct);
 
-        // Atomic hot-swap inside the cache
-        if (_cache is not null)
-            _cache = new CacheEntry(ReplaceTable(_cache.Metadata, fresh), _cache.ExpiresAt);
+        _snapshotCache.ReplaceTable(fresh);
 
         _logger.LogDebug("[MetadataService] Refreshed table {S}.{T}", schema, table);
         return fresh;
@@ -197,27 +163,27 @@ public sealed class MetadataService(
     /// <summary>Register a table that was placed on the canvas.</summary>
     public void AddCanvasTable(string fullTableName)
     {
-        _canvasTables.Add(fullTableName);
+        _canvasTableTracker.Add(fullTableName);
         _logger.LogDebug(
             "[Canvas] Added '{T}' — canvas size: {N}",
             fullTableName,
-            _canvasTables.Count
+            _canvasTableTracker.Count
         );
     }
 
     /// <summary>Remove a table that was deleted from the canvas.</summary>
     public void RemoveCanvasTable(string fullTableName)
     {
-        _canvasTables.Remove(fullTableName);
+        _canvasTableTracker.Remove(fullTableName);
         _logger.LogDebug(
             "[Canvas] Removed '{T}' — canvas size: {N}",
             fullTableName,
-            _canvasTables.Count
+            _canvasTableTracker.Count
         );
     }
 
     /// <summary>Returns the tables currently on the canvas (snapshot, thread-safe).</summary>
-    public IReadOnlyList<string> CanvasTables => _canvasTables.Snapshot();
+    public IReadOnlyList<string> CanvasTables => _canvasTableTracker.Snapshot();
 
     // ── Auto-Join (main canvas entry point) ───────────────────────────────────
 
@@ -231,7 +197,7 @@ public sealed class MetadataService(
     public async Task<IReadOnlyList<JoinSuggestion>> SuggestJoinsAsync(
         string newTable,
         CancellationToken ct = default
-    ) => await SuggestJoinsAsync(newTable, _canvasTables.Snapshot(), ct);
+    ) => await SuggestJoinsAsync(newTable, _canvasTableTracker.Snapshot(), ct);
 
     /// <summary>
     /// Stateless overload — caller supplies the canvas table set.
@@ -244,8 +210,11 @@ public sealed class MetadataService(
     )
     {
         DbMetadata metadata = await GetMetadataAsync(ct: ct);
-        var detector = new AutoJoinDetector(metadata);
-        IReadOnlyList<JoinSuggestion> suggestions = detector.Suggest(newTable, canvasTables);
+        IReadOnlyList<JoinSuggestion> suggestions = _joinSuggestionEngine.Suggest(
+            metadata,
+            newTable,
+            canvasTables
+        );
 
         _logger.LogInformation(
             "[AutoJoin] '{New}' → {N} suggestion(s): [{Pairs}]",
@@ -264,75 +233,16 @@ public sealed class MetadataService(
 
     public void InvalidateCache()
     {
-        _cache = null;
+        _snapshotCache.Invalidate();
         _logger.LogDebug("[MetadataService] Cache invalidated.");
-    }
-
-    // ── Rebuild helpers ───────────────────────────────────────────────────────
-
-    private static DbMetadata ReplaceTable(DbMetadata original, TableMetadata fresh)
-    {
-        var newSchemas = original
-            .Schemas.Select(s =>
-            {
-                if (!s.Name.Equals(fresh.Schema, StringComparison.OrdinalIgnoreCase))
-                    return s;
-
-                var newTables = s
-                    .Tables.Select(t =>
-                        t.FullName.Equals(fresh.FullName, StringComparison.OrdinalIgnoreCase)
-                            ? fresh
-                            : t
-                    )
-                    .ToList();
-
-                return s with
-                {
-                    Tables = newTables,
-                };
-            })
-            .ToList();
-
-        return original with
-        {
-            Schemas = newSchemas,
-        };
     }
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _fetchLock?.Dispose();
+        if (_disposed)
+            return;
+
+        _snapshotCache.Dispose();
         _disposed = true;
-    }
-}
-
-// ─── DI extension ─────────────────────────────────────────────────────────────
-
-public static class MetadataServiceExtensions
-{
-    /// <summary>
-    /// Registers the full metadata intelligence stack.
-    /// Call after <c>services.AddVisualSqlArchitect()</c>.
-    /// </summary>
-    public static IServiceCollection AddMetadataIntelligence(
-        this IServiceCollection services,
-        TimeSpan? cacheTtl = null
-    )
-    {
-        services.AddSingleton(sp =>
-        {
-            ActiveConnectionContext ctx = sp.GetRequiredService<ActiveConnectionContext>();
-            ILogger<MetadataService>? logger = sp.GetService<ILogger<MetadataService>>();
-            // Config is available after SwitchAsync(); service is lazily initialised
-            return MetadataService.Create(
-                ctx.Config
-                    ?? throw new InvalidOperationException("No active connection configured"),
-                cacheTtl,
-                logger
-            );
-        });
-
-        return services;
     }
 }

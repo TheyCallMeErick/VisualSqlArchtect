@@ -1,4 +1,6 @@
-using System.Reflection;
+﻿using VisualSqlArchitect.UI.Services.Canvas.AutoJoin;
+using VisualSqlArchitect.UI.Services.Explain;
+using VisualSqlArchitect.CanvasKit;
 using VisualSqlArchitect.UI.ViewModels;
 using Xunit;
 
@@ -15,17 +17,15 @@ public class CanvasAutoJoinClauseParsingTests
     [InlineData("orders.id = customers.id AND 1=1", false)]
     public void TrySplitJoinClauseOnEquality_ValidatesOperatorShape(string clause, bool expected)
     {
-        MethodInfo method = typeof(CanvasViewModel)
-            .GetMethod("TrySplitJoinClauseOnEquality", BindingFlags.NonPublic | BindingFlags.Static)!;
-
-        object?[] args = [clause, null!, null!];
-        bool success = (bool)method.Invoke(null, args)!;
+        bool success = CanvasAutoJoinSemantics.TrySplitJoinClauseOnEquality(clause, out string left, out string right);
 
         Assert.Equal(expected, success);
         if (expected)
         {
-            Assert.Equal("orders.customer_id", Assert.IsType<string>(args[1]));
-            Assert.Equal("customers.id", Assert.IsType<string>(args[2]));
+            Assert.Equal("orders.customer_id", left);
+            Assert.Equal("customers.id", right);
         }
     }
 }
+
+

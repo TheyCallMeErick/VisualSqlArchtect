@@ -4,10 +4,19 @@ namespace VisualSqlArchitect.Providers.Dialects;
 /// Abstração de dialeto SQL específico de cada provider.
 /// Centraliza queries de metadata e operações de dialeto específicas.
 /// </summary>
-public interface ISqlDialect
+public interface IIdentifierDialect
 {
-    #region Schema Discovery Queries
+    /// <summary>
+    /// Quoteia um identificador (table name, column name) segundo dialeto.
+    /// Ex SQL Server: [tableName]
+    /// Ex MySQL: `tableName`
+    /// Ex Postgres: "tableName"
+    /// </summary>
+    string QuoteIdentifier(string identifier);
+}
 
+public interface IQueryDialect
+{
     /// <summary>
     /// Query para listar todas as tabelas/views do banco.
     /// Deve retornar: TABLE_SCHEMA, TABLE_NAME
@@ -35,10 +44,6 @@ public interface ISqlDialect
     /// </summary>
     string GetForeignKeysQuery();
 
-    #endregion
-
-    #region Query Wrapping
-
     /// <summary>
     /// Envolve uma query em SELECT TOP N (SQL Server style).
     /// Ex: "SELECT TOP 100 * FROM (SELECT * FROM users WHERE ...) AS __preview"
@@ -57,18 +62,148 @@ public interface ISqlDialect
     /// Returns the original SQL when hints are invalid or unsupported.
     /// </summary>
     string ApplyQueryHints(string sql, string? queryHints);
+}
 
-    #endregion
-
-    #region Identifier Quoting
+public interface IDdlDialect
+{
+    /// <summary>
+    /// Emits a single column definition fragment used inside CREATE TABLE.
+    /// </summary>
+    string EmitCreateTableColumn(
+        string columnName,
+        string dataType,
+        bool isNullable,
+        string? defaultExpression = null,
+        string? columnComment = null
+    ) => throw new NotSupportedException("DDL emission is not implemented for this dialect.");
 
     /// <summary>
-    /// Quoteia um identificador (table name, column name) segundo dialeto.
-    /// Ex SQL Server: [tableName]
-    /// Ex MySQL: `tableName`
-    /// Ex Postgres: "tableName"
+    /// Emits a PRIMARY KEY table constraint fragment.
     /// </summary>
-    string QuoteIdentifier(string identifier);
+    string EmitPrimaryKeyConstraint(string? constraintName, IReadOnlyList<string> columns) =>
+        throw new NotSupportedException("DDL emission is not implemented for this dialect.");
 
-    #endregion
+    /// <summary>
+    /// Emits a UNIQUE table constraint fragment.
+    /// </summary>
+    string EmitUniqueConstraint(string? constraintName, IReadOnlyList<string> columns) =>
+        throw new NotSupportedException("DDL emission is not implemented for this dialect.");
+
+    /// <summary>
+    /// Emits a CHECK table constraint fragment.
+    /// </summary>
+    string EmitCheckConstraint(string? constraintName, string expression) =>
+        throw new NotSupportedException("DDL emission is not implemented for this dialect.");
+
+    /// <summary>
+    /// Emits a CREATE TABLE statement.
+    /// </summary>
+    string EmitCreateTable(
+        string schemaName,
+        string tableName,
+        bool ifNotExists,
+        IReadOnlyList<string> columnFragments,
+        IReadOnlyList<string> constraintFragments,
+        string? tableComment = null
+    ) => throw new NotSupportedException("DDL emission is not implemented for this dialect.");
+
+    /// <summary>
+    /// Emits a provider-specific table comment statement when comments are supported as separate DDL.
+    /// Return null/empty when not supported or inlined in CREATE TABLE.
+    /// </summary>
+    string? EmitTableComment(string schemaName, string tableName, string? comment) => null;
+
+    /// <summary>
+    /// Emits a provider-specific column comment statement when comments are supported as separate DDL.
+    /// Return null/empty when not supported or inlined in CREATE TABLE.
+    /// </summary>
+    string? EmitColumnComment(string schemaName, string tableName, string columnName, string? comment) => null;
+
+    /// <summary>
+    /// Emits a CREATE INDEX statement.
+    /// </summary>
+    string EmitCreateIndex(
+        string schemaName,
+        string tableName,
+        string indexName,
+        bool isUnique,
+        IReadOnlyList<Ddl.DdlIndexKeyExpr> keyColumns,
+        IReadOnlyList<string> includeColumns,
+        bool ifNotExists
+    ) => throw new NotSupportedException("DDL emission is not implemented for this dialect.");
+
+    /// <summary>
+    /// Emits CREATE VIEW (or provider equivalent).
+    /// </summary>
+    string EmitCreateView(
+        string schemaName,
+        string viewName,
+        bool orReplace,
+        bool isMaterialized,
+        string selectSql
+    ) => throw new NotSupportedException("DDL emission is not implemented for this dialect.");
+
+    /// <summary>
+    /// Emits ALTER VIEW (or provider equivalent).
+    /// </summary>
+    string EmitAlterView(
+        string schemaName,
+        string viewName,
+        string selectSql
+    ) => throw new NotSupportedException("DDL emission is not implemented for this dialect.");
+
+    /// <summary>
+    /// Emits ALTER TABLE ... ADD COLUMN ...
+    /// </summary>
+    string EmitAlterTableAddColumn(string schemaName, string tableName, string columnFragment) =>
+        throw new NotSupportedException("DDL emission is not implemented for this dialect.");
+
+    /// <summary>
+    /// Emits ALTER TABLE ... DROP COLUMN ...
+    /// </summary>
+    string EmitAlterTableDropColumn(string schemaName, string tableName, string columnName, bool ifExists) =>
+        throw new NotSupportedException("DDL emission is not implemented for this dialect.");
+
+    /// <summary>
+    /// Emits provider-specific rename-column statement.
+    /// </summary>
+    string EmitAlterTableRenameColumn(string schemaName, string tableName, string oldName, string newName) =>
+        throw new NotSupportedException("DDL emission is not implemented for this dialect.");
+
+    /// <summary>
+    /// Emits provider-specific rename-table statement.
+    /// </summary>
+    string EmitAlterTableRenameTable(string schemaName, string tableName, string newName, string? newSchema) =>
+        throw new NotSupportedException("DDL emission is not implemented for this dialect.");
+
+    /// <summary>
+    /// Emits provider-specific drop-table statement.
+    /// </summary>
+    string EmitAlterTableDropTable(string schemaName, string tableName, bool ifExists) =>
+        throw new NotSupportedException("DDL emission is not implemented for this dialect.");
+
+    /// <summary>
+    /// Emits provider-specific alter-column-type statement.
+    /// </summary>
+    string EmitAlterTableAlterColumnType(
+        string schemaName,
+        string tableName,
+        string columnName,
+        string newDataType,
+        bool isNullable
+    ) => throw new NotSupportedException("DDL emission is not implemented for this dialect.");
+
+    /// <summary>
+    /// Emits final ALTER TABLE script from operation statements.
+    /// </summary>
+    string EmitAlterTable(
+        string schemaName,
+        string tableName,
+        IReadOnlyList<string> operationStatements,
+        bool emitSeparateStatements
+    ) => string.Join("\n", operationStatements);
+}
+
+public interface ISqlDialect : IIdentifierDialect, IQueryDialect, IDdlDialect
+{
 }

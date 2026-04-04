@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Diagnostics;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using VisualSqlArchitect.UI.Services.Localization;
 
 namespace VisualSqlArchitect.UI.Serialization;
 
@@ -38,6 +40,7 @@ public static class FlowVersionStore
     public const int MaxVersions = 50;
 
     public static event Action<string>? WarningRaised;
+    private static readonly ILogger _logger = NullLogger.Instance;
 
     private static readonly JsonSerializerOptions _opts = new()
     {
@@ -65,7 +68,13 @@ public static class FlowVersionStore
         }
         catch (Exception ex)
         {
-            RaiseWarning($"Failed to load flow versions from '{path}': {ex.Message}");
+            RaiseWarning(
+                string.Format(
+                    L("flowVersionStore.warning.loadFailed", "Failed to load flow versions from '{0}': {1}"),
+                    path,
+                    ex.Message
+                )
+            );
             return [];
         }
     }
@@ -79,14 +88,25 @@ public static class FlowVersionStore
         }
         catch (Exception ex)
         {
-            RaiseWarning($"Failed to save flow versions: {ex.Message}");
+            RaiseWarning(
+                string.Format(
+                    L("flowVersionStore.warning.saveFailed", "Failed to save flow versions: {0}"),
+                    ex.Message
+                )
+            );
         }
     }
 
     private static void RaiseWarning(string message)
     {
-        Debug.WriteLine($"[FlowVersionStore] {message}");
+        _logger.LogWarning("[FlowVersionStore] {Message}", message);
         WarningRaised?.Invoke(message);
+    }
+
+    private static string L(string key, string fallback)
+    {
+        string value = LocalizationService.Instance[key];
+        return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
     }
 
     /// <summary>

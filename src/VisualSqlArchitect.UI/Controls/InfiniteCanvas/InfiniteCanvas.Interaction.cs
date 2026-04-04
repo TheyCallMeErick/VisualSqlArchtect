@@ -275,6 +275,13 @@ public sealed partial class InfiniteCanvas
         if (ViewModel is null)
             return;
 
+        if (e.Key is Key.LeftCtrl or Key.RightCtrl)
+        {
+            _isWireInsertModifierPressed = true;
+            if (_dragNode is not null)
+                UpdateWireInsertPreview(_dragNode);
+        }
+
         if (e.Key == Key.Space)
         {
             _isSpacePanArmed = true;
@@ -360,6 +367,39 @@ public sealed partial class InfiniteCanvas
             return;
         }
 
+        if (e.Key == Key.X && e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        {
+            if (TryBypassSelectedNode())
+            {
+                SyncWires();
+                InvalidateArrange();
+                e.Handled = true;
+                return;
+            }
+        }
+
+        if (e.Key == Key.Q && e.KeyModifiers.HasFlag(KeyModifiers.Alt))
+        {
+            if (SelectLinkedNodes(traverseUpstream: true))
+            {
+                SyncWires();
+                InvalidateArrange();
+                e.Handled = true;
+                return;
+            }
+        }
+
+        if (e.Key == Key.E && e.KeyModifiers.HasFlag(KeyModifiers.Alt))
+        {
+            if (SelectLinkedNodes(traverseUpstream: false))
+            {
+                SyncWires();
+                InvalidateArrange();
+                e.Handled = true;
+                return;
+            }
+        }
+
         if (e.Key is Key.Delete or Key.Back)
         {
             if (TryDeleteWire(_hoveredWire))
@@ -372,6 +412,13 @@ public sealed partial class InfiniteCanvas
 
     private void OnKeyUp(object? s, KeyEventArgs e)
     {
+        if (e.Key is Key.LeftCtrl or Key.RightCtrl)
+        {
+            _isWireInsertModifierPressed = false;
+            if (_dragNode is not null)
+                UpdateWireInsertPreview(_dragNode);
+        }
+
         if (e.Key != Key.Space)
             return;
 
@@ -460,7 +507,9 @@ public sealed partial class InfiniteCanvas
             menu.Items.Add(
                 new MenuItem
                 {
-                    Header = $"Delete {(sel.Count == 1 ? sel[0].Title : $"{sel.Count} nodes")}",
+                    Header = sel.Count == 1
+                        ? string.Format(L("context.deleteSingle", "Delete {0}"), sel[0].Title)
+                        : string.Format(L("context.deleteMultiple", "Delete {0} nodes"), sel.Count),
                     Command = new RelayCommand(ViewModel.DeleteSelected),
                 }
             );
@@ -472,7 +521,19 @@ public sealed partial class InfiniteCanvas
                     new MenuItem
                     {
                         Header = LocalizationService.Instance["context.editCte"],
-                        Command = new RelayCommand(() => ViewModel.EnterCteEditor(cteNode)),
+                        Command = new RelayCommand(() => _ = ViewModel.EnterCteEditorAsync(cteNode)),
+                    }
+                );
+            }
+
+            if (sel.Count == 1 && sel[0].Type == NodeType.ViewDefinition)
+            {
+                NodeViewModel viewNode = sel[0];
+                menu.Items.Add(
+                    new MenuItem
+                    {
+                        Header = LocalizationService.Instance["context.editViewSubcanvas"],
+                        Command = new RelayCommand(() => _ = ViewModel.EnterViewEditorAsync(viewNode)),
                     }
                 );
             }
@@ -480,36 +541,80 @@ public sealed partial class InfiniteCanvas
             menu.Items.Add(
                 new MenuItem
                 {
-                    Header = "Bring Forward (Ctrl+PgUp)",
+                    Header = L("context.bringForward", "Bring Forward (Ctrl+PgUp)"),
                     Command = ViewModel.BringSelectionForwardCommand,
                 }
             );
             menu.Items.Add(
                 new MenuItem
                 {
-                    Header = "Send Backward (Ctrl+PgDown)",
+                    Header = L("context.sendBackward", "Send Backward (Ctrl+PgDown)"),
                     Command = ViewModel.SendSelectionBackwardCommand,
                 }
             );
             menu.Items.Add(
                 new MenuItem
                 {
-                    Header = "Bring to Front (Ctrl+Shift+PgUp)",
+                    Header = L("context.bringToFront", "Bring to Front (Ctrl+Shift+PgUp)"),
                     Command = ViewModel.BringSelectionToFrontCommand,
                 }
             );
             menu.Items.Add(
                 new MenuItem
                 {
-                    Header = "Send to Back (Ctrl+Shift+PgDown)",
+                    Header = L("context.sendToBack", "Send to Back (Ctrl+Shift+PgDown)"),
                     Command = ViewModel.SendSelectionToBackCommand,
                 }
             );
             menu.Items.Add(
                 new MenuItem
                 {
-                    Header = "Normalize Layers",
+                    Header = L("context.normalizeLayers", "Normalize Layers"),
                     Command = ViewModel.NormalizeLayersCommand,
+                }
+            );
+
+            menu.Items.Add(new Separator());
+            menu.Items.Add(
+                new MenuItem
+                {
+                    Header = "Node Wrangler: Bypass selected (Ctrl+Shift+X)",
+                    Command = new RelayCommand(() =>
+                    {
+                        if (TryBypassSelectedNode())
+                        {
+                            SyncWires();
+                            InvalidateArrange();
+                        }
+                    }),
+                }
+            );
+            menu.Items.Add(
+                new MenuItem
+                {
+                    Header = "Node Wrangler: Select upstream (Alt+Q)",
+                    Command = new RelayCommand(() =>
+                    {
+                        if (SelectLinkedNodes(traverseUpstream: true))
+                        {
+                            SyncWires();
+                            InvalidateArrange();
+                        }
+                    }),
+                }
+            );
+            menu.Items.Add(
+                new MenuItem
+                {
+                    Header = "Node Wrangler: Select downstream (Alt+E)",
+                    Command = new RelayCommand(() =>
+                    {
+                        if (SelectLinkedNodes(traverseUpstream: false))
+                        {
+                            SyncWires();
+                            InvalidateArrange();
+                        }
+                    }),
                 }
             );
         }
@@ -518,7 +623,7 @@ public sealed partial class InfiniteCanvas
             menu.Items.Add(
                 new MenuItem
                 {
-                    Header = "Delete wire",
+                    Header = L("context.deleteWire", "Delete wire"),
                     Command = new RelayCommand(() => TryDeleteWire(wireUnderPointer)),
                 }
             );
@@ -528,7 +633,7 @@ public sealed partial class InfiniteCanvas
             menu.Items.Add(
                 new MenuItem
                 {
-                    Header = "Add Node (Shift+A)",
+                    Header = L("context.addNode", "Add Node (Shift+A)"),
                     Command = new RelayCommand(() =>
                         ViewModel.SearchMenu.Open(ScreenToCanvas(screen))
                     ),
@@ -540,12 +645,232 @@ public sealed partial class InfiniteCanvas
         menu.Items.Add(
             new MenuItem
             {
-                Header = $"Undo {ViewModel.UndoRedo.UndoDescription}",
+                Header = string.Format(L("context.undoWithDescription", "Undo {0}"), ViewModel.UndoRedo.UndoDescription),
                 Command = ViewModel.UndoCommand,
             }
         );
-        menu.Items.Add(new MenuItem { Header = "Redo", Command = ViewModel.RedoCommand });
+        menu.Items.Add(new MenuItem { Header = L("context.redo", "Redo"), Command = ViewModel.RedoCommand });
         menu.Open(this);
+    }
+
+    private static string L(string key, string fallback)
+    {
+        string value = LocalizationService.Instance[key];
+        return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
+    }
+
+    private bool IsWireInsertModifierActive()
+    {
+        return _isWireInsertModifierPressed;
+    }
+
+    private void SetWireInsertPreviewPins(PinViewModel? inputPin, PinViewModel? outputPin)
+    {
+        if (_wireInsertPreviewInputPin is not null)
+            _wireInsertPreviewInputPin.IsDropTarget = false;
+        if (_wireInsertPreviewOutputPin is not null)
+            _wireInsertPreviewOutputPin.IsDropTarget = false;
+
+        _wireInsertPreviewInputPin = inputPin;
+        _wireInsertPreviewOutputPin = outputPin;
+
+        if (_wireInsertPreviewInputPin is not null)
+            _wireInsertPreviewInputPin.IsDropTarget = true;
+        if (_wireInsertPreviewOutputPin is not null)
+            _wireInsertPreviewOutputPin.IsDropTarget = true;
+    }
+
+    private void SetWireInsertPreviewInvalidWire(ConnectionViewModel? wire)
+    {
+        _wireInsertPreviewInvalidWire = wire;
+        _wires.InvalidPreviewConnection = wire;
+    }
+
+    private void UpdateWireInsertPreview(NodeViewModel node)
+    {
+        if (ViewModel is null)
+            return;
+
+        CanvasHoverHighlighter.ClearHover(ViewModel);
+        SetWireInsertPreviewPins(null, null);
+        SetWireInsertPreviewInvalidWire(null);
+
+        if (!IsWireInsertModifierActive())
+        {
+            _hoveredPin = null;
+            _hoveredWire = null;
+            _wires.InvalidateVisual();
+            return;
+        }
+
+        ConnectionViewModel? wire = FindWireUnderNode(node);
+        if (wire?.ToPin is null)
+        {
+            _hoveredPin = null;
+            _hoveredWire = null;
+            _wires.InvalidateVisual();
+            return;
+        }
+
+        PinViewModel? insertInput = node.InputPins.FirstOrDefault(p => p.CanAccept(wire.FromPin));
+        PinViewModel? insertOutput = node.OutputPins.FirstOrDefault(p => wire.ToPin.CanAccept(p));
+
+        if (insertInput is null || insertOutput is null)
+        {
+            wire.IsHighlighted = true;
+            wire.FromPin.IsHovered = true;
+            wire.ToPin.IsHovered = true;
+            SetWireInsertPreviewInvalidWire(wire);
+            _hoveredPin = null;
+            _hoveredWire = wire;
+            _wires.InvalidateVisual();
+            return;
+        }
+
+        wire.IsHighlighted = true;
+        wire.FromPin.IsHovered = true;
+        wire.ToPin.IsHovered = true;
+        insertInput.IsHovered = true;
+        insertOutput.IsHovered = true;
+        SetWireInsertPreviewPins(insertInput, insertOutput);
+        SetWireInsertPreviewInvalidWire(null);
+
+        _hoveredPin = insertInput;
+        _hoveredWire = wire;
+        _wires.InvalidateVisual();
+    }
+
+    private bool TryInsertNodeOnWire(NodeViewModel node)
+    {
+        if (ViewModel is null || !IsWireInsertModifierActive())
+            return false;
+
+        ConnectionViewModel? wire = FindWireUnderNode(node);
+        if (wire?.ToPin is null)
+            return false;
+
+        if (ReferenceEquals(wire.FromPin.Owner, node) || ReferenceEquals(wire.ToPin.Owner, node))
+            return false;
+
+        PinViewModel? insertInput = node.InputPins.FirstOrDefault(p => p.CanAccept(wire.FromPin));
+        if (insertInput is null)
+            return false;
+
+        PinViewModel? insertOutput = node.OutputPins.FirstOrDefault(p => wire.ToPin.CanAccept(p));
+        if (insertOutput is null)
+            return false;
+
+        using UndoRedoStack.UndoRedoTransaction tx = ViewModel.UndoRedo.BeginTransaction("Insert node on wire");
+
+        ViewModel.DeleteConnection(wire);
+        ViewModel.ConnectPins(wire.FromPin, insertInput);
+        ViewModel.ConnectPins(insertOutput, wire.ToPin);
+
+        bool insertedIn = ViewModel.Connections.Any(c =>
+            ReferenceEquals(c.FromPin, wire.FromPin) && ReferenceEquals(c.ToPin, insertInput));
+        bool insertedOut = ViewModel.Connections.Any(c =>
+            ReferenceEquals(c.FromPin, insertOutput) && ReferenceEquals(c.ToPin, wire.ToPin));
+
+        if (!insertedIn || !insertedOut)
+            return false;
+
+        tx.Commit();
+        return true;
+    }
+
+    private ConnectionViewModel? FindWireUnderNode(NodeViewModel node)
+    {
+        if (!_nodeControlCache.TryGetValue(node, out NodeControl? control))
+            return null;
+
+        Point center = new(
+            node.Position.X + Math.Max(control.Bounds.Width, 1) / 2,
+            node.Position.Y + Math.Max(control.Bounds.Height, 1) / 2
+        );
+
+        return _wires.HitTestWire(center, tolerance: 16);
+    }
+
+    private bool TryBypassSelectedNode()
+    {
+        if (ViewModel is null)
+            return false;
+
+        NodeViewModel? selected = ViewModel.Nodes.FirstOrDefault(n => n.IsSelected);
+        if (selected is null)
+            return false;
+
+        List<ConnectionViewModel> incoming =
+        [
+            .. ViewModel.Connections.Where(c => c.ToPin is not null && ReferenceEquals(c.ToPin.Owner, selected)),
+        ];
+        List<ConnectionViewModel> outgoing =
+        [
+            .. ViewModel.Connections.Where(c => c.ToPin is not null && ReferenceEquals(c.FromPin.Owner, selected)),
+        ];
+
+        ConnectionViewModel? inConn = null;
+        ConnectionViewModel? outConn = null;
+
+        foreach (ConnectionViewModel candidateIn in incoming)
+        {
+            ConnectionViewModel? candidateOut = outgoing.FirstOrDefault(o => o.ToPin is not null && o.ToPin.CanAccept(candidateIn.FromPin));
+            if (candidateOut is null)
+                continue;
+
+            inConn = candidateIn;
+            outConn = candidateOut;
+            break;
+        }
+
+        if (inConn is null || outConn?.ToPin is null)
+            return false;
+
+        using UndoRedoStack.UndoRedoTransaction tx = ViewModel.UndoRedo.BeginTransaction("Bypass selected node");
+        ViewModel.ConnectPins(inConn.FromPin, outConn.ToPin);
+        ViewModel.DeleteSelected();
+        tx.Commit();
+        return true;
+    }
+
+    private bool SelectLinkedNodes(bool traverseUpstream)
+    {
+        if (ViewModel is null)
+            return false;
+
+        List<NodeViewModel> selected = [.. ViewModel.Nodes.Where(n => n.IsSelected)];
+        if (selected.Count == 0)
+            return false;
+
+        var visited = new HashSet<NodeViewModel>(selected);
+        var queue = new Queue<NodeViewModel>(selected);
+
+        while (queue.Count > 0)
+        {
+            NodeViewModel current = queue.Dequeue();
+
+            IEnumerable<NodeViewModel> linked = traverseUpstream
+                ? ViewModel.Connections
+                    .Where(c => c.ToPin is not null && ReferenceEquals(c.ToPin.Owner, current))
+                    .Select(c => c.FromPin.Owner)
+                : ViewModel.Connections
+                    .Where(c => c.ToPin is not null && ReferenceEquals(c.FromPin.Owner, current))
+                    .Select(c => c.ToPin!.Owner);
+
+            foreach (NodeViewModel neighbor in linked)
+            {
+                if (!visited.Add(neighbor))
+                    continue;
+
+                queue.Enqueue(neighbor);
+            }
+        }
+
+        ViewModel.DeselectAll();
+        foreach (NodeViewModel node in visited)
+            node.IsSelected = true;
+
+        return true;
     }
 
     /// <summary>

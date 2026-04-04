@@ -1,5 +1,8 @@
+﻿using VisualSqlArchitect.UI.Services.ConnectionManager;
+using VisualSqlArchitect.UI.Services.Benchmark;
 using System.Reflection;
 using VisualSqlArchitect.Core;
+using VisualSqlArchitect.UI.Services.Localization;
 using VisualSqlArchitect.UI.ViewModels;
 using Xunit;
 
@@ -71,13 +74,21 @@ public class ConnectionManagerUxStateTests
         };
 
         MethodInfo method = typeof(ConnectionManagerViewModel)
-            .GetMethod("LoadDatabaseTablesAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            .GetMethod(
+                "LoadDatabaseTablesAsync",
+                BindingFlags.Instance | BindingFlags.NonPublic,
+                binder: null,
+                types: [typeof(ConnectionProfile)],
+                modifiers: null
+            )!;
 
         var task = (Task)method.Invoke(vm, [profile])!;
         await task;
 
         Assert.True(vm.IsVisible);
         Assert.False(vm.IsConnecting);
-        Assert.Contains("failed", vm.TestStatus, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(LocalizationService.Instance["connection.status.failedPrefix"], vm.TestStatus, StringComparison.OrdinalIgnoreCase);
     }
 }
+
+

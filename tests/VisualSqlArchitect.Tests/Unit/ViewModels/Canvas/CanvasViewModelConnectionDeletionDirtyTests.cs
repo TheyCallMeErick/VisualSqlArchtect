@@ -1,3 +1,5 @@
+﻿using VisualSqlArchitect.UI.Services.Canvas.AutoJoin;
+using VisualSqlArchitect.UI.Services.Explain;
 using Avalonia;
 using VisualSqlArchitect.UI.ViewModels;
 using Xunit;
@@ -10,6 +12,7 @@ public class CanvasViewModelConnectionDeletionDirtyTests
     public void DeleteConnection_MarksCanvasAsDirty()
     {
         var vm = new CanvasViewModel();
+        vm.InitializeDemoNodes();
         var conn = vm.Connections.First(c => c.ToPin is not null);
 
         vm.IsDirty = false;
@@ -19,3 +22,5 @@ public class CanvasViewModelConnectionDeletionDirtyTests
         Assert.DoesNotContain(conn, vm.Connections);
     }
 }
+
+

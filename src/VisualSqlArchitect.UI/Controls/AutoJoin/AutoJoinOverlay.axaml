@@ -94,13 +94,15 @@
           <!-- Accept All -->
           <Button Grid.Column="2"
                   Classes="accept-btn"
-              Content="{Binding [autoJoin.acceptAll], Source={x:Static loc:LocalizationService.Instance}}"
+                  Content="{Binding [autoJoin.acceptAll], Source={x:Static loc:LocalizationService.Instance}}"
+                  Command="{Binding AcceptAllCommand}"
                   Margin="0,0,4,0"
                   Name="AcceptAllBtn"/>
 
           <!-- Close All -->
           <Button Grid.Column="3"
                   Classes="dismiss-btn"
+                  Command="{Binding DismissCommand}"
                   Name="DismissAllBtn">
             <mi:MaterialIcon Kind="Close" Width="14" Height="14"/>
           </Button>
@@ -139,7 +141,7 @@
                                  FontSize="10"
                                  FontWeight="Bold"
                                  Foreground="#60A5FA"
-                                 FontFamily="Consolas,monospace"/>
+                                 FontFamily="{StaticResource MonoFont}"/>
                     </Border>
 
                     <!-- Table pair -->
@@ -173,7 +175,7 @@
                       <TextBlock Text="{Binding ScoreLabel}"
                                  FontSize="10"
                                  FontWeight="Bold"
-                                 FontFamily="Consolas,monospace"
+                                 FontFamily="{StaticResource MonoFont}"
                                  Foreground="{Binding ConfidenceBrush}"
                                  VerticalAlignment="Center"/>
                     </Border>
@@ -202,7 +204,7 @@
                           Padding="7,4"
                           Margin="0,0,0,8">
                     <TextBlock Text="{Binding OnClause}"
-                               FontFamily="Consolas,monospace"
+                               FontFamily="{StaticResource MonoFont}"
                                FontSize="11"
                                Foreground="#4ADE80"
                                TextTrimming="CharacterEllipsis"/>

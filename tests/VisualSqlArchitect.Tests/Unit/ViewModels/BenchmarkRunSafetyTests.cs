@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using VisualSqlArchitect.UI.Services.Benchmark;
 using VisualSqlArchitect.UI.ViewModels;
 using Xunit;
 
@@ -10,22 +10,40 @@ public class BenchmarkRunSafetyTests
     public async Task RunAsyncSafe_DoesNotThrow_WhenNoSqlIsAvailable()
     {
         var canvas = new CanvasViewModel();
-        var vm = new BenchmarkViewModel(canvas);
+        var vm = new BenchmarkViewModel(
+            canvas,
+            runContextFactory: new BenchmarkTestDoubles.RejectingRunContextFactory("NO_SQL"));
 
-        MethodInfo method = typeof(BenchmarkViewModel)
-            .GetMethod("RunAsyncSafe", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        vm.RunCommand.Execute(null);
+        await WaitUntilAsync(() => !string.IsNullOrWhiteSpace(vm.Progress));
 
-        Task task = (Task)method.Invoke(vm, null)!;
-        await task;
-
-        Assert.False(string.IsNullOrWhiteSpace(vm.Progress));
+        Assert.Equal("NO_SQL", vm.Progress);
         Assert.False(vm.IsRunning);
     }
 
     [Fact]
-    public void BenchmarkViewModel_HasSafeRunLauncher()
+    public void BenchmarkViewModel_RunAndCancelCommands_AreInitialized()
     {
-        Assert.NotNull(typeof(BenchmarkViewModel)
-            .GetMethod("StartRunSafe", BindingFlags.Instance | BindingFlags.NonPublic));
+        var vm = new BenchmarkViewModel(new CanvasViewModel());
+
+        Assert.NotNull(vm.RunCommand);
+        Assert.NotNull(vm.CancelCommand);
+        Assert.True(vm.RunCommand.CanExecute(null));
+        Assert.False(vm.CancelCommand.CanExecute(null));
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> predicate, int timeoutMs = 2000)
+    {
+        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (predicate())
+                return;
+
+            await Task.Delay(10);
+        }
+
+        Assert.True(predicate(), "Timed out waiting for benchmark progress update");
     }
 }
+

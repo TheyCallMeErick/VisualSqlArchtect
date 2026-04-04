@@ -36,7 +36,7 @@ public sealed class MySqlInspector(ConnectionConfig config) : BaseInspector(conf
     // ── Tables + Views ────────────────────────────────────────────────────────
 
     protected override async Task<
-        IReadOnlyList<(string, string, TableKind, long?)>
+        IReadOnlyList<(string, string, TableKind, long?, string?)>
     > FetchAllTablesAsync(DbConnection conn, CancellationToken ct)
     {
         const string sql = """
@@ -44,7 +44,8 @@ public sealed class MySqlInspector(ConnectionConfig config) : BaseInspector(conf
                 TABLE_SCHEMA,
                 TABLE_NAME,
                 TABLE_TYPE,
-                TABLE_ROWS      -- estimated; null for views
+                TABLE_ROWS,     -- estimated; null for views
+                TABLE_COMMENT
             FROM information_schema.TABLES
             WHERE TABLE_SCHEMA = @db
             ORDER BY TABLE_NAME
@@ -54,13 +55,14 @@ public sealed class MySqlInspector(ConnectionConfig config) : BaseInspector(conf
         cmd.CommandText = sql;
         cmd.Parameters.AddWithValue("@db", Config.Database);
 
-        var result = new List<(string, string, TableKind, long?)>();
+        var result = new List<(string, string, TableKind, long?, string?)>();
         await using MySqlDataReader reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
         {
             TableKind kind = reader.GetString(2) == "VIEW" ? TableKind.View : TableKind.Table;
             long? rows = reader.IsDBNull(3) ? (long?)null : reader.GetInt64(3);
-            result.Add((reader.GetString(0), reader.GetString(1), kind, rows));
+            string? comment = reader.IsDBNull(4) ? null : reader.GetString(4);
+            result.Add((reader.GetString(0), reader.GetString(1), kind, rows, comment));
         }
 
         return result;
@@ -87,7 +89,8 @@ public sealed class MySqlInspector(ConnectionConfig config) : BaseInspector(conf
                 c.NUMERIC_SCALE,
                 c.COLUMN_DEFAULT,
                 c.COLUMN_KEY,             -- PRI / UNI / MUL
-                c.EXTRA                   -- auto_increment etc
+                c.EXTRA,                  -- auto_increment etc
+                c.COLUMN_COMMENT
             FROM information_schema.COLUMNS c
             WHERE c.TABLE_SCHEMA = @schema
               AND c.TABLE_NAME   = @table
@@ -124,7 +127,8 @@ public sealed class MySqlInspector(ConnectionConfig config) : BaseInspector(conf
                     IsPrimaryKey: columnKey == "PRI",
                     IsUnique: columnKey == "UNI",
                     IsIndexed: columnKey is "PRI" or "UNI" or "MUL",
-                    IsForeignKey: fkColumns.Contains(name, StringComparer.OrdinalIgnoreCase)
+                    IsForeignKey: fkColumns.Contains(name, StringComparer.OrdinalIgnoreCase),
+                    Comment: reader.IsDBNull(11) ? null : reader.GetString(11)
                 )
             );
         }
@@ -260,6 +264,16 @@ public sealed class MySqlInspector(ConnectionConfig config) : BaseInspector(conf
         }
 
         return relations;
+    }
+
+    protected override Task<IReadOnlyList<SequenceMetadata>> FetchSequencesAsync(
+        DbConnection conn,
+        CancellationToken ct
+    )
+    {
+        _ = conn;
+        _ = ct;
+        return Task.FromResult<IReadOnlyList<SequenceMetadata>>([]);
     }
 
     // ── Type normalisation ────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:VisualSqlArchitect.UI.ViewModels"
+             xmlns:connmodels="using:VisualSqlArchitect.UI.Services.ConnectionManager.Models"
              xmlns:ctrl="using:VisualSqlArchitect.UI.Controls"
              xmlns:loc="using:VisualSqlArchitect.UI.Services.Localization"
              x:Class="VisualSqlArchitect.UI.Controls.ConnectionTabControl"
@@ -137,7 +138,7 @@
           </ItemsControl.ItemsPanel>
 
           <ItemsControl.ItemTemplate>
-            <DataTemplate DataType="vm:ConnectionProfile">
+            <DataTemplate DataType="connmodels:ConnectionProfile">
                     <Border Classes="connection-card"
                       Cursor="Hand"
                       ToolTip.Tip="{Binding Name}">

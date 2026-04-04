@@ -1,3 +1,5 @@
+﻿using VisualSqlArchitect.UI.Services.Canvas.AutoJoin;
+using VisualSqlArchitect.UI.Services.Explain;
 using VisualSqlArchitect.Nodes;
 using VisualSqlArchitect.UI.ViewModels;
 using Xunit;
@@ -48,6 +50,8 @@ public class QueryTemplateComparisonLiteralRegressionTests
 
     private static IReadOnlyList<string> RequiredLiteralPins(NodeType type) =>
         type is NodeType.Between or NodeType.NotBetween
-            ? ["low", "high"]
-            : ["right"];
+            ? new[] { "low", "high" }
+            : new[] { "right" };
 }
+
+

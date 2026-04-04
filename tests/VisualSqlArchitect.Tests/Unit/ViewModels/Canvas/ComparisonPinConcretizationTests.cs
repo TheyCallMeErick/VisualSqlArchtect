@@ -1,3 +1,5 @@
+﻿using VisualSqlArchitect.UI.Services.Canvas.AutoJoin;
+using VisualSqlArchitect.UI.Services.Explain;
 using Avalonia;
 using VisualSqlArchitect.Nodes;
 using VisualSqlArchitect.UI.ViewModels;
@@ -49,3 +51,5 @@ public class ComparisonPinConcretizationTests
         Assert.Null(equals.InputPins.First(p => p.Name == "right").ExpectedColumnScalarType);
     }
 }
+
+

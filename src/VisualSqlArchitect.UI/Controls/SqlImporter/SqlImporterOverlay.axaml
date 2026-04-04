@@ -8,24 +8,24 @@
 
   <UserControl.Styles>
     <Style Selector="Button.sql-action">
-      <Setter Property="Background"    Value="#0D0F14"/>
-      <Setter Property="BorderBrush"   Value="#252C3F"/>
+      <Setter Property="Background"    Value="{StaticResource CanvasBgBrush}"/>
+      <Setter Property="BorderBrush"   Value="{StaticResource BorderBrush}"/>
       <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="Foreground"    Value="#8B95A8"/>
+      <Setter Property="Foreground"    Value="{StaticResource TextSecondaryBrush}"/>
       <Setter Property="CornerRadius"  Value="6"/>
       <Setter Property="Padding"       Value="10,5"/>
       <Setter Property="FontSize"      Value="12"/>
       <Setter Property="Cursor"        Value="Hand"/>
     </Style>
     <Style Selector="Button.sql-action:pointerover">
-      <Setter Property="Background" Value="#131720"/>
-      <Setter Property="Foreground" Value="#E8EAED"/>
+      <Setter Property="Background" Value="{StaticResource InputBgBrush}"/>
+      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
     </Style>
     <Style Selector="Button.import-btn">
-      <Setter Property="Background"    Value="#0F2A1A"/>
-      <Setter Property="BorderBrush"   Value="#14B8A6"/>
+      <Setter Property="Background"    Value="{StaticResource BtnSuccessBgBrush}"/>
+      <Setter Property="BorderBrush"   Value="{StaticResource StatusOkBrush}"/>
       <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="Foreground"    Value="#14B8A6"/>
+      <Setter Property="Foreground"    Value="{StaticResource StatusOkBrush}"/>
       <Setter Property="CornerRadius"  Value="6"/>
       <Setter Property="Padding"       Value="14,6"/>
       <Setter Property="FontSize"      Value="12"/>
@@ -33,7 +33,7 @@
       <Setter Property="Cursor"        Value="Hand"/>
     </Style>
     <Style Selector="Button.import-btn:pointerover">
-      <Setter Property="Background" Value="#0F3A22"/>
+      <Setter Property="Background" Value="{StaticResource Surface2Brush}"/>
     </Style>
     <Style Selector="Button.report-link-btn">
       <Setter Property="Background" Value="Transparent"/>
@@ -52,28 +52,28 @@
   <!-- ══ Card ═══════════════════════════════════════════════════════════════ -->
   <Border Width="560"
           CornerRadius="14"
-          Background="#0D0F14"
-          BorderBrush="#1E2335"
+          Background="{StaticResource CanvasBgBrush}"
+          BorderBrush="{StaticResource BorderSoftBrush}"
           BorderThickness="1"
-          BoxShadow="0 12 60 0 #A0000000, 0 2 8 0 #50000000">
+          BoxShadow="{StaticResource PanelShadow}">
 
     <StackPanel>
 
       <!-- ── Header ────────────────────────────────────────────────────────── -->
       <Border Padding="16,14"
-              Background="#13161F"
+              Background="{StaticResource Surface0Brush}"
               CornerRadius="14,14,0,0"
-              BorderBrush="#1E2335"
+              BorderBrush="{StaticResource BorderSoftBrush}"
               BorderThickness="0,0,0,1">
 
         <Grid ColumnDefinitions="Auto,*,Auto">
 
           <!-- Icon + title -->
           <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-            <Border Width="30" Height="30" CornerRadius="8" Background="#0F2A1A">
+            <Border Width="30" Height="30" CornerRadius="8" Background="{StaticResource BtnSuccessBgBrush}">
               <mi:MaterialIcon Kind="CodeBrackets"
                                Width="16" Height="16"
-                               Foreground="#14B8A6"
+                               Foreground="{StaticResource StatusOkBrush}"
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center"/>
             </Border>
@@ -81,10 +81,10 @@
               <TextBlock Text="{Binding [sqlImporter.title], Source={x:Static loc:LocalizationService.Instance}}"
                          FontSize="13"
                          FontWeight="SemiBold"
-                         Foreground="#E8EAED"/>
+                         Foreground="{StaticResource TextPrimaryBrush}"/>
               <TextBlock Text="{Binding [sqlImporter.subtitle], Source={x:Static loc:LocalizationService.Instance}}"
                          FontSize="10"
-                         Foreground="#4A5568"/>
+                         Foreground="{StaticResource TextMutedBrush}"/>
             </StackPanel>
           </StackPanel>
 
@@ -92,7 +92,7 @@
           <Button Grid.Column="2"
                   Classes="sql-action"
                   Name="CloseBtn"
-                  AutomationProperties.Name="Close SQL importer"
+                  AutomationProperties.Name="{Binding [sqlImporter.close], Source={x:Static loc:LocalizationService.Instance}}"
                   Padding="7,5">
             <mi:MaterialIcon Kind="Close" Width="14" Height="14"/>
           </Button>
@@ -105,17 +105,17 @@
           <TextBlock Text="{Binding [sqlImporter.sqlStatement], Source={x:Static loc:LocalizationService.Instance}}"
                      FontSize="9"
                      FontWeight="Bold"
-                     Foreground="#4A5568"
+                     Foreground="{StaticResource TextMutedBrush}"
                      LetterSpacing="1.5"/>
           <TextBox Text="{Binding SqlInput, Mode=TwoWay}"
                    AcceptsReturn="True"
                    MinHeight="120"
                    MaxHeight="200"
-                   FontFamily="Consolas,monospace"
+                   FontFamily="{StaticResource MonoFont}"
                    FontSize="12"
-                   Foreground="#14B8A6"
-                   Background="#070B10"
-                   BorderBrush="#252C3F"
+                   Foreground="{StaticResource StatusOkBrush}"
+                   Background="{StaticResource PanelMutedBrush}"
+                   BorderBrush="{StaticResource BorderBrush}"
                    BorderThickness="1"
                    CornerRadius="8"
                    Padding="10,8"
@@ -125,7 +125,7 @@
                    Name="SqlInputBox">
             <TextBox.Styles>
               <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
-                <Setter Property="BorderBrush" Value="#14B8A6"/>
+                <Setter Property="BorderBrush" Value="{StaticResource StatusOkBrush}"/>
               </Style>
             </TextBox.Styles>
           </TextBox>
@@ -134,22 +134,22 @@
           <WrapPanel Orientation="Horizontal">
             <TextBlock Text="{Binding [sqlImporter.supported], Source={x:Static loc:LocalizationService.Instance}}"
                        FontSize="10"
-                       Foreground="#4A5568"
+                       Foreground="{StaticResource TextMutedBrush}"
                        VerticalAlignment="Center"/>
             <Border Background="#131C14" CornerRadius="3" Padding="4,1" Margin="2,0">
-              <TextBlock Text="SELECT" FontSize="9" FontFamily="Consolas,monospace" Foreground="#34D399"/>
+              <TextBlock Text="{Binding [sql.keyword.select], Source={x:Static loc:LocalizationService.Instance}}" FontSize="9" FontFamily="{StaticResource MonoFont}" Foreground="#34D399"/>
             </Border>
             <Border Background="#131C14" CornerRadius="3" Padding="4,1" Margin="2,0">
-              <TextBlock Text="FROM" FontSize="9" FontFamily="Consolas,monospace" Foreground="#34D399"/>
+              <TextBlock Text="{Binding [sql.keyword.from], Source={x:Static loc:LocalizationService.Instance}}" FontSize="9" FontFamily="{StaticResource MonoFont}" Foreground="#34D399"/>
             </Border>
             <Border Background="#131C14" CornerRadius="3" Padding="4,1" Margin="2,0">
-              <TextBlock Text="JOIN" FontSize="9" FontFamily="Consolas,monospace" Foreground="#34D399"/>
+              <TextBlock Text="{Binding [sql.keyword.join], Source={x:Static loc:LocalizationService.Instance}}" FontSize="9" FontFamily="{StaticResource MonoFont}" Foreground="#34D399"/>
             </Border>
             <Border Background="#131C14" CornerRadius="3" Padding="4,1" Margin="2,0">
-              <TextBlock Text="WHERE" FontSize="9" FontFamily="Consolas,monospace" Foreground="#34D399"/>
+              <TextBlock Text="{Binding [sql.keyword.where], Source={x:Static loc:LocalizationService.Instance}}" FontSize="9" FontFamily="{StaticResource MonoFont}" Foreground="#34D399"/>
             </Border>
             <Border Background="#131C14" CornerRadius="3" Padding="4,1" Margin="2,0">
-              <TextBlock Text="LIMIT" FontSize="9" FontFamily="Consolas,monospace" Foreground="#34D399"/>
+              <TextBlock Text="{Binding [sql.keyword.limit], Source={x:Static loc:LocalizationService.Instance}}" FontSize="9" FontFamily="{StaticResource MonoFont}" Foreground="#34D399"/>
             </Border>
           </WrapPanel>
         </StackPanel>
@@ -173,7 +173,7 @@
                   Classes="import-btn"
                   Name="ImportBtn"
                   IsEnabled="{Binding !IsImporting}"
-                  AutomationProperties.Name="Import SQL">
+                  AutomationProperties.Name="{Binding [sqlImporter.import], Source={x:Static loc:LocalizationService.Instance}}">
             <StackPanel Orientation="Horizontal" Spacing="6">
               <mi:MaterialIcon Kind="ArrowRightBold" Width="14" Height="14"/>
               <TextBlock Text="{Binding [sqlImporter.import], Source={x:Static loc:LocalizationService.Instance}}"/>
@@ -196,22 +196,43 @@
 
           <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,4">
             <Border Background="#12301D" CornerRadius="4" Padding="6,2">
-              <TextBlock Text="{Binding ReportImportedCount, StringFormat=Imported: {0}}"
+              <TextBlock Text="{Binding ReportImportedCount, StringFormat={}{0}}"
                          FontSize="10"
                          Foreground="#34D399"
-                         FontFamily="Consolas,monospace"/>
+                         FontFamily="{StaticResource MonoFont}">
+                <TextBlock.Text>
+                  <MultiBinding StringFormat="{}{0}: {1}">
+                    <Binding Source="{x:Static loc:LocalizationService.Instance}" Path="[sqlImporter.report.imported]"/>
+                    <Binding Path="ReportImportedCount"/>
+                  </MultiBinding>
+                </TextBlock.Text>
+              </TextBlock>
             </Border>
             <Border Background="#33260F" CornerRadius="4" Padding="6,2">
-              <TextBlock Text="{Binding ReportPartialCount, StringFormat=Partial: {0}}"
+              <TextBlock Text="{Binding ReportPartialCount, StringFormat={}{0}}"
                          FontSize="10"
                          Foreground="#FBBF24"
-                         FontFamily="Consolas,monospace"/>
+                         FontFamily="{StaticResource MonoFont}">
+                <TextBlock.Text>
+                  <MultiBinding StringFormat="{}{0}: {1}">
+                    <Binding Source="{x:Static loc:LocalizationService.Instance}" Path="[sqlImporter.report.partial]"/>
+                    <Binding Path="ReportPartialCount"/>
+                  </MultiBinding>
+                </TextBlock.Text>
+              </TextBlock>
             </Border>
             <Border Background="#321818" CornerRadius="4" Padding="6,2">
-              <TextBlock Text="{Binding ReportSkippedCount, StringFormat=Skipped: {0}}"
+              <TextBlock Text="{Binding ReportSkippedCount, StringFormat={}{0}}"
                          FontSize="10"
                          Foreground="#F87171"
-                         FontFamily="Consolas,monospace"/>
+                         FontFamily="{StaticResource MonoFont}">
+                <TextBlock.Text>
+                  <MultiBinding StringFormat="{}{0}: {1}">
+                    <Binding Source="{x:Static loc:LocalizationService.Instance}" Path="[sqlImporter.report.skipped]"/>
+                    <Binding Path="ReportSkippedCount"/>
+                  </MultiBinding>
+                </TextBlock.Text>
+              </TextBlock>
             </Border>
           </StackPanel>
 
@@ -222,7 +243,7 @@
                   <!-- Status icon -->
                   <TextBlock Grid.Column="0"
                              Text="{Binding StatusIcon}"
-                             FontFamily="Consolas,monospace"
+                             FontFamily="{StaticResource MonoFont}"
                              FontSize="11"
                              Foreground="{Binding StatusColor}"
                              VerticalAlignment="Center"
@@ -236,7 +257,7 @@
                       Margin="4,0">
                     <TextBlock Text="{Binding Label}"
                        FontSize="11"
-                       FontFamily="Consolas,monospace"
+                       FontFamily="{StaticResource MonoFont}"
                        Foreground="#8B95A8"
                        VerticalAlignment="Center"/>
                   </Button>
@@ -251,6 +272,14 @@
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
+
+          <Button Content="{Binding [common.close], Source={x:Static loc:LocalizationService.Instance}}"
+                  Classes="sql-action"
+                  Name="ResultCloseBtn"
+                  HorizontalAlignment="Right"
+                  IsVisible="{Binding !IsImporting}"
+                  Click="OnCloseClicked"
+                  Margin="0,6,0,0"/>
         </StackPanel>
       </Border>
 

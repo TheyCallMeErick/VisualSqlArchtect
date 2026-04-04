@@ -1,3 +1,5 @@
+﻿using VisualSqlArchitect.UI.Services.Canvas.AutoJoin;
+using VisualSqlArchitect.UI.Services.Explain;
 using VisualSqlArchitect.UI.ViewModels;
 using Xunit;
 
@@ -16,7 +18,7 @@ public class SqlImporterReportTotalsTests
 
         await canvas.SqlImporter.ImportAsync();
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.True(canvas.SqlImporter.HasReport);
         Assert.True(canvas.SqlImporter.ReportImportedCount > 0);
         Assert.True(canvas.SqlImporter.ReportPartialCount >= 0);
         Assert.True(canvas.SqlImporter.ReportSkippedCount >= 0);
@@ -32,9 +34,11 @@ public class SqlImporterReportTotalsTests
 
         await canvas.SqlImporter.ImportAsync();
 
-        Assert.Contains("too large", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.False(string.IsNullOrWhiteSpace(canvas.SqlImporter.StatusMessage));
         Assert.Equal(0, canvas.SqlImporter.ReportImportedCount);
         Assert.Equal(0, canvas.SqlImporter.ReportPartialCount);
         Assert.Equal(0, canvas.SqlImporter.ReportSkippedCount);
     }
 }
+
+

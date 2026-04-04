@@ -1,3 +1,5 @@
+﻿using VisualSqlArchitect.UI.Services.Canvas.AutoJoin;
+using VisualSqlArchitect.UI.Services.Explain;
 using Avalonia;
 using VisualSqlArchitect.UI.ViewModels;
 using VisualSqlArchitect.UI.ViewModels.Canvas;
@@ -8,7 +10,7 @@ namespace VisualSqlArchitect.Tests.Unit.ViewModels.Canvas;
 /// <summary>
 /// Unit tests for the FitToScreen command in <see cref="NodeLayoutManager"/>.
 ///
-/// Regression test for FRAGILITY_REPORT §4 (Médio):
+/// Regression test for FRAGILITY_REPORT Â§4 (MÃ©dio):
 ///   "FitToScreen nao calcula o bounding box real dos nos. Usa valores fixos
 ///    (85% zoom, offset 80,80) independentemente de onde os nos estao posicionados.
 ///    Em um canvas com nos em coordenadas 5000,5000, o FitToScreen nao vai mostrar nada."
@@ -22,11 +24,11 @@ namespace VisualSqlArchitect.Tests.Unit.ViewModels.Canvas;
 /// </summary>
 public class FitToScreenTests
 {
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /// <summary>
     /// Creates a canvas whose demo nodes are cleared and returns a fresh vm with
-    /// a fixed viewport size of 1200×800 set on its layout manager.
+    /// a fixed viewport size of 1200Ã—800 set on its layout manager.
     /// </summary>
     private static CanvasViewModel FreshCanvas(double vw = 1200, double vh = 800)
     {
@@ -50,7 +52,7 @@ public class FitToScreenTests
     private static Point ToScreen(CanvasViewModel vm, Point canvas) =>
         vm.CanvasToScreen(canvas);
 
-    // ── Empty canvas ─────────────────────────────────────────────────────────
+    // â”€â”€ Empty canvas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public void FitToScreen_EmptyCanvas_IsNoOp()
@@ -61,12 +63,12 @@ public class FitToScreenTests
 
         RunFit(vm);
 
-        // No nodes → zoom and pan must not change
+        // No nodes â†’ zoom and pan must not change
         Assert.Equal(zoomBefore, vm.Zoom);
         Assert.Equal(panBefore, vm.PanOffset);
     }
 
-    // ── Nodes near origin ─────────────────────────────────────────────────────
+    // â”€â”€ Nodes near origin â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public void FitToScreen_NodesNearOrigin_ZoomIsReasonable()
@@ -104,7 +106,7 @@ public class FitToScreenTests
         }
     }
 
-    // ── Nodes far from origin (regression for old bug) ────────────────────────
+    // â”€â”€ Nodes far from origin (regression for old bug) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public void FitToScreen_NodesFarFromOrigin_NotFixedOffset()
@@ -117,7 +119,7 @@ public class FitToScreenTests
 
         RunFit(vm);
 
-        // Pan must NOT be (80, 80) — that would leave nodes invisible
+        // Pan must NOT be (80, 80) â€” that would leave nodes invisible
         Assert.False(
             vm.PanOffset.X == 80 && vm.PanOffset.Y == 80,
             "PanOffset should not be the old hardcoded (80,80) when nodes are far from origin");
@@ -158,7 +160,7 @@ public class FitToScreenTests
         Assert.True(screen.Y >= -1, $"Single far node is off-screen top: Y={screen.Y}");
     }
 
-    // ── Centering ─────────────────────────────────────────────────────────────
+    // â”€â”€ Centering â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public void FitToScreen_ContentIsCenteredHorizontally()
@@ -171,7 +173,7 @@ public class FitToScreenTests
 
         RunFit(vm);
 
-        // The midpoint of the content (canvas coords ≈ 500+115 = 615 for x)
+        // The midpoint of the content (canvas coords â‰ˆ 500+115 = 615 for x)
         // should project close to the viewport center (600).
         double contentMidX = (100 + 900) / 2.0;
         Point screenMid = ToScreen(vm, new Point(contentMidX, 200));
@@ -192,13 +194,13 @@ public class FitToScreenTests
         Assert.InRange(screenMid.Y, 200, 600); // within 200px of viewport center (400)
     }
 
-    // ── Zoom limits ───────────────────────────────────────────────────────────
+    // â”€â”€ Zoom limits â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public void FitToScreen_VeryLargeCanvas_ZoomClampsToMinimum()
     {
         var vm = FreshCanvas(1200, 800);
-        // Spread nodes over 50000 canvas units — zoom must not go below 0.15
+        // Spread nodes over 50000 canvas units â€” zoom must not go below 0.15
         for (int i = 0; i < 5; i++)
             vm.Nodes.Add(new NodeViewModel($"N{i}", [], new Point(i * 10000, 0)));
 
@@ -219,19 +221,19 @@ public class FitToScreenTests
         Assert.True(vm.Zoom <= 2.0, $"Zoom exceeded maximum: {vm.Zoom}");
     }
 
-    // ── SetViewportSize ───────────────────────────────────────────────────────
+    // â”€â”€ SetViewportSize â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public void SetViewportSize_ZeroValues_DoNotUpdateStoredSize()
     {
-        // Viewport size of 0 is invalid — must be ignored to prevent divide-by-zero.
+        // Viewport size of 0 is invalid â€” must be ignored to prevent divide-by-zero.
         var vm = FreshCanvas(1200, 800);
         vm.Nodes.Add(new NodeViewModel("A", [], new Point(100, 100)));
 
         RunFit(vm);
         double zoomWithGoodViewport = vm.Zoom;
 
-        // Providing 0 should be rejected (internal size stays 1200×800)
+        // Providing 0 should be rejected (internal size stays 1200Ã—800)
         vm.SetViewportSize(0, 0);
         RunFit(vm);
 
@@ -241,7 +243,7 @@ public class FitToScreenTests
     [Fact]
     public void SetViewportSize_LargerViewport_ProducesHigherZoom()
     {
-        // Larger viewport → same content fits at higher zoom.
+        // Larger viewport â†’ same content fits at higher zoom.
         var vmSmall = FreshCanvas(600, 400);
         vmSmall.Nodes.Add(new NodeViewModel("A", [], new Point(0, 0)));
         vmSmall.Nodes.Add(new NodeViewModel("B", [], new Point(400, 300)));
@@ -256,7 +258,7 @@ public class FitToScreenTests
             $"Larger viewport ({vmLarge.Zoom:F3}) should produce higher zoom than smaller ({vmSmall.Zoom:F3})");
     }
 
-    // ── Regression: no hardcoded values ──────────────────────────────────────
+    // â”€â”€ Regression: no hardcoded values â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public void RegressionTest_FitToScreen_DoesNotUseHardcodedZoom085()
@@ -269,7 +271,7 @@ public class FitToScreenTests
 
         RunFit(vm);
 
-        // With 4 nodes spread over 1800×1200 canvas units and a 1200×800 viewport,
+        // With 4 nodes spread over 1800Ã—1200 canvas units and a 1200Ã—800 viewport,
         // the zoom will be less than 0.85 (content is bigger than viewport).
         Assert.NotEqual(0.85, vm.Zoom, precision: 2);
     }
@@ -287,7 +289,7 @@ public class FitToScreenTests
 
         Assert.False(
             Math.Abs(vm.PanOffset.X - 80) < 1 && Math.Abs(vm.PanOffset.Y - 80) < 1,
-            "PanOffset should not be the old hardcoded (80, 80) — nodes at negative coords would be invisible");
+            "PanOffset should not be the old hardcoded (80, 80) â€” nodes at negative coords would be invisible");
     }
 
     [Fact]
@@ -310,3 +312,5 @@ public class FitToScreenTests
         }
     }
 }
+
+

@@ -1,3 +1,5 @@
+using VisualSqlArchitect.UI.ViewModels.Validation.Conventions;
+
 namespace VisualSqlArchitect.UI.ViewModels.UndoRedo.Commands;
 
 public sealed class AutoFixNamingCommand : ICanvasCommand
@@ -9,17 +11,23 @@ public sealed class AutoFixNamingCommand : ICanvasCommand
             ? $"Fix alias '{_renames[0].OldAlias}' → '{_renames[0].NewAlias}'"
             : $"Fix {_renames.Count} alias name(s)";
 
-    public AutoFixNamingCommand(IEnumerable<NodeViewModel> nodes)
+    public AutoFixNamingCommand(
+        IEnumerable<NodeViewModel> nodes,
+        NamingConventionPolicy? policy = null,
+        IAliasConventionRegistry? registry = null)
     {
+        policy ??= NamingConventionPolicy.Default;
+        registry ??= AliasConventionRegistry.CreateDefault();
+
         foreach (NodeViewModel node in nodes)
         {
             if (string.IsNullOrWhiteSpace(node.Alias))
                 continue;
-            IReadOnlyList<(string Code, string Message, string? Suggestion)> violations =
-                NamingConventionValidator.CheckAlias(node.Alias!);
+            IReadOnlyList<AliasViolation> violations =
+                NamingConventionValidator.CheckAlias(node.Alias!, policy, registry);
             if (violations.Count == 0)
                 continue;
-            string fixed_ = NamingConventionValidator.ToSnakeCase(node.Alias!);
+            string fixed_ = NamingConventionValidator.NormalizeAlias(node.Alias!, policy, registry);
             if (fixed_ != node.Alias)
                 _renames.Add((node, node.Alias, fixed_));
         }

@@ -4,6 +4,7 @@ using Material.Icons;
 using VisualSqlArchitect.Nodes;
 using VisualSqlArchitect.UI.Services.Localization;
 using VisualSqlArchitect.UI.ViewModels.UndoRedo.Commands;
+using VisualSqlArchitect.UI.ViewModels.Validation.Conventions;
 
 namespace VisualSqlArchitect.UI.ViewModels;
 
@@ -17,7 +18,7 @@ public sealed class PropertyPanelViewModel : ViewModelBase
 {
     private NodeViewModel? _selectedNode;
     private bool _isVisible;
-    private string _panelTitle = "Properties";
+    private string _panelTitle = LocalizationService.Instance["property.panel.title"];
     private string _lastRawSql = string.Empty;
     private string? _sqlTraceFragment;
     private string? _sqlTraceContext;
@@ -26,16 +27,32 @@ public sealed class PropertyPanelViewModel : ViewModelBase
     private bool _enforceAliasNaming = true;
     private bool _warnOnReservedKeywords = true;
     private string _maxAliasLength = "64";
+    private CanvasWireCurveMode _selectedWireCurveMode = CanvasWireCurveMode.Bezier;
 
     private readonly UndoRedoStack _undo;
     private readonly LocalizationService _loc = LocalizationService.Instance;
+    private readonly Func<IEnumerable<ConnectionViewModel>> _connectionsResolver;
+    private static readonly HashSet<string> SupportedConventions =
+    [
+        "snake_case",
+        "camelCase",
+        "PascalCase",
+        "SCREAMING_SNAKE_CASE",
+    ];
 
-    public PropertyPanelViewModel(UndoRedoStack undo)
+    public event Action? NamingSettingsChanged;
+    public event Action? WireStyleChanged;
+
+    public PropertyPanelViewModel(
+        UndoRedoStack undo,
+        Func<IEnumerable<ConnectionViewModel>>? connectionsResolver = null)
     {
         _undo = undo;
+        _connectionsResolver = connectionsResolver ?? (() => []);
         _loc.PropertyChanged += (_, _) =>
         {
             RaisePropertyChanged(nameof(NodeAliasLabel));
+            RaisePropertyChanged(nameof(PanelTitle));
         };
 
         SelectPropertiesTabCommand = new RelayCommand(() => ActiveTab = EPropertyPanelTab.Properties);
@@ -93,18 +110,31 @@ public sealed class PropertyPanelViewModel : ViewModelBase
         "snake_case",
         "camelCase",
         "PascalCase",
+        "SCREAMING_SNAKE_CASE",
     ];
 
     public string SelectedNamingConvention
     {
         get => _selectedNamingConvention;
-        set => Set(ref _selectedNamingConvention, value);
+        set
+        {
+            if (!Set(ref _selectedNamingConvention, value))
+                return;
+
+            NamingSettingsChanged?.Invoke();
+        }
     }
 
     public bool EnforceAliasNaming
     {
         get => _enforceAliasNaming;
-        set => Set(ref _enforceAliasNaming, value);
+        set
+        {
+            if (!Set(ref _enforceAliasNaming, value))
+                return;
+
+            NamingSettingsChanged?.Invoke();
+        }
     }
 
     public bool WarnOnReservedKeywords
@@ -116,8 +146,60 @@ public sealed class PropertyPanelViewModel : ViewModelBase
     public string MaxAliasLength
     {
         get => _maxAliasLength;
-        set => Set(ref _maxAliasLength, value);
+        set
+        {
+            if (!Set(ref _maxAliasLength, value))
+                return;
+
+            NamingSettingsChanged?.Invoke();
+        }
     }
+
+    public IReadOnlyList<CanvasWireCurveMode> WireCurveModeOptions { get; } =
+    [
+        CanvasWireCurveMode.Bezier,
+        CanvasWireCurveMode.Straight,
+    ];
+
+    public CanvasWireCurveMode SelectedWireCurveMode
+    {
+        get => _selectedWireCurveMode;
+        set
+        {
+            if (!Set(ref _selectedWireCurveMode, value))
+                return;
+
+            WireStyleChanged?.Invoke();
+        }
+    }
+
+    public NamingConventionPolicy BuildNamingConventionPolicy()
+    {
+        int parsedMaxLength = int.TryParse(MaxAliasLength, out int maxLength) && maxLength >= 0
+            ? maxLength
+            : 64;
+
+        string? conventionName = EnforceAliasNaming
+            ? ResolveConventionOrDefault(SelectedNamingConvention)
+            : null;
+
+        bool enforceSnakeCase = EnforceAliasNaming
+            && string.Equals(conventionName, "snake_case", StringComparison.OrdinalIgnoreCase);
+
+        return new NamingConventionPolicy
+        {
+            EnforceSnakeCase = enforceSnakeCase,
+            MaxLength = parsedMaxLength,
+            NoLeadingDigit = true,
+            NoSpaces = true,
+            ConventionName = conventionName,
+        };
+    }
+
+    private static string ResolveConventionOrDefault(string value) =>
+        SupportedConventions.Contains(value)
+            ? value
+            : "snake_case";
 
     // ── SQL Trace ─────────────────────────────────────────────────────────────
 
@@ -231,7 +313,10 @@ public sealed class PropertyPanelViewModel : ViewModelBase
     {
         CommitDirty();
         SelectedNode = null;
-        PanelTitle = $"{nodes.Count} nodes selected";
+        PanelTitle = string.Format(
+            L("property.panel.multiSelected", "{0} nodes selected"),
+            nodes.Count
+        );
         Parameters.Clear();
         InputPins.Clear();
         OutputPins.Clear();
@@ -255,7 +340,7 @@ public sealed class PropertyPanelViewModel : ViewModelBase
     {
         CommitDirty();
         SelectedNode = null;
-        PanelTitle = "Properties";
+        PanelTitle = L("property.panel.title", "Properties");
         Parameters.Clear();
         InputPins.Clear();
         OutputPins.Clear();
@@ -277,6 +362,12 @@ public sealed class PropertyPanelViewModel : ViewModelBase
 
     private static bool IsSourceAliasNode(NodeType? type) =>
         type is NodeType.TableSource or NodeType.Subquery or NodeType.CteSource;
+
+    private string L(string key, string fallback)
+    {
+        string value = _loc[key];
+        return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
+    }
 
     private static bool SupportsAliasEditor(NodeType type) => type switch
     {
@@ -327,7 +418,9 @@ public sealed class PropertyPanelViewModel : ViewModelBase
             foreach (NodeParameter param in def.Parameters)
             {
                 node.Parameters.TryGetValue(param.Name, out string? currentVal);
-                Parameters.Add(new ParameterRowViewModel(param, currentVal));
+                var row = new ParameterRowViewModel(param, currentVal);
+                ApplyConnectionOverride(node, row, currentVal ?? param.DefaultValue);
+                Parameters.Add(row);
             }
         }
 
@@ -336,6 +429,117 @@ public sealed class PropertyPanelViewModel : ViewModelBase
 
         foreach (PinViewModel pin in node.OutputPins)
             OutputPins.Add(new PinInfoRowViewModel(pin));
+    }
+
+    public void RefreshConnectionOverrides()
+    {
+        if (SelectedNode is null)
+            return;
+
+        foreach (ParameterRowViewModel row in Parameters)
+        {
+            SelectedNode.Parameters.TryGetValue(row.Name, out string? currentVal);
+            ApplyConnectionOverride(SelectedNode, row, currentVal ?? row.DefaultValue);
+        }
+    }
+
+    private void ApplyConnectionOverride(NodeViewModel node, ParameterRowViewModel row, string? fallbackValue)
+    {
+        ConnectionViewModel? drivingConnection = _connectionsResolver()
+            .FirstOrDefault(c =>
+                c.ToPin is not null
+                && ReferenceEquals(c.ToPin.Owner, node)
+                && IsPinDrivingParameter(node.Type, c.ToPin.Name, row.Name));
+
+        if (drivingConnection is null)
+        {
+            row.ClearConnectionOverride(fallbackValue);
+            return;
+        }
+
+        row.SetConnectionOverrideValue(ResolveDrivenValue(drivingConnection.FromPin));
+    }
+
+    private static string ResolveDrivenValue(PinViewModel sourcePin)
+    {
+        NodeViewModel sourceNode = sourcePin.Owner;
+
+        if (sourceNode.IsValueNode && sourceNode.Parameters.TryGetValue("value", out string? literal))
+            return literal ?? string.Empty;
+
+        if (sourceNode.Type == NodeType.ScalarTypeDefinition)
+            return BuildScalarTypePreview(sourceNode);
+
+        if (sourceNode.Type == NodeType.EnumTypeDefinition)
+            return "ENUM";
+
+        if (sourceNode.IsTableSource)
+            return $"{sourceNode.Title}.{sourcePin.Name}";
+
+        return $"{sourceNode.Title}.{sourcePin.Name}";
+    }
+
+    private static bool IsPinDrivingParameter(NodeType targetNodeType, string pinName, string parameterName)
+    {
+        if (string.Equals(pinName, parameterName, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return targetNodeType switch
+        {
+            NodeType.ColumnDefinition =>
+                string.Equals(pinName, "type_def", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(parameterName, "DataType", StringComparison.OrdinalIgnoreCase),
+            _ => false,
+        };
+    }
+
+    private static string BuildScalarTypePreview(NodeViewModel sourceNode)
+    {
+        string kind = ReadParam(sourceNode, "TypeKind", "VARCHAR").Trim().ToUpperInvariant();
+        return kind switch
+        {
+            "VARCHAR" => $"VARCHAR({ReadPositiveInt(sourceNode, "Length", 255)})",
+            "DECIMAL" =>
+                $"DECIMAL({ReadPositiveInt(sourceNode, "Precision", 18)},{ReadNonNegativeInt(sourceNode, "Scale", 2)})",
+            "TEXT" => "TEXT",
+            "INT" => "INT",
+            "BIGINT" => "BIGINT",
+            "BOOLEAN" => "BOOLEAN",
+            "DATE" => "DATE",
+            "DATETIME" => "DATETIME",
+            "JSON" => "JSON",
+            "UUID" => "UUID",
+            _ => kind,
+        };
+    }
+
+    private static string ReadParam(NodeViewModel node, string name, string fallback)
+        => node.Parameters.TryGetValue(name, out string? value) && !string.IsNullOrWhiteSpace(value)
+            ? value
+            : fallback;
+
+    private static int ReadPositiveInt(NodeViewModel node, string name, int fallback)
+    {
+        if (
+            node.Parameters.TryGetValue(name, out string? raw)
+            && int.TryParse(raw, out int parsed)
+            && parsed > 0
+        )
+            return parsed;
+
+        return fallback;
+    }
+
+    private static int ReadNonNegativeInt(NodeViewModel node, string name, int fallback)
+    {
+        if (
+            node.Parameters.TryGetValue(name, out string? raw)
+            && int.TryParse(raw, out int parsed)
+            && parsed >= 0
+        )
+            return parsed;
+
+        return fallback;
     }
 
     // ── Commit / apply ────────────────────────────────────────────────────────

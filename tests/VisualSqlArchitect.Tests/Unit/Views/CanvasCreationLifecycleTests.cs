@@ -39,7 +39,6 @@ public class CanvasCreationLifecycleTests
         // These properties are accessed by various services
         Assert.NotNull(canvas.WindowTitle);
         Assert.NotNull(canvas.LiveSql);
-        Assert.NotNull(canvas.CommandPalette);
         Assert.NotNull(canvas.SearchMenu);
         Assert.NotNull(canvas.AutoJoin);
         Assert.NotNull(canvas.DataPreview);
@@ -131,20 +130,6 @@ public class CanvasCreationLifecycleTests
         Assert.NotEqual(
             System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(canvas1.LiveSql),
             System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(canvas2.LiveSql)
-        );
-    }
-
-    [Fact]
-    public void CommandPalette_IsUniquePerCanvas()
-    {
-        // Each CanvasViewModel should have its own CommandPalette
-        var canvas1 = new CanvasViewModel();
-        var canvas2 = new CanvasViewModel();
-
-        // CommandPalette instances should be different
-        Assert.NotEqual(
-            System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(canvas1.CommandPalette),
-            System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(canvas2.CommandPalette)
         );
     }
 

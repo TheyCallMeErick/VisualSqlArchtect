@@ -1,3 +1,4 @@
+﻿using VisualSqlArchitect.UI.Services.Benchmark;
 using Avalonia;
 using VisualSqlArchitect.Nodes;
 using VisualSqlArchitect.UI.Serialization;
@@ -8,12 +9,12 @@ namespace VisualSqlArchitect.Tests.Unit.ViewModels;
 public class CteSubcanvasEditorTests
 {
     [Fact]
-    public void EnterSelectedCteEditor_LoadsIsolatedSubgraph()
+    public async Task EnterSelectedCteEditor_LoadsIsolatedSubgraph()
     {
         var vm = BuildCanvasWithCteSubgraph(out NodeViewModel cteNode, out _);
         cteNode.IsSelected = true;
 
-        bool entered = vm.EnterSelectedCteEditor();
+        bool entered = await vm.EnterSelectedCteEditorAsync();
 
         Assert.True(entered);
         Assert.True(vm.IsInCteEditor);
@@ -25,11 +26,11 @@ public class CteSubcanvasEditorTests
     }
 
     [Fact]
-    public void EnterCteEditor_EntersWhenNodeIsNotPreselected()
+    public async Task EnterCteEditor_EntersWhenNodeIsNotPreselected()
     {
         var vm = BuildCanvasWithCteSubgraph(out NodeViewModel cteNode, out _);
 
-        bool entered = vm.EnterCteEditor(cteNode);
+        bool entered = await vm.EnterCteEditorAsync(cteNode);
 
         Assert.True(entered);
         Assert.True(vm.IsInCteEditor);
@@ -37,27 +38,27 @@ public class CteSubcanvasEditorTests
     }
 
     [Fact]
-    public void EnterCteEditor_ReturnsFalseForNonCteNode()
+    public async Task EnterCteEditor_ReturnsFalseForNonCteNode()
     {
         var vm = BuildCanvasWithCteSubgraph(out _, out _);
         NodeViewModel nonCte = vm.Nodes.First(n => n.Type != NodeType.CteDefinition);
 
-        bool entered = vm.EnterCteEditor(nonCte);
+        bool entered = await vm.EnterCteEditorAsync(nonCte);
 
         Assert.False(entered);
         Assert.False(vm.IsInCteEditor);
     }
 
     [Fact]
-    public void ExitCteEditor_RestoresParentAndReconnectsQueryWire()
+    public async Task ExitCteEditor_RestoresParentAndReconnectsQueryWire()
     {
         var vm = BuildCanvasWithCteSubgraph(out NodeViewModel cteNode, out string cteId);
         cteNode.IsSelected = true;
 
-        Assert.True(vm.EnterSelectedCteEditor());
+        Assert.True(await vm.EnterSelectedCteEditorAsync());
         Assert.True(vm.IsInCteEditor);
 
-        bool exited = vm.ExitCteEditor();
+        bool exited = await vm.ExitCteEditorAsync();
 
         Assert.True(exited);
         Assert.False(vm.IsInCteEditor);
@@ -75,7 +76,7 @@ public class CteSubcanvasEditorTests
     }
 
     [Fact]
-    public void ExitAndReenterCteEditor_PreservesEditedSubgraph()
+    public async Task ExitAndReenterCteEditor_PreservesEditedSubgraph()
     {
         var vm = new CanvasViewModel();
         vm.Nodes.Clear();
@@ -86,7 +87,7 @@ public class CteSubcanvasEditorTests
         cteNode.Parameters["name"] = "orders_cte";
         vm.Nodes.Add(cteNode);
 
-        Assert.True(vm.EnterCteEditor(cteNode));
+        Assert.True(await vm.EnterCteEditorAsync(cteNode));
 
         NodeViewModel table = vm.SpawnTableNode("public.orders", [("id", PinDataType.Number)], new Point(20, 20));
         NodeViewModel colList = vm.SpawnNode(NodeDefinitionRegistry.Get(NodeType.ColumnList), new Point(180, 20));
@@ -98,12 +99,12 @@ public class CteSubcanvasEditorTests
         Assert.Contains(vm.Connections, c => c.ToPin?.Owner == colList && c.ToPin.Name == "columns");
         Assert.Contains(vm.Connections, c => c.ToPin?.Owner == result && c.ToPin.Name == "columns");
 
-        Assert.True(vm.ExitCteEditor());
+        Assert.True(await vm.ExitCteEditorAsync());
         NodeViewModel restoredCte = Assert.Single(vm.Nodes);
         Assert.Equal(NodeType.CteDefinition, restoredCte.Type);
         Assert.True(restoredCte.Parameters.ContainsKey(CanvasSerializer.CteSubgraphParameterKey));
 
-        Assert.True(vm.EnterCteEditor(restoredCte));
+        Assert.True(await vm.EnterCteEditorAsync(restoredCte));
         Assert.Contains(vm.Nodes, n => n.Type == NodeType.ResultOutput);
         Assert.Contains(vm.Nodes, n => n.Type == NodeType.ColumnList);
         Assert.Contains(vm.Nodes, n => string.Equals(n.Subtitle, "public.orders", StringComparison.OrdinalIgnoreCase));
@@ -155,3 +156,4 @@ public class CteSubcanvasEditorTests
         });
     }
 }
+

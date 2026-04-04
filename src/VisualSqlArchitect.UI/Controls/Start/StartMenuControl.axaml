@@ -1,8 +1,10 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:VisualSqlArchitect.UI.ViewModels"
+             xmlns:startmodels="using:VisualSqlArchitect.UI.Services.Start.Models"
              xmlns:start="using:VisualSqlArchitect.UI.Controls.Start"
              xmlns:shell="using:VisualSqlArchitect.UI.Controls.Shell"
+             xmlns:loc="using:VisualSqlArchitect.UI.Services.Localization"
              xmlns:mi="using:Material.Icons.Avalonia"
              x:Class="VisualSqlArchitect.UI.Controls.Start.StartMenuControl"
              x:DataType="vm:StartMenuViewModel"
@@ -72,7 +74,7 @@
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="CornerRadius" Value="{StaticResource StartRadiusCard}"/>
       <Setter Property="Padding" Value="{StaticResource StartPaddingCard}"/>
-      <Setter Property="BoxShadow" Value="0 8 24 0 #26000000"/>
+      <Setter Property="BoxShadow" Value="{StaticResource PanelShadow}"/>
       <Setter Property="Transitions">
         <Transitions>
           <BrushTransition Property="Background" Duration="0:0:0.12"/>
@@ -91,7 +93,7 @@
           <GradientStop Offset="1.0" Color="#00141B2D"/>
         </LinearGradientBrush>
       </Setter>
-      <Setter Property="BorderBrush" Value="#503B82F6"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderActiveBrush}"/>
     </Style>
     <Style Selector="Border.chip">
       <Setter Property="Background" Value="{StaticResource MacroBg2Brush}"/>
@@ -149,14 +151,14 @@
           <GradientStop Offset="1.0" Color="#10141B2D"/>
         </LinearGradientBrush>
       </Setter>
-      <Setter Property="BorderBrush" Value="#503B82F6"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderActiveBrush}"/>
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="CornerRadius" Value="12"/>
       <Setter Property="Padding" Value="12"/>
     </Style>
     <Style Selector="Border.empty-placeholder">
-      <Setter Property="Background" Value="#120F172A"/>
-      <Setter Property="BorderBrush" Value="#304B6CB7"/>
+      <Setter Property="Background" Value="{StaticResource MacroBg2Brush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderActiveBrush}"/>
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="CornerRadius" Value="12"/>
       <Setter Property="Padding" Value="14,12"/>
@@ -216,30 +218,41 @@
 
   <Grid RowDefinitions="Auto,*" Background="{StaticResource MacroBg0Brush}">
     <Canvas Grid.RowSpan="3" IsHitTestVisible="False" Opacity="0.38">
-      <Border Width="420" Height="420" CornerRadius="999" Background="#181D4ED8" Canvas.Left="-140" Canvas.Top="-220"/>
-      <Border Width="360" Height="360" CornerRadius="999" Background="#1216A34A" Canvas.Right="-90" Canvas.Top="110"/>
+      <!-- Azul — canto superior esquerdo (existente) -->
+      <Border Width="420" Height="420" CornerRadius="999" Background="{StaticResource MacroBg3Brush}" Canvas.Left="-140" Canvas.Top="-220"/>
+      <!-- Verde — lateral direita central (existente) -->
+      <Border Width="360" Height="360" CornerRadius="999" Background="{StaticResource MacroBg2Brush}" Canvas.Right="-90" Canvas.Top="110"/>
+
+      <!-- Violeta — canto superior direito (análogo ao azul, seção Conexões) -->
+      <Border Width="300" Height="300" CornerRadius="999" Background="{StaticResource Surface2Brush}" Canvas.Right="-100" Canvas.Top="-90"/>
+      <!-- Ciano — centro-esquerda (análogo ao azul, transição entre hero e recentes) -->
+      <Border Width="260" Height="260" CornerRadius="999" Background="{StaticResource Surface1Brush}" Canvas.Left="300" Canvas.Top="250"/>
+      <!-- Teal — inferior esquerdo (análogo ao verde, seção Recentes) -->
+      <Border Width="340" Height="340" CornerRadius="999" Background="{StaticResource MacroBg2Brush}" Canvas.Left="-80" Canvas.Top="460"/>
+      <!-- Âmbar — inferior direito (complementar ao azul, seção Templates) -->
+      <Border Width="280" Height="280" CornerRadius="999" Background="{StaticResource BtnWarningBgBrush}" Canvas.Right="-70" Canvas.Top="520"/>
     </Canvas>
 
     <shell:AppHeaderBar Grid.Row="0"
-                        Title="Visual SQL Architect"
+                        Title="{Binding [main.brand], Source={x:Static loc:LocalizationService.Instance}}"
                         ShowBrandBadge="True"
                         ShowWindowControls="True">
       <shell:AppHeaderBar.RightContent>
         <StackPanel Orientation="Horizontal" Spacing="{StaticResource StartSpaceSM}" VerticalAlignment="Center">
-          <Button Classes="tips-pill" Content="Dicas">
+          <Button Classes="tips-pill" Content="{Binding [start.tips], Source={x:Static loc:LocalizationService.Instance}}">
             <ToolTip.Tip>
               <StackPanel Spacing="4" MaxWidth="320">
-                <TextBlock Text="Dicas rápidas" FontWeight="{StaticResource FontWeightStrong}"/>
-                <TextBlock Text="1. Clique em Novo Diagrama para iniciar do zero." TextWrapping="Wrap"/>
-                <TextBlock Text="2. Use templates para acelerar protótipos." TextWrapping="Wrap"/>
-                <TextBlock Text="3. Abra conexões salvas para carregar tabelas reais." TextWrapping="Wrap"/>
-                <TextBlock Text="Atalho: Ctrl+K abre a paleta de comandos." TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding [start.tips.quick], Source={x:Static loc:LocalizationService.Instance}}" FontWeight="{StaticResource FontWeightStrong}"/>
+                <TextBlock Text="{Binding [start.tips.item1], Source={x:Static loc:LocalizationService.Instance}}" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding [start.tips.item2], Source={x:Static loc:LocalizationService.Instance}}" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding [start.tips.item3], Source={x:Static loc:LocalizationService.Instance}}" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding [start.tips.shortcut], Source={x:Static loc:LocalizationService.Instance}}" TextWrapping="Wrap"/>
               </StackPanel>
             </ToolTip.Tip>
           </Button>
           <Button Classes="icon-ghost"
                   Padding="7,4"
-                  ToolTip.Tip="Configuracoes"
+                  ToolTip.Tip="{Binding [menu.settings], Source={x:Static loc:LocalizationService.Instance}}"
                   VerticalAlignment="Center"
                   Command="{Binding OpenSettingsCommand}">
             <mi:MaterialIcon Kind="CogOutline" Width="14" Height="14"/>
@@ -252,13 +265,13 @@
       <Grid Margin="24" ColumnDefinitions="2.2*,1*" RowDefinitions="Auto,Auto,*" MinHeight="640">
       <Border Grid.Row="0" Grid.Column="0" Margin="0,0,14,0" Classes="card hero-card" Name="HeroBlock">
         <StackPanel Spacing="8">
-          <TextBlock Classes="kicker" Text="WORKSPACE"/>
-          <TextBlock Classes="h1" Text="Continuar de onde parou"/>
-          <TextBlock Classes="meta" Text="Retome rapidamente um projeto recente ou comece um novo diagrama."/>
+          <TextBlock Classes="kicker" Text="{Binding [start.workspace], Source={x:Static loc:LocalizationService.Instance}}"/>
+          <TextBlock Classes="h1" Text="{Binding [start.resumeTitle], Source={x:Static loc:LocalizationService.Instance}}"/>
+          <TextBlock Classes="meta" Text="{Binding [start.resumeSubtitle], Source={x:Static loc:LocalizationService.Instance}}"/>
           <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
-            <Border Classes="chip"><TextBlock Classes="meta" Text="Fluxo rapido"/></Border>
-            <Border Classes="chip"><TextBlock Classes="meta" Text="Templates"/></Border>
-            <Border Classes="chip"><TextBlock Classes="meta" Text="Conexoes"/></Border>
+            <Border Classes="chip"><TextBlock Classes="meta" Text="{Binding [start.chip.quickFlow], Source={x:Static loc:LocalizationService.Instance}}"/></Border>
+            <Border Classes="chip"><TextBlock Classes="meta" Text="{Binding [start.chip.templates], Source={x:Static loc:LocalizationService.Instance}}"/></Border>
+            <Border Classes="chip"><TextBlock Classes="meta" Text="{Binding [start.chip.connections], Source={x:Static loc:LocalizationService.Instance}}"/></Border>
           </StackPanel>
         </StackPanel>
       </Border>
@@ -266,14 +279,14 @@
       <Border Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" Classes="card" Margin="0" Name="ConnectionsSection" MinHeight="352">
         <Grid RowDefinitions="Auto,*,Auto">
           <StackPanel Spacing="4">
-            <TextBlock Classes="h2" Text="Conexoes salvas"/>
-            <TextBlock Classes="meta" Text="Conecte-se rapidamente a um banco para carregar schema e tabelas."/>
+            <TextBlock Classes="h2" Text="{Binding [start.savedConnectionsTitle], Source={x:Static loc:LocalizationService.Instance}}"/>
+            <TextBlock Classes="meta" Text="{Binding [start.savedConnectionsSubtitle], Source={x:Static loc:LocalizationService.Instance}}"/>
           </StackPanel>
 
           <ScrollViewer Grid.Row="1" Margin="{StaticResource StartMarginInnerVertical}" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" IsVisible="{Binding HasSavedConnections}">
             <ItemsControl ItemsSource="{Binding SavedConnections}">
               <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:StartSavedConnectionItem">
+                <DataTemplate x:DataType="startmodels:StartSavedConnectionItem">
                   <Button Classes="ghost"
                           Padding="8,4"
                           Margin="0,2,0,2"
@@ -290,33 +303,33 @@
 
           <Border Grid.Row="1" Classes="empty-placeholder" HorizontalAlignment="Stretch" VerticalAlignment="Center" IsVisible="{Binding HasSavedConnections, Converter={x:Static BoolConverters.Not}}">
             <StackPanel Classes="empty-state" Spacing="6">
-              <TextBlock Text="Nenhuma conexão configurada ainda" Classes="meta" FontWeight="SemiBold"/>
-              <TextBlock Text="Crie uma conexão para explorar tabelas reais no editor." Classes="meta" Opacity="0.85"/>
+              <TextBlock Text="{Binding [start.noConnectionsTitle], Source={x:Static loc:LocalizationService.Instance}}" Classes="meta" FontWeight="SemiBold"/>
+              <TextBlock Text="{Binding [start.noConnectionsSubtitle], Source={x:Static loc:LocalizationService.Instance}}" Classes="meta" Opacity="0.85"/>
             </StackPanel>
           </Border>
 
-          <Button Grid.Row="2" Classes="primary" Content="+ Nova Conexao" Command="{Binding OpenConnectionsCommand}" HorizontalAlignment="Center" MinWidth="170"/>
+          <Button Grid.Row="2" Classes="primary" Content="{Binding [start.newConnection], Source={x:Static loc:LocalizationService.Instance}}" Command="{Binding OpenConnectionsCommand}" HorizontalAlignment="Center" MinWidth="170"/>
         </Grid>
       </Border>
 
       <Border Grid.Row="1" Grid.Column="0" Margin="0,14,14,0" Classes="card" Name="RecentSection" MinHeight="300">
         <Grid RowDefinitions="Auto,Auto,Auto,*">
-          <TextBlock Classes="h2" Text="Projetos Recentes"/>
+          <TextBlock Classes="h2" Text="{Binding [start.recentProjectsTitle], Source={x:Static loc:LocalizationService.Instance}}"/>
 
           <TextBox Grid.Row="1"
                    Margin="{StaticResource StartMarginInnerTop}"
                    Text="{Binding RecentSearchQuery}"
-                   Watermark="Buscar projeto recente..."
+                   Watermark="{Binding [start.searchRecent], Source={x:Static loc:LocalizationService.Instance}}"
                    Height="34"/>
 
           <ScrollViewer Grid.Row="2" Margin="{StaticResource StartMarginInnerTop}" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Height="170">
             <StackPanel Orientation="Horizontal" Spacing="{StaticResource StartSpaceSM}">
               <Border Classes="quick-action-card" Width="272" Height="154">
                 <Grid RowDefinitions="Auto,*,Auto,Auto">
-                  <TextBlock Classes="meta" Text="Acoes rapidas" FontWeight="{StaticResource FontWeightStrong}"/>
-                  <TextBlock Grid.Row="1" Classes="meta" Text="Abra um arquivo existente ou inicie um novo diagrama." TextWrapping="Wrap" Opacity="0.9" Margin="0,6,0,0"/>
-                  <Button Grid.Row="2" Classes="ghost" Content="Abrir arquivo" Command="{Binding OpenFromDiskCommand}" Margin="0,8,0,0" HorizontalAlignment="Center" MinWidth="132"/>
-                  <Button Grid.Row="3" Classes="primary" Content="Novo Diagrama" Command="{Binding CreateNewDiagramCommand}" Margin="0,8,0,0" HorizontalAlignment="Center" MinWidth="164"/>
+                  <TextBlock Classes="meta" Text="{Binding [start.quickActions], Source={x:Static loc:LocalizationService.Instance}}" FontWeight="{StaticResource FontWeightStrong}"/>
+                  <TextBlock Grid.Row="1" Classes="meta" Text="{Binding [start.quickActionsSubtitle], Source={x:Static loc:LocalizationService.Instance}}" TextWrapping="Wrap" Opacity="0.9" Margin="0,6,0,0"/>
+                  <Button Grid.Row="2" Classes="ghost" Content="{Binding [main.open], Source={x:Static loc:LocalizationService.Instance}}" Command="{Binding OpenFromDiskCommand}" Margin="0,8,0,0" HorizontalAlignment="Center" MinWidth="132"/>
+                  <Button Grid.Row="3" Classes="primary" Content="{Binding [menu.newDiagram], Source={x:Static loc:LocalizationService.Instance}}" Command="{Binding CreateNewDiagramCommand}" Margin="0,8,0,0" HorizontalAlignment="Center" MinWidth="164"/>
                 </Grid>
               </Border>
 
@@ -327,7 +340,7 @@
                   </ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="vm:StartRecentProjectItem">
+                  <DataTemplate x:DataType="startmodels:StartRecentProjectItem">
                     <Button Classes="ghost"
                             Width="220"
                             Height="154"
@@ -346,8 +359,8 @@
 
           <Border Grid.Row="3" Classes="empty-placeholder" Margin="0,10,0,0" VerticalAlignment="Center" IsVisible="{Binding HasRecentProjects, Converter={x:Static BoolConverters.Not}}">
             <StackPanel Classes="empty-state" Spacing="8">
-              <TextBlock Text="Nenhum projeto recente ainda" Classes="h2" FontSize="{StaticResource StartFontSectionTitle}"/>
-              <TextBlock Text="Use o card de ações rápidas acima para começar." Classes="meta" Opacity="0.9"/>
+              <TextBlock Text="{Binding [start.noRecentTitle], Source={x:Static loc:LocalizationService.Instance}}" Classes="h2" FontSize="{StaticResource StartFontSectionTitle}"/>
+              <TextBlock Text="{Binding [start.noRecentSubtitle], Source={x:Static loc:LocalizationService.Instance}}" Classes="meta" Opacity="0.9"/>
             </StackPanel>
           </Border>
         </Grid>
@@ -356,8 +369,8 @@
       <Border Grid.Row="2" Grid.ColumnSpan="2" Classes="card" Margin="0,14,0,0" Name="TemplatesSection">
         <Grid RowDefinitions="Auto,*">
           <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-            <TextBlock Classes="h2" Text="Explorar templates"/>
-            <Border Classes="chip"><TextBlock Classes="meta" Text="Favoritos no topo"/></Border>
+            <TextBlock Classes="h2" Text="{Binding [start.exploreTemplates], Source={x:Static loc:LocalizationService.Instance}}"/>
+            <Border Classes="chip"><TextBlock Classes="meta" Text="{Binding [start.templatesFavoritesHint], Source={x:Static loc:LocalizationService.Instance}}"/></Border>
           </StackPanel>
           <ScrollViewer Grid.Row="1" Margin="{StaticResource StartMarginInnerTop}" Padding="2,0,2,8" VerticalScrollBarVisibility="Disabled" HorizontalScrollBarVisibility="Auto" Height="176" MinHeight="176">
             <ItemsControl ItemsSource="{Binding TemplateCatalog}">
@@ -367,7 +380,7 @@
                 </ItemsPanelTemplate>
               </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:StartTemplateItem">
+                <DataTemplate x:DataType="startmodels:StartTemplateItem">
                   <Grid Margin="6,6,6,6" Width="236" Height="152">
                     <Button Classes="template-tile"
                             Width="236"
@@ -389,7 +402,7 @@
                             Margin="0,8,8,0"
                             Tag="{Binding}"
                             Click="TemplateFavorite_Click"
-                            ToolTip.Tip="Favoritar template"
+                            ToolTip.Tip="{Binding [start.favoriteTemplate], Source={x:Static loc:LocalizationService.Instance}}"
                             ZIndex="2">
                       <Grid>
                         <TextBlock Text="★" Foreground="{StaticResource BtnWarningFgBrush}" IsVisible="{Binding IsFavorite}"/>

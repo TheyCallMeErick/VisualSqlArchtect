@@ -1,4 +1,6 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace VisualSqlArchitect.UI.Services.Settings;
 
@@ -9,6 +11,8 @@ public sealed class AppSettings
 
 public static class AppSettingsStore
 {
+    private static readonly ILogger _logger = NullLogger.Instance;
+
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         WriteIndented = true,
@@ -35,6 +39,7 @@ public static class AppSettingsStore
         }
         catch (Exception ex) when (ex is IOException or JsonException or InvalidOperationException)
         {
+            _logger.LogWarning(ex, "Failed to load app settings. Falling back to defaults.");
             return new AppSettings();
         }
     }
@@ -49,7 +54,7 @@ public static class AppSettingsStore
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
         {
-            // best effort
+            _logger.LogWarning(ex, "Failed to persist app settings (best effort).");
         }
     }
 

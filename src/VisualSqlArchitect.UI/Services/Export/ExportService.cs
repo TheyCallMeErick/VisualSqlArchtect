@@ -1,6 +1,8 @@
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
 using VisualSqlArchitect.Nodes;
+using VisualSqlArchitect.UI.Services.Export;
+using VisualSqlArchitect.UI.Services.Localization;
 using VisualSqlArchitect.UI.Serialization;
 using VisualSqlArchitect.UI.ViewModels;
 
@@ -25,7 +27,7 @@ public class ExportService(Window window, CanvasViewModel vm)
         IStorageFile? result = await _window.StorageProvider.SaveFilePickerAsync(
             new FilePickerSaveOptions
             {
-                Title = "Export Flow Documentation",
+                Title = L("export.documentation.dialogTitle", "Export Flow Documentation"),
                 DefaultExtension = "md",
                 FileTypeChoices = [mdType],
                 SuggestedFileName = suggestedName,
@@ -38,9 +40,12 @@ public class ExportService(Window window, CanvasViewModel vm)
 
         string? written = await FlowDocumentExporter.WriteAsync(_vm, path);
         if (written is not null)
-            _vm.NotifySuccess("Documentation exported successfully.", written);
+            _vm.NotifySuccess(L("export.documentation.success", "Documentation exported successfully."), written);
         else
-            _vm.NotifyError("Documentation export failed.", "Check file path and permissions.");
+            _vm.NotifyError(
+                L("export.documentation.failed", "Documentation export failed."),
+                L("export.failed.pathPermissionsHint", "Check file path and permissions.")
+            );
     }
 
     public async Task RunExportWithDialogAsync(
@@ -53,7 +58,13 @@ public class ExportService(Window window, CanvasViewModel vm)
         if (exportNode is null)
         {
             string msg =
-                $"No {fileTypeName.Replace(" Files", "")} Export node found on the canvas. Add one via the node search menu.";
+                string.Format(
+                    L(
+                        "export.nodeNotFound",
+                        "No {0} Export node found on the canvas. Add one via the node search menu."
+                    ),
+                    fileTypeName.Replace(" Files", string.Empty)
+                );
             _vm.NotifyError(msg);
             return;
         }
@@ -65,7 +76,7 @@ public class ExportService(Window window, CanvasViewModel vm)
         IStorageFile? result = await _window.StorageProvider.SaveFilePickerAsync(
             new FilePickerSaveOptions
             {
-                Title = $"Export as {extension.ToUpper()}",
+                Title = string.Format(L("export.dialogTitleByExtension", "Export as {0}"), extension.ToUpperInvariant()),
                 DefaultExtension = extension,
                 FileTypeChoices = [fileType],
                 SuggestedFileName = Path.GetFileNameWithoutExtension(suggestedName),
@@ -78,8 +89,17 @@ public class ExportService(Window window, CanvasViewModel vm)
 
         string? written = await _vm.TriggerExportAsync(exportType, path);
         if (written is not null)
-            _vm.NotifySuccess("Export completed successfully.", written);
+            _vm.NotifySuccess(L("export.success", "Export completed successfully."), written);
         else
-            _vm.NotifyError("Export failed.", "Check file path and permissions.");
+            _vm.NotifyError(
+                L("export.failed", "Export failed."),
+                L("export.failed.pathPermissionsHint", "Check file path and permissions.")
+            );
+    }
+
+    private static string L(string key, string fallback)
+    {
+        string value = LocalizationService.Instance[key];
+        return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
     }
 }

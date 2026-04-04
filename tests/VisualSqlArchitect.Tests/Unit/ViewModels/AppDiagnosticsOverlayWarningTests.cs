@@ -1,3 +1,4 @@
+﻿using VisualSqlArchitect.UI.Services.Benchmark;
 using VisualSqlArchitect.UI.ViewModels;
 using Xunit;
 
@@ -20,7 +21,7 @@ public class AppDiagnosticsOverlayWarningTests
 
         Assert.True(vm.IsVisible);
         Assert.Contains(
-            vm.Entries,
+            vm.SnapshotEntries(),
             e =>
                 e.Name == "Canvas Migration"
                 && e.Status == EDiagnosticStatus.Warning
@@ -28,3 +29,4 @@ public class AppDiagnosticsOverlayWarningTests
         );
     }
 }
+

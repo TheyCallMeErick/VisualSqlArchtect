@@ -1,8 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:vm="using:VisualSqlArchitect.UI.ViewModels"
+             xmlns:startmodels="using:VisualSqlArchitect.UI.Services.Start.Models"
              x:Class="VisualSqlArchitect.UI.Controls.Start.ConnectionStatusCard"
-             x:DataType="vm:StartSavedConnectionItem">
+             x:DataType="startmodels:StartSavedConnectionItem">
 
   <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,6,0,6">
     <Grid Grid.Column="0" Width="8" Height="8" VerticalAlignment="Center">

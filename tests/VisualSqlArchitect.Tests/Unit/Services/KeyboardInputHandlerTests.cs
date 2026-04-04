@@ -107,6 +107,39 @@ public class KeyboardInputHandlerTests
     }
 
     [Fact]
+    public void ShiftA_OpensSearchCallback()
+    {
+        var canvas = new CanvasViewModel();
+        bool opened = false;
+        var handler = new KeyboardInputHandler(
+            canvas,
+            openSearchAction: () => opened = true
+        );
+
+        bool handled = handler.HandleShortcut(Avalonia.Input.Key.A, Avalonia.Input.KeyModifiers.Shift);
+
+        Assert.True(handled);
+        Assert.True(opened);
+    }
+
+    [Fact]
+    public void CtrlF_DoesNotOpenSearch_WhenSearchAlreadyVisible()
+    {
+        var canvas = new CanvasViewModel();
+        bool opened = false;
+        canvas.SearchMenu.Open(new Avalonia.Point(30, 30));
+        var handler = new KeyboardInputHandler(
+            canvas,
+            openSearchAction: () => opened = true
+        );
+
+        bool handled = handler.HandleShortcut(Avalonia.Input.Key.F, Avalonia.Input.KeyModifiers.Control);
+
+        Assert.False(handled);
+        Assert.False(opened);
+    }
+
+    [Fact]
     public void CanvasLocalKeys_AreNotHandledByGlobalHandler()
     {
         var canvas = new CanvasViewModel();
@@ -121,13 +154,118 @@ public class KeyboardInputHandlerTests
     public void Escape_ClosesOverlay_WhenVisible()
     {
         var canvas = new CanvasViewModel();
-        canvas.CommandPalette.Open();
+        var commandPalette = new CommandPaletteViewModel();
+        commandPalette.Open();
+        var handler = new KeyboardInputHandler(canvas, commandPalette);
+
+        bool handled = handler.HandleShortcut(Avalonia.Input.Key.Escape, Avalonia.Input.KeyModifiers.None);
+
+        Assert.True(handled);
+        Assert.False(commandPalette.IsVisible);
+    }
+
+    [Fact]
+    public void Escape_ClosesSearchMenu_WhenVisible()
+    {
+        var canvas = new CanvasViewModel();
+        canvas.SearchMenu.Open(new Avalonia.Point(20, 20));
         var handler = new KeyboardInputHandler(canvas);
 
         bool handled = handler.HandleShortcut(Avalonia.Input.Key.Escape, Avalonia.Input.KeyModifiers.None);
 
         Assert.True(handled);
-        Assert.False(canvas.CommandPalette.IsVisible);
+        Assert.False(canvas.SearchMenu.IsVisible);
+    }
+
+    [Fact]
+    public void Escape_ClosesDataPreview_WhenVisible()
+    {
+        var canvas = new CanvasViewModel();
+        canvas.DataPreview.IsVisible = true;
+        var handler = new KeyboardInputHandler(canvas);
+
+        bool handled = handler.HandleShortcut(Avalonia.Input.Key.Escape, Avalonia.Input.KeyModifiers.None);
+
+        Assert.True(handled);
+        Assert.False(canvas.DataPreview.IsVisible);
+    }
+
+    [Fact]
+    public void Escape_ClosesConnectionManager_WhenVisible()
+    {
+        var canvas = new CanvasViewModel();
+        canvas.ConnectionManager.Open();
+        var handler = new KeyboardInputHandler(canvas);
+
+        bool handled = handler.HandleShortcut(Avalonia.Input.Key.Escape, Avalonia.Input.KeyModifiers.None);
+
+        Assert.True(handled);
+        Assert.False(canvas.ConnectionManager.IsVisible);
+    }
+
+    [Fact]
+    public void Escape_ClosesBenchmark_WhenVisible()
+    {
+        var canvas = new CanvasViewModel();
+        canvas.Benchmark.Open();
+        var handler = new KeyboardInputHandler(canvas);
+
+        bool handled = handler.HandleShortcut(Avalonia.Input.Key.Escape, Avalonia.Input.KeyModifiers.None);
+
+        Assert.True(handled);
+        Assert.False(canvas.Benchmark.IsVisible);
+    }
+
+    [Fact]
+    public void Escape_ClosesExplain_WhenVisible()
+    {
+        var canvas = new CanvasViewModel();
+        canvas.ExplainPlan.Open();
+        var handler = new KeyboardInputHandler(canvas);
+
+        bool handled = handler.HandleShortcut(Avalonia.Input.Key.Escape, Avalonia.Input.KeyModifiers.None);
+
+        Assert.True(handled);
+        Assert.False(canvas.ExplainPlan.IsVisible);
+    }
+
+    [Fact]
+    public void Escape_ClosesSqlImporter_WhenVisible()
+    {
+        var canvas = new CanvasViewModel();
+        canvas.SqlImporter.Open();
+        var handler = new KeyboardInputHandler(canvas);
+
+        bool handled = handler.HandleShortcut(Avalonia.Input.Key.Escape, Avalonia.Input.KeyModifiers.None);
+
+        Assert.True(handled);
+        Assert.False(canvas.SqlImporter.IsVisible);
+    }
+
+    [Fact]
+    public void Escape_ClosesFlowVersions_WhenVisible()
+    {
+        var canvas = new CanvasViewModel();
+        canvas.FlowVersions.Open();
+        var handler = new KeyboardInputHandler(canvas);
+
+        bool handled = handler.HandleShortcut(Avalonia.Input.Key.Escape, Avalonia.Input.KeyModifiers.None);
+
+        Assert.True(handled);
+        Assert.False(canvas.FlowVersions.IsVisible);
+    }
+
+    [Fact]
+    public void Escape_ClosesFileHistory_WhenVisible()
+    {
+        var canvas = new CanvasViewModel();
+        canvas.FileHistory.Open();
+        var handler = new KeyboardInputHandler(canvas);
+
+        bool handled = handler.HandleShortcut(Avalonia.Input.Key.Escape, Avalonia.Input.KeyModifiers.None);
+
+        Assert.True(handled);
+        Assert.False(canvas.FileHistory.IsVisible);
     }
 
     [Fact]
@@ -146,7 +284,272 @@ public class KeyboardInputHandlerTests
     }
 
     [Fact]
-    public void Escape_ExitsCteEditor_WhenInCteEditorMode()
+    public void CtrlShiftH_OpensFlowVersionsOverlay()
+    {
+        var canvas = new CanvasViewModel();
+        var handler = new KeyboardInputHandler(canvas);
+
+        bool handled = handler.HandleShortcut(
+            Avalonia.Input.Key.H,
+            Avalonia.Input.KeyModifiers.Control | Avalonia.Input.KeyModifiers.Shift
+        );
+
+        Assert.True(handled);
+        Assert.True(canvas.FlowVersions.IsVisible);
+    }
+
+    [Fact]
+    public void CtrlShiftC_OpensConnectionManager()
+    {
+        var canvas = new CanvasViewModel();
+        var handler = new KeyboardInputHandler(canvas);
+
+        bool handled = handler.HandleShortcut(
+            Avalonia.Input.Key.C,
+            Avalonia.Input.KeyModifiers.Control | Avalonia.Input.KeyModifiers.Shift
+        );
+
+        Assert.True(handled);
+        Assert.True(canvas.ConnectionManager.IsVisible);
+    }
+
+    [Fact]
+    public void CtrlK_OpensCommandPalette_WhenProvided()
+    {
+        var canvas = new CanvasViewModel();
+        var commandPalette = new CommandPaletteViewModel();
+        var handler = new KeyboardInputHandler(canvas, commandPalette);
+
+        bool handled = handler.HandleShortcut(Avalonia.Input.Key.K, Avalonia.Input.KeyModifiers.Control);
+
+        Assert.True(handled);
+        Assert.True(commandPalette.IsVisible);
+    }
+
+    [Fact]
+    public void CtrlK_IsNotHandled_WhenNoCommandPaletteWasInjected()
+    {
+        var canvas = new CanvasViewModel();
+        var handler = new KeyboardInputHandler(canvas);
+
+        bool handled = handler.HandleShortcut(Avalonia.Input.Key.K, Avalonia.Input.KeyModifiers.Control);
+
+        Assert.False(handled);
+    }
+
+    [Fact]
+    public void F4_OpensExplainPlan()
+    {
+        var canvas = new CanvasViewModel();
+        var handler = new KeyboardInputHandler(canvas);
+
+        bool handled = handler.HandleShortcut(Avalonia.Input.Key.F4, Avalonia.Input.KeyModifiers.None);
+
+        Assert.True(handled);
+        Assert.True(canvas.ExplainPlan.IsVisible);
+    }
+
+    [Fact]
+    public void F3_TogglesDataPreview()
+    {
+        var canvas = new CanvasViewModel();
+        var handler = new KeyboardInputHandler(canvas);
+
+        Assert.False(canvas.DataPreview.IsVisible);
+        Assert.True(handler.HandleShortcut(Avalonia.Input.Key.F3, Avalonia.Input.KeyModifiers.None));
+        Assert.True(canvas.DataPreview.IsVisible);
+        Assert.True(handler.HandleShortcut(Avalonia.Input.Key.F3, Avalonia.Input.KeyModifiers.None));
+        Assert.False(canvas.DataPreview.IsVisible);
+    }
+
+    [Fact]
+    public void CtrlG_TogglesSnapToGrid()
+    {
+        var canvas = new CanvasViewModel();
+        bool initial = canvas.SnapToGrid;
+        var handler = new KeyboardInputHandler(canvas);
+
+        bool handled = handler.HandleShortcut(Avalonia.Input.Key.G, Avalonia.Input.KeyModifiers.Control);
+
+        Assert.True(handled);
+        Assert.NotEqual(initial, canvas.SnapToGrid);
+    }
+
+    [Fact]
+    public void CtrlN_InvokesCreateNewCanvasCallback()
+    {
+        var canvas = new CanvasViewModel();
+        bool invoked = false;
+        var handler = new KeyboardInputHandler(
+            canvas,
+            onCreateNewCanvas: () => invoked = true
+        );
+
+        bool handled = handler.HandleShortcut(Avalonia.Input.Key.N, Avalonia.Input.KeyModifiers.Control);
+
+        Assert.True(handled);
+        Assert.True(invoked);
+    }
+
+    [Fact]
+    public void F5_IsHandled()
+    {
+        var canvas = new CanvasViewModel();
+        var handler = new KeyboardInputHandler(canvas);
+
+        bool handled = handler.HandleShortcut(Avalonia.Input.Key.F5, Avalonia.Input.KeyModifiers.None);
+
+        Assert.True(handled);
+    }
+
+    [Fact]
+    public void CtrlPlusAndCtrlMinus_AdjustZoom()
+    {
+        var canvas = new CanvasViewModel();
+        canvas.Zoom = 1.0;
+        var handler = new KeyboardInputHandler(canvas);
+
+        Assert.True(handler.HandleShortcut(Avalonia.Input.Key.OemPlus, Avalonia.Input.KeyModifiers.Control));
+        Assert.True(canvas.Zoom > 1.0);
+
+        double afterZoomIn = canvas.Zoom;
+        Assert.True(handler.HandleShortcut(Avalonia.Input.Key.OemMinus, Avalonia.Input.KeyModifiers.Control));
+        Assert.True(canvas.Zoom < afterZoomIn);
+    }
+
+    [Fact]
+    public void CtrlAddAndCtrlSubtract_AdjustZoom()
+    {
+        var canvas = new CanvasViewModel();
+        canvas.Zoom = 1.0;
+        var handler = new KeyboardInputHandler(canvas);
+
+        Assert.True(handler.HandleShortcut(Avalonia.Input.Key.Add, Avalonia.Input.KeyModifiers.Control));
+        Assert.True(canvas.Zoom > 1.0);
+
+        double afterZoomIn = canvas.Zoom;
+        Assert.True(handler.HandleShortcut(Avalonia.Input.Key.Subtract, Avalonia.Input.KeyModifiers.Control));
+        Assert.True(canvas.Zoom < afterZoomIn);
+    }
+
+    [Fact]
+    public void Backspace_DeletesSelectedNodes()
+    {
+        var canvas = new CanvasViewModel();
+        canvas.Nodes.Clear();
+        canvas.Connections.Clear();
+        canvas.UndoRedo.Clear();
+
+        var a = new NodeViewModel("public.a", [], new Avalonia.Point(0, 0)) { IsSelected = true };
+        var b = new NodeViewModel("public.b", [], new Avalonia.Point(100, 0));
+        canvas.Nodes.Add(a);
+        canvas.Nodes.Add(b);
+
+        var handler = new KeyboardInputHandler(canvas);
+        bool handled = handler.HandleShortcut(Avalonia.Input.Key.Back, Avalonia.Input.KeyModifiers.None);
+
+        Assert.True(handled);
+        Assert.Single(canvas.Nodes);
+    }
+
+    [Fact]
+    public void CtrlZAndCtrlY_RunUndoRedo()
+    {
+        var canvas = new CanvasViewModel();
+        canvas.Nodes.Clear();
+        canvas.Connections.Clear();
+        canvas.UndoRedo.Clear();
+
+        var a = new NodeViewModel("public.a", [], new Avalonia.Point(0, 0)) { IsSelected = true };
+        var b = new NodeViewModel("public.b", [], new Avalonia.Point(100, 0));
+        canvas.Nodes.Add(a);
+        canvas.Nodes.Add(b);
+
+        var handler = new KeyboardInputHandler(canvas);
+        Assert.True(handler.HandleShortcut(Avalonia.Input.Key.Delete, Avalonia.Input.KeyModifiers.None));
+        Assert.Single(canvas.Nodes);
+
+        Assert.True(handler.HandleShortcut(Avalonia.Input.Key.Z, Avalonia.Input.KeyModifiers.Control));
+        Assert.Equal(2, canvas.Nodes.Count);
+
+        Assert.True(handler.HandleShortcut(Avalonia.Input.Key.Y, Avalonia.Input.KeyModifiers.Control));
+        Assert.Single(canvas.Nodes);
+    }
+
+    [Fact]
+    public void CtrlL_IsHandledForAutoLayout()
+    {
+        var canvas = new CanvasViewModel();
+        var handler = new KeyboardInputHandler(canvas);
+
+        bool handled = handler.HandleShortcut(Avalonia.Input.Key.L, Avalonia.Input.KeyModifiers.Control);
+
+        Assert.True(handled);
+    }
+
+    [Fact]
+    public void CtrlAltEnter_IsHandled()
+    {
+        var canvas = new CanvasViewModel();
+        var handler = new KeyboardInputHandler(canvas);
+
+        bool handled = handler.HandleShortcut(
+            Avalonia.Input.Key.Enter,
+            Avalonia.Input.KeyModifiers.Control | Avalonia.Input.KeyModifiers.Alt
+        );
+
+        Assert.True(handled);
+    }
+
+    [Fact]
+    public void CtrlShiftPageUp_BringsSelectionToFront()
+    {
+        var canvas = new CanvasViewModel();
+        canvas.Nodes.Clear();
+        canvas.Connections.Clear();
+        canvas.UndoRedo.Clear();
+
+        var a = new NodeViewModel("public.a", [], new Avalonia.Point(0, 0)) { ZOrder = 0 };
+        var b = new NodeViewModel("public.b", [], new Avalonia.Point(100, 0)) { ZOrder = 1, IsSelected = true };
+        var c = new NodeViewModel("public.c", [], new Avalonia.Point(200, 0)) { ZOrder = 2 };
+        canvas.Nodes.Add(a);
+        canvas.Nodes.Add(b);
+        canvas.Nodes.Add(c);
+
+        var handler = new KeyboardInputHandler(canvas);
+        bool handled = handler.HandleShortcut(
+            Avalonia.Input.Key.PageUp,
+            Avalonia.Input.KeyModifiers.Control | Avalonia.Input.KeyModifiers.Shift
+        );
+
+        Assert.True(handled);
+        Assert.Equal(2, b.ZOrder);
+    }
+
+    [Fact]
+    public void CtrlPageDown_SendsSelectionBackward()
+    {
+        var canvas = new CanvasViewModel();
+        canvas.Nodes.Clear();
+        canvas.Connections.Clear();
+        canvas.UndoRedo.Clear();
+
+        var a = new NodeViewModel("public.a", [], new Avalonia.Point(0, 0)) { ZOrder = 0 };
+        var b = new NodeViewModel("public.b", [], new Avalonia.Point(100, 0)) { ZOrder = 2, IsSelected = true };
+        var c = new NodeViewModel("public.c", [], new Avalonia.Point(200, 0)) { ZOrder = 1 };
+        canvas.Nodes.Add(a);
+        canvas.Nodes.Add(b);
+        canvas.Nodes.Add(c);
+
+        var handler = new KeyboardInputHandler(canvas);
+        bool handled = handler.HandleShortcut(Avalonia.Input.Key.PageDown, Avalonia.Input.KeyModifiers.Control);
+
+        Assert.True(handled);
+        Assert.Equal(1, b.ZOrder);
+    }
+
+    [Fact]
+    public async Task Escape_ExitsCteEditor_WhenInCteEditorMode()
     {
         var canvas = new CanvasViewModel();
         canvas.Nodes.Clear();
@@ -168,7 +571,7 @@ public class KeyboardInputHandlerTests
         Connect(canvas, result, "result", cte, "query");
 
         cte.IsSelected = true;
-        Assert.True(canvas.EnterSelectedCteEditor());
+        Assert.True(await canvas.EnterSelectedCteEditorAsync());
         Assert.True(canvas.IsInCteEditor);
 
         var handler = new KeyboardInputHandler(canvas);

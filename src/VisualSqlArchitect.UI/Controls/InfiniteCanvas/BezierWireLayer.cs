@@ -4,6 +4,7 @@ using Avalonia.Media;
 using Avalonia.Rendering.Composition;
 using Avalonia.Threading;
 using System.Linq;
+using VisualSqlArchitect.CanvasKit;
 using VisualSqlArchitect.UI.ViewModels;
 
 namespace VisualSqlArchitect.UI.Controls;
@@ -25,7 +26,7 @@ public sealed class BezierWireLayer : Control
         Point To,
         Color Color,
         double Thickness,
-        ConnectionViewModel.EWireDashKind DashKind,
+        CanvasWireDashKind DashKind,
         long StartedAtMs
     );
 
@@ -43,6 +44,17 @@ public sealed class BezierWireLayer : Control
     public static readonly StyledProperty<ConnectionViewModel?> PendingConnectionProperty =
         AvaloniaProperty.Register<BezierWireLayer, ConnectionViewModel?>(nameof(PendingConnection));
 
+    public static readonly StyledProperty<ConnectionViewModel?> InvalidPreviewConnectionProperty =
+        AvaloniaProperty.Register<BezierWireLayer, ConnectionViewModel?>(
+            nameof(InvalidPreviewConnection)
+        );
+
+    public static readonly StyledProperty<CanvasWireCurveMode> WireCurveModeProperty =
+        AvaloniaProperty.Register<BezierWireLayer, CanvasWireCurveMode>(
+            nameof(WireCurveMode),
+            defaultValue: CanvasWireCurveMode.Bezier
+        );
+
     public IReadOnlyList<ConnectionViewModel> Connections
     {
         get => GetValue(ConnectionsProperty);
@@ -55,6 +67,18 @@ public sealed class BezierWireLayer : Control
         set => SetValue(PendingConnectionProperty, value);
     }
 
+    public ConnectionViewModel? InvalidPreviewConnection
+    {
+        get => GetValue(InvalidPreviewConnectionProperty);
+        set => SetValue(InvalidPreviewConnectionProperty, value);
+    }
+
+    public CanvasWireCurveMode WireCurveMode
+    {
+        get => GetValue(WireCurveModeProperty);
+        set => SetValue(WireCurveModeProperty, value);
+    }
+
     static BezierWireLayer()
     {
         ConnectionsProperty.Changed.AddClassHandler<BezierWireLayer>((c, _) =>
@@ -65,15 +89,28 @@ public sealed class BezierWireLayer : Control
         PendingConnectionProperty.Changed.AddClassHandler<BezierWireLayer>(
             (c, _) => c.InvalidateVisual()
         );
-        AffectsRender<BezierWireLayer>(ConnectionsProperty, PendingConnectionProperty);
+        InvalidPreviewConnectionProperty.Changed.AddClassHandler<BezierWireLayer>(
+            (c, _) => c.InvalidateVisual()
+        );
+        WireCurveModeProperty.Changed.AddClassHandler<BezierWireLayer>((c, _) =>
+        {
+            c._geomCache.Clear();
+            c.InvalidateVisual();
+        });
+        AffectsRender<BezierWireLayer>(
+            ConnectionsProperty,
+            PendingConnectionProperty,
+            InvalidPreviewConnectionProperty,
+            WireCurveModeProperty
+        );
     }
 
     // ── Geometry cache ────────────────────────────────────────────────────────
 
-    private readonly record struct WireEndpoints(Point From, Point To);
+    private readonly record struct WireCacheKey(Point From, Point To, CanvasWireCurveMode CurveMode);
 
     /// <summary>Cached geometry per connection — rebuilt only when endpoints change.</summary>
-    private readonly Dictionary<ConnectionViewModel, (PathGeometry Geom, WireEndpoints Ends)>
+    private readonly Dictionary<ConnectionViewModel, (PathGeometry Geom, WireCacheKey Key)>
         _geomCache = new();
 
     /// <summary>
@@ -108,13 +145,15 @@ public sealed class BezierWireLayer : Control
         Color Color,
         double Thickness,
         bool IsGlow,
-        ConnectionViewModel.EWireDashKind DashKind
+        CanvasWireDashKind DashKind
     );
 
     private readonly Dictionary<PenKey, Pen> _penCache = new();
     private readonly Dictionary<Color, SolidColorBrush> _brushCache = new();
     private readonly Dictionary<Color, Pen> _dragPenCache = new();
     private static readonly DashStyle DragDashStyle = new([6, 4], 0);
+    private static readonly DashStyle ShortDashStyle = new([4, 4], 0);
+    private static readonly DashStyle MediumDashStyle = new([6, 3], 0);
     private static readonly DashStyle ColumnSetDashStyle = new([8, 3], 0);
     private static readonly DashStyle RowSetDashStyle = new([12, 4], 0);
     private static readonly DashStyle ExpressionDashStyle = new([2, 4], 0);
@@ -126,11 +165,11 @@ public sealed class BezierWireLayer : Control
     private Pen GetPen(
         Color color,
         double thickness,
-        ConnectionViewModel.EWireDashKind dashKind = ConnectionViewModel.EWireDashKind.Solid,
+        CanvasWireDashKind dashKind = CanvasWireDashKind.Solid,
         bool isGlow = false
     )
     {
-        var cacheDashKind = isGlow ? ConnectionViewModel.EWireDashKind.Solid : dashKind;
+        var cacheDashKind = isGlow ? CanvasWireDashKind.Solid : dashKind;
         var key = new PenKey(color, thickness, isGlow, cacheDashKind);
         if (!_penCache.TryGetValue(key, out Pen? pen))
         {
@@ -143,9 +182,11 @@ public sealed class BezierWireLayer : Control
             {
                 pen.DashStyle = dashKind switch
                 {
-                    ConnectionViewModel.EWireDashKind.LongDash => ColumnSetDashStyle,
-                    ConnectionViewModel.EWireDashKind.WideDash => RowSetDashStyle,
-                    ConnectionViewModel.EWireDashKind.Dotted => ExpressionDashStyle,
+                    CanvasWireDashKind.ShortDash => ShortDashStyle,
+                    CanvasWireDashKind.MediumDash => MediumDashStyle,
+                    CanvasWireDashKind.LongDash => ColumnSetDashStyle,
+                    CanvasWireDashKind.WideDash => RowSetDashStyle,
+                    CanvasWireDashKind.Dotted => ExpressionDashStyle,
                     _ => null,
                 };
             }
@@ -218,7 +259,7 @@ public sealed class BezierWireLayer : Control
                 conn.ToPoint,
                 conn.WireColor,
                 conn.WireThickness,
-                conn.DashKind,
+                conn.CanvasDashKind,
                 Environment.TickCount64
             )
         );
@@ -238,7 +279,7 @@ public sealed class BezierWireLayer : Control
 
         foreach (ConnectionViewModel conn in Connections.Where(c => c.ToPin is not null))
         {
-            if (!IsPointNearBezier(point, conn.FromPoint, conn.ToPoint, tolerance))
+            if (!IsPointNearWire(point, conn.FromPoint, conn.ToPoint, tolerance))
                 continue;
 
             int depth = GetConnectionDepth(conn);
@@ -301,23 +342,26 @@ public sealed class BezierWireLayer : Control
         bool emphasized = emphasisLevel > 0;
 
         // ── Viewport culling ──────────────────────────────────────────────────
-        // Use the bounding box of control points to estimate wire extent.
-        (Point c1, Point c2) = BezierControlPoints(from, to);
-        double minX = Math.Min(Math.Min(from.X, to.X), Math.Min(c1.X, c2.X));
-        double minY = Math.Min(Math.Min(from.Y, to.Y), Math.Min(c1.Y, c2.Y));
-        double maxX = Math.Max(Math.Max(from.X, to.X), Math.Max(c1.X, c2.X));
-        double maxY = Math.Max(Math.Max(from.Y, to.Y), Math.Max(c1.Y, c2.Y));
+        (double minX, double minY, double maxX, double maxY) = GetWireBounds(from, to);
         if (maxX < 0 || minX > viewport.Width || maxY < 0 || minY > viewport.Height)
             return; // entirely outside viewport
 
         // ── Geometry cache ────────────────────────────────────────────────────
-        PathGeometry geometry = GetOrBuildGeometry(conn, from, c1, c2, to);
+        PathGeometry geometry = GetOrBuildGeometry(conn, from, to);
 
         Color color = conn.WireColor;
         double thickness = conn.WireThickness;
+        bool invalidPreview = ReferenceEquals(conn, InvalidPreviewConnection);
+        if (invalidPreview)
+        {
+            color = Color.Parse("#EF4444");
+            thickness += 0.9;
+        }
         double glowThickness = emphasisLevel >= 3 ? thickness + 10 : emphasisLevel == 2 ? thickness + 9 : emphasized ? thickness + 8 : thickness + 6;
         double mainThickness = emphasisLevel >= 2 ? thickness + 1.2 : emphasized ? thickness + 1.0 : thickness;
-        double glowOpacity = emphasisLevel >= 3 ? 0.72 : emphasisLevel == 2 ? 0.62 : emphasized ? 0.55 : 0.4;
+        double glowOpacity = invalidPreview
+            ? 0.78
+            : emphasisLevel >= 3 ? 0.72 : emphasisLevel == 2 ? 0.62 : emphasized ? 0.55 : 0.4;
         double endpointRadius = emphasisLevel >= 2 ? 4.6 : emphasized ? 4.2 : 3.5;
 
         // Glow pass (thick, low-alpha)
@@ -330,7 +374,11 @@ public sealed class BezierWireLayer : Control
         Color boosted = BoostForEmphasis(color, emphasisLevel);
         byte mainAlpha = (byte)(emphasisLevel >= 3 ? 255 : emphasisLevel == 2 ? 240 : emphasized ? 230 : 190);
         var mainColor  = Color.FromArgb(mainAlpha, boosted.R, boosted.G, boosted.B);
-        Pen mainPen    = GetPen(mainColor, mainThickness, conn.DashKind);
+        Pen mainPen    = GetPen(
+            mainColor,
+            mainThickness,
+            invalidPreview ? CanvasWireDashKind.ShortDash : conn.CanvasDashKind
+        );
         dc.DrawGeometry(null, mainPen, geometry);
 
         // Endpoint dots
@@ -340,16 +388,17 @@ public sealed class BezierWireLayer : Control
 
     private PathGeometry GetOrBuildGeometry(
         ConnectionViewModel conn,
-        Point from, Point c1, Point c2, Point to
+        Point from,
+        Point to
     )
     {
-        var ends = new WireEndpoints(from, to);
+        var key = new WireCacheKey(from, to, WireCurveMode);
 
-        if (_geomCache.TryGetValue(conn, out var cached) && cached.Ends == ends)
+        if (_geomCache.TryGetValue(conn, out var cached) && cached.Key == key)
             return cached.Geom; // endpoints unchanged — reuse
 
-        PathGeometry geom = BuildBezier(from, c1, c2, to);
-        _geomCache[conn] = (geom, ends);
+        PathGeometry geom = BuildGeometry(from, to);
+        _geomCache[conn] = (geom, key);
         return geom;
     }
 
@@ -358,8 +407,7 @@ public sealed class BezierWireLayer : Control
         Color color = conn.WireColor;
         Point from = conn.FromPoint;
         Point to   = conn.ToPoint;
-        (Point c1, Point c2) = BezierControlPoints(from, to);
-        PathGeometry geometry = BuildBezier(from, c1, c2, to);
+        PathGeometry geometry = BuildGeometry(from, to);
 
         // Dashed animated-looking wire for pending connections
         using (dc.PushOpacity(0.7))
@@ -390,16 +438,11 @@ public sealed class BezierWireLayer : Control
 
             Point from = flash.From;
             Point to = flash.To;
-            (Point c1, Point c2) = BezierControlPoints(from, to);
-
-            double minX = Math.Min(Math.Min(from.X, to.X), Math.Min(c1.X, c2.X));
-            double minY = Math.Min(Math.Min(from.Y, to.Y), Math.Min(c1.Y, c2.Y));
-            double maxX = Math.Max(Math.Max(from.X, to.X), Math.Max(c1.X, c2.X));
-            double maxY = Math.Max(Math.Max(from.Y, to.Y), Math.Max(c1.Y, c2.Y));
+            (double minX, double minY, double maxX, double maxY) = GetWireBounds(from, to);
             if (maxX < 0 || minX > viewport.Width || maxY < 0 || minY > viewport.Height)
                 continue;
 
-            PathGeometry geometry = BuildBezier(from, c1, c2, to);
+            PathGeometry geometry = BuildGeometry(from, to);
             double ease = (1 - t) * (1 - t);
             byte alpha = (byte)(220 * ease);
             Color color = Color.FromArgb(alpha, flash.Color.R, flash.Color.G, flash.Color.B);
@@ -414,6 +457,34 @@ public sealed class BezierWireLayer : Control
     }
 
     // ── Geometry helpers ──────────────────────────────────────────────────────
+
+    private (double minX, double minY, double maxX, double maxY) GetWireBounds(Point from, Point to)
+    {
+        if (WireCurveMode == CanvasWireCurveMode.Straight)
+        {
+            double minX = Math.Min(from.X, to.X);
+            double minY = Math.Min(from.Y, to.Y);
+            double maxX = Math.Max(from.X, to.X);
+            double maxY = Math.Max(from.Y, to.Y);
+            return (minX, minY, maxX, maxY);
+        }
+
+        (Point c1, Point c2) = BezierControlPoints(from, to);
+        double bezMinX = Math.Min(Math.Min(from.X, to.X), Math.Min(c1.X, c2.X));
+        double bezMinY = Math.Min(Math.Min(from.Y, to.Y), Math.Min(c1.Y, c2.Y));
+        double bezMaxX = Math.Max(Math.Max(from.X, to.X), Math.Max(c1.X, c2.X));
+        double bezMaxY = Math.Max(Math.Max(from.Y, to.Y), Math.Max(c1.Y, c2.Y));
+        return (bezMinX, bezMinY, bezMaxX, bezMaxY);
+    }
+
+    private PathGeometry BuildGeometry(Point from, Point to)
+    {
+        if (WireCurveMode == CanvasWireCurveMode.Straight)
+            return BuildStraight(from, to);
+
+        (Point c1, Point c2) = BezierControlPoints(from, to);
+        return BuildBezier(from, c1, c2, to);
+    }
 
     private static (Point c1, Point c2) BezierControlPoints(Point from, Point to)
     {
@@ -440,6 +511,32 @@ public sealed class BezierWireLayer : Control
         };
 
         return new PathGeometry { Figures = [figure] };
+    }
+
+    private static PathGeometry BuildStraight(Point from, Point to)
+    {
+        var seg = new LineSegment
+        {
+            Point = to,
+        };
+
+        var figure = new PathFigure
+        {
+            StartPoint = from,
+            IsClosed = false,
+            IsFilled = false,
+            Segments = [seg],
+        };
+
+        return new PathGeometry { Figures = [figure] };
+    }
+
+    private bool IsPointNearWire(Point p, Point from, Point to, double tolerance)
+    {
+        if (WireCurveMode == CanvasWireCurveMode.Straight)
+            return DistanceSqPointToSegment(p, from, to) <= (tolerance * tolerance);
+
+        return IsPointNearBezier(p, from, to, tolerance);
     }
 
     private static bool IsPointNearBezier(Point p, Point from, Point to, double tolerance)

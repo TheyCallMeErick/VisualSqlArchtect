@@ -15,6 +15,7 @@ public sealed class SearchMenuViewModel : ViewModelBase
     private bool _isVisible;
     private Point _spawnPos;
     private NodeSearchResultViewModel? _selected;
+    private CanvasContext _canvasContext = CanvasContext.Query;
 
     /// <summary>
     /// The search query entered by the user.
@@ -55,6 +56,21 @@ public sealed class SearchMenuViewModel : ViewModelBase
     {
         get => _selected;
         set => Set(ref _selected, value);
+    }
+
+    public CanvasContext CanvasContext
+    {
+        get => _canvasContext;
+        set
+        {
+            if (!Set(ref _canvasContext, value))
+                return;
+
+            // Context switch must clear stale query/state from previous mode.
+            _query = "";
+            RaisePropertyChanged(nameof(Query));
+            FilterResults();
+        }
     }
 
     /// <summary>
@@ -159,6 +175,8 @@ public sealed class SearchMenuViewModel : ViewModelBase
                 d.DisplayName.Contains(q, StringComparison.OrdinalIgnoreCase)
                 || d.Category.ToString().Contains(q, StringComparison.OrdinalIgnoreCase)
             );
+        filteredNodes = filteredNodes.Where(IsDefinitionAllowedInContext);
+
         foreach (NodeDefinition? d in filteredNodes.Take(12 - Results.Count))
             Results.Add(new NodeSearchResultViewModel(d));
 
@@ -185,5 +203,15 @@ public sealed class SearchMenuViewModel : ViewModelBase
         SelectedResult = Results[
             (Results.IndexOf(SelectedResult!) - 1 + Results.Count) % Results.Count
         ];
+    }
+
+    private bool IsDefinitionAllowedInContext(NodeDefinition def)
+    {
+        return CanvasContext switch
+        {
+            CanvasContext.Ddl => def.Category == NodeCategory.Ddl,
+            CanvasContext.Query or CanvasContext.ViewSubcanvas => def.Category != NodeCategory.Ddl,
+            _ => true,
+        };
     }
 }

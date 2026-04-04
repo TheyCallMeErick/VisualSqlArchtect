@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8"?>
+<SyntaxDefinition name="SQL"
+                  extensions=".sql"
+                  xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+  <Color name="Keyword" foreground="#818CF8" fontWeight="bold" />
+  <Color name="Type" foreground="#60A5FA" />
+  <Color name="Function" foreground="#FBBF24" />
+  <Color name="String" foreground="#4ADE80" />
+  <Color name="Number" foreground="#34D399" />
+  <Color name="Comment" foreground="#6B7280" fontStyle="italic" />
+  <Color name="Operator" foreground="#FB7185" />
+  <Color name="Identifier" foreground="#E5E7EB" />
+
+  <RuleSet ignoreCase="true">
+    <Span color="Comment" begin="--" end="\n" />
+    <Span color="Comment" multiline="true" begin="/\*" end="\*/" />
+    <Span color="String" begin="'" end="'" />
+    <Rule color="Number">\b\d+(\.\d+)?\b</Rule>
+    <Rule color="Operator">(&lt;&gt;|!=|&lt;=|&gt;=|=|&lt;|&gt;|\+|-|\*|/|%|\(|\)|,|\.)</Rule>
+
+    <Keywords color="Keyword">
+      <Word>select</Word>
+      <Word>from</Word>
+      <Word>where</Word>
+      <Word>join</Word>
+      <Word>inner</Word>
+      <Word>left</Word>
+      <Word>right</Word>
+      <Word>full</Word>
+      <Word>cross</Word>
+      <Word>on</Word>
+      <Word>group</Word>
+      <Word>by</Word>
+      <Word>order</Word>
+      <Word>having</Word>
+      <Word>limit</Word>
+      <Word>offset</Word>
+      <Word>top</Word>
+      <Word>distinct</Word>
+      <Word>with</Word>
+      <Word>as</Word>
+      <Word>union</Word>
+      <Word>all</Word>
+      <Word>case</Word>
+      <Word>when</Word>
+      <Word>then</Word>
+      <Word>else</Word>
+      <Word>end</Word>
+      <Word>insert</Word>
+      <Word>into</Word>
+      <Word>values</Word>
+      <Word>update</Word>
+      <Word>set</Word>
+      <Word>delete</Word>
+      <Word>create</Word>
+      <Word>alter</Word>
+      <Word>drop</Word>
+      <Word>table</Word>
+      <Word>view</Word>
+      <Word>index</Word>
+      <Word>constraint</Word>
+      <Word>primary</Word>
+      <Word>foreign</Word>
+      <Word>key</Word>
+      <Word>not</Word>
+      <Word>null</Word>
+      <Word>default</Word>
+      <Word>and</Word>
+      <Word>or</Word>
+      <Word>is</Word>
+      <Word>in</Word>
+      <Word>exists</Word>
+      <Word>between</Word>
+      <Word>like</Word>
+      <Word>ilike</Word>
+      <Word>returning</Word>
+    </Keywords>
+
+    <Keywords color="Type">
+      <Word>int</Word>
+      <Word>integer</Word>
+      <Word>bigint</Word>
+      <Word>smallint</Word>
+      <Word>tinyint</Word>
+      <Word>decimal</Word>
+      <Word>numeric</Word>
+      <Word>float</Word>
+      <Word>double</Word>
+      <Word>real</Word>
+      <Word>varchar</Word>
+      <Word>char</Word>
+      <Word>text</Word>
+      <Word>date</Word>
+      <Word>datetime</Word>
+      <Word>timestamp</Word>
+      <Word>boolean</Word>
+      <Word>bool</Word>
+      <Word>uuid</Word>
+      <Word>json</Word>
+      <Word>jsonb</Word>
+    </Keywords>
+
+    <Keywords color="Function">
+      <Word>count</Word>
+      <Word>sum</Word>
+      <Word>avg</Word>
+      <Word>min</Word>
+      <Word>max</Word>
+      <Word>coalesce</Word>
+      <Word>nullif</Word>
+      <Word>substring</Word>
+      <Word>lower</Word>
+      <Word>upper</Word>
+      <Word>trim</Word>
+      <Word>round</Word>
+      <Word>now</Word>
+      <Word>current_date</Word>
+      <Word>current_timestamp</Word>
+    </Keywords>
+
+    <Rule color="Identifier">\b[a-zA-Z_][a-zA-Z0-9_]*\b</Rule>
+  </RuleSet>
+</SyntaxDefinition>

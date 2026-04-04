@@ -42,6 +42,15 @@ public class SchemaViewModelSidebarFlowTests
 
         Assert.Single(vm.Categories[0].Items);
         Assert.Single(vm.Categories[1].Items);
+
+        SchemaObjectViewModel orders = vm.Categories[0].Items[0];
+        Assert.Equal("orders", orders.Name);
+        Assert.True(orders.IsExpandable);
+        Assert.Equal(2, orders.Children.Count);
+        Assert.Equal("KeyPlus", orders.Children[0].Icon);
+        Assert.Equal("#FCD34D", orders.Children[0].BadgeColor);
+        Assert.Equal("CircleOutline", orders.Children[1].Icon);
+        Assert.Equal("#9CA3AF", orders.Children[1].BadgeColor);
     }
 
     [Fact]

@@ -41,11 +41,31 @@ public sealed class QueryGeneratorService(DatabaseProvider provider, ISqlFunctio
     private readonly DatabaseProvider _provider = provider;
     private readonly ISqlFunctionRegistry _registry = registry;
     private readonly Compiler _compiler = CreateCompiler(provider);
-    private readonly Providers.Dialects.ISqlDialect _dialect = ProviderRegistry.CreateDefault().GetDialect(provider);
+    private readonly Providers.Dialects.ISqlDialect _dialect =
+        new ProviderRegistry(DefaultProviderRegistrations.CreateAll()).GetDialect(provider);
     private readonly EmitContext _emitCtx = new EmitContext(provider, registry);
 
+    public QueryGeneratorService(
+        DatabaseProvider provider,
+        ISqlFunctionRegistry registry,
+        IProviderRegistry providerRegistry
+    )
+        : this(provider, registry)
+    {
+        ArgumentNullException.ThrowIfNull(providerRegistry);
+        _dialect = providerRegistry.GetDialect(provider);
+        _emitCtx = new EmitContext(provider, registry, providerRegistry);
+    }
+
     public static QueryGeneratorService Create(DatabaseProvider provider) =>
-        new(provider, new SqlFunctionRegistry(provider));
+        Create(provider, new ProviderRegistry(DefaultProviderRegistrations.CreateAll()));
+
+    public static QueryGeneratorService Create(DatabaseProvider provider, IProviderRegistry providerRegistry)
+    {
+        ArgumentNullException.ThrowIfNull(providerRegistry);
+        ISqlFunctionRegistry registry = providerRegistry.CreateFunctionRegistry(provider);
+        return new QueryGeneratorService(provider, registry, providerRegistry);
+    }
 
     // ── Main entry point ──────────────────────────────────────────────────────
 
@@ -129,7 +149,7 @@ public sealed class QueryGeneratorService(DatabaseProvider provider, ISqlFunctio
             query.Distinct();
         ApplyWheres(query, compiled.WhereExprs, whereMeta);
         ApplyOrders(query, compiled.OrderExprs);
-        ApplyGroupBys(query, compiled.GroupByExprs);
+        ApplyGroupBys(query, ResolveGroupByExpressions(compiled));
         ApplyHavings(query, compiled.HavingExprs);
         if (compiled.Limit.HasValue)
             query.Limit(compiled.Limit.Value);
@@ -560,6 +580,69 @@ public sealed class QueryGeneratorService(DatabaseProvider provider, ISqlFunctio
     {
         foreach (ISqlExpression g in groups)
             q.GroupByRaw(g.Emit(_emitCtx));
+    }
+
+    private IReadOnlyList<ISqlExpression> ResolveGroupByExpressions(CompiledNodeGraph compiled)
+    {
+        if (compiled.GroupByExprs.Count > 0)
+            return compiled.GroupByExprs;
+
+        bool hasAggregates = compiled.SelectExprs.Any(s => ContainsAggregate(s.Expr));
+        if (!hasAggregates)
+            return compiled.GroupByExprs;
+
+        var inferred = compiled
+            .SelectExprs.Select(s => s.Expr)
+            .Where(e => !ContainsAggregate(e))
+            .ToList();
+
+        if (inferred.Count == 0)
+            return [];
+
+        return inferred
+            .GroupBy(e => e.Emit(_emitCtx), StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
+            .ToList();
+    }
+
+    private static bool ContainsAggregate(ISqlExpression expr)
+    {
+        return expr switch
+        {
+            AggregateExpr => true,
+            AliasExpr a => ContainsAggregate(a.Inner),
+            CastExpr c => ContainsAggregate(c.Input),
+            CaseExpr c => c.Whens.Any(w => ContainsAggregate(w.Condition) || ContainsAggregate(w.Result))
+                || (c.Else is not null && ContainsAggregate(c.Else)),
+            FunctionCallExpr f => IsAggregateFunctionName(f.FunctionName)
+                || f.Args.Any(ContainsAggregate),
+            RawSqlExpr raw => LooksLikeAggregateSql(raw.Sql),
+            _ => false,
+        };
+    }
+
+    private static bool IsAggregateFunctionName(string functionName) =>
+        functionName.Equals("Count", StringComparison.OrdinalIgnoreCase)
+            || functionName.Equals("CountStar", StringComparison.OrdinalIgnoreCase)
+            || functionName.Equals("Sum", StringComparison.OrdinalIgnoreCase)
+            || functionName.Equals("Avg", StringComparison.OrdinalIgnoreCase)
+            || functionName.Equals("Min", StringComparison.OrdinalIgnoreCase)
+            || functionName.Equals("Max", StringComparison.OrdinalIgnoreCase)
+            || functionName.Equals("StringAgg", StringComparison.OrdinalIgnoreCase);
+
+    private static bool LooksLikeAggregateSql(string sql)
+    {
+        if (string.IsNullOrWhiteSpace(sql))
+            return false;
+
+        string upper = sql.ToUpperInvariant();
+        return upper.Contains("COUNT(", StringComparison.Ordinal)
+            || upper.Contains("SUM(", StringComparison.Ordinal)
+            || upper.Contains("AVG(", StringComparison.Ordinal)
+            || upper.Contains("MIN(", StringComparison.Ordinal)
+            || upper.Contains("MAX(", StringComparison.Ordinal)
+            || upper.Contains("STRING_AGG(", StringComparison.Ordinal)
+            || upper.Contains("GROUP_CONCAT(", StringComparison.Ordinal);
     }
 
     private void ApplyHavings(Query q, IReadOnlyList<ISqlExpression> havings)

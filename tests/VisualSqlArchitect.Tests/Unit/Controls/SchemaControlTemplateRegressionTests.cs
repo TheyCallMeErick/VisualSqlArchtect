@@ -14,7 +14,7 @@ public class SchemaControlTemplateRegressionTests
         Assert.Contains("Style Selector=\"Border.schema-object-card:pointerover\"", xaml);
         Assert.Contains("Style Selector=\"Border.schema-object-card.expanded\"", xaml);
         Assert.Contains("IsVisible=\"{Binding ShowFilterEmptyState}\"", xaml);
-        Assert.Contains("Nenhum objeto encontrado para o filtro atual", xaml);
+        Assert.Contains("Text=\"{Binding [schema.emptyFiltered], Source={x:Static loc:LocalizationService.Instance}}\"", xaml);
     }
 
     [Fact]

@@ -2,7 +2,7 @@
 
 # Visual SQL Architect
 
-**Crie consultas SQL visualmente — sem precisar digitar.**
+**Crie consultas SQL visualmente - sem precisar digitar.**
 
 Um designer SQL baseado em nós e canvas infinito que compila para SQL real e parametrizado em SQL Server, PostgreSQL, MySQL e SQLite.
 
@@ -15,13 +15,16 @@ Um designer SQL baseado em nós e canvas infinito que compila para SQL real e pa
 
 ---
 
-**Idioma / Language:** 🇧🇷 [Português (PT-BR)](#o-que-é) · 🇺🇸 [English](#english)
+<a id="pt-br"></a>
+<a id="english"></a>
+
+**Idioma / Language:** 🇧🇷 [Português (PT-BR)](#pt-br) · 🇺🇸 [English](#english)
 
 **Status / Backlog:** [PROJECT_BACKLOG.md](PROJECT_BACKLOG.md)
 
 ## O que é?
 
-O Visual SQL Architect permite arrastar nós para o canvas e conectá-los para montar consultas SQL. Cada conexão vira um JOIN, cada nó de filtro vira uma cláusula WHERE, e o resultado aparece instantaneamente como SQL ao vivo abaixo do canvas — sem digitação, sem erros de sintaxe e sem dor de cabeça com dialetos.
+O Visual SQL Architect permite arrastar nós para o canvas e conectá-los para montar consultas SQL. Cada conexão vira um JOIN, cada nó de filtro vira uma cláusula WHERE, e o resultado aparece instantaneamente como SQL ao vivo abaixo do canvas - sem digitação, sem erros de sintaxe e sem dor de cabeça com dialetos.
 
 Diagrama visual do fluxo (query por nós): veja [Diagramas compartilhados](#shared-diagrams).
 
@@ -30,20 +33,20 @@ Diagrama visual do fluxo (query por nós): veja [Diagramas compartilhados](#shar
 ## Funcionalidades
 
 ### Canvas
-- **Pan e zoom infinitos** — pan com botão do meio, zoom com scroll e atalhos de teclado
-- **Nós por arrastar e soltar** — paleta de busca com fuzzy find e fluxo keyboard-first
-- **Conexões por fios** — curvas Bézier com validação em tempo real e pinos com checagem de tipo
-- **Multi-seleção e alinhamento** — selecione, mova, exclua e alinhe grupos de nós
-- **Auto-layout** — um clique para organizar um grafo bagunçado em uma árvore limpa
-- **Desfazer / refazer** — pilha de comandos granular, Ctrl+Z / Ctrl+Y
-- **Salvar / carregar sessões** — persistência do canvas em JSON, com suporte a múltiplas abas
+- **Pan e zoom infinitos** - pan com botão do meio, zoom com scroll e atalhos de teclado
+- **Nós por arrastar e soltar** - paleta de busca com fuzzy find e fluxo keyboard-first
+- **Conexões por fios** - curvas Bézier com validação em tempo real e pinos com checagem de tipo
+- **Multi-seleção e alinhamento** - selecione, mova, exclua e alinhe grupos de nós
+- **Auto-layout** - um clique para organizar um grafo bagunçado em uma árvore limpa
+- **Desfazer / refazer** - pilha de comandos granular, Ctrl+Z / Ctrl+Y
+- **Salvar / carregar sessões** - persistência do canvas em JSON e do workspace (query + DDL)
 
 ### Geração de SQL
-- **Pré-visualização SQL em tempo real** — cada edição atualiza a barra de SQL instantaneamente
-- **Multi-dialeto** — SQL Server, PostgreSQL, MySQL e SQLite — altere o provider e o SQL é atualizado
-- **Preview seguro** — `ExecutePreviewAsync` sempre faz rollback; nunca altera dados
-- **Plano EXPLAIN** — um clique para visualizar o plano de execução retornado pelo servidor
-- **Importador SQL** — cole SQL existente e importe de volta como grafo de nós
+- **Pré-visualização SQL em tempo real** - cada edição atualiza a barra de SQL instantaneamente
+- **Multi-dialeto** - SQL Server, PostgreSQL, MySQL e SQLite
+- **Preview seguro** - `ExecutePreviewAsync` sempre faz rollback; nunca altera dados
+- **Plano EXPLAIN** - um clique para visualizar o plano de execução retornado pelo servidor
+- **Importador SQL** - cole SQL existente e importe de volta como grafo de nós
 
 ### Biblioteca de nós
 
@@ -62,7 +65,7 @@ Diagrama visual do fluxo (query por nós): veja [Diagramas compartilhados](#shar
 
 ### Sistema de tipos de pino
 
-Cada pino tem **forma + cor** que identificam o que ele carrega — sem precisar ler o label. Forma indica a família semântica; cor indica o tipo específico.
+Cada pino tem **forma + cor** que identificam o que ele carrega. Forma indica a família semântica; cor indica o tipo específico.
 
 | Família | Forma | Tipos | Cor |
 |---|---|---|---|
@@ -72,35 +75,35 @@ Cada pino tem **forma + cor** que identificam o que ele carrega — sem precisar
 | Conjunto de linhas | Losango achatado `⬥` | RowSet | Rosa |
 | SQL bruto | Círculo tracejado `○` | Expression | Cinza |
 
-Pinos incompatíveis ficam apagados durante o drag — sem feedback de erro agressivo. Vermelho é reservado para erros de validação estática (pino obrigatório sem conexão).
+Pinos incompatíveis ficam apagados durante o drag. Vermelho é reservado para erros de validação estática (pino obrigatório sem conexão).
 
 Referência completa: [docs/PIN_TYPES_REFERENCE.md](docs/PIN_TYPES_REFERENCE.md)
 
 ---
 
 ### Integração com banco de dados
-- **Gerenciador de conexões** — salve e nomeie múltiplas conexões, com teste em um clique
-- **Fluxo de conexão com confirmação** — ao conectar, você pode manter o canvas atual ou limpá-lo antes de carregar o novo contexto de banco
-- **Explorador de schema** — navegue por schemas, tabelas e colunas em árvore lateral
-- **Carregamento automático de tabelas** — ao conectar com sucesso, os metadados são carregados e as tabelas ficam disponíveis imediatamente no menu de busca
-- **Detecção automática de joins** — detecta relacionamentos FK e convenções de nome (`orders.customer_id → customers.id`) e sugere o join correto
-- **Biblioteca de templates de consulta** — salve e carregue snippets reutilizáveis de grafos
+- **Gerenciador de conexões** - salve e nomeie múltiplas conexões, com teste em um clique
+- **Fluxo de conexão com confirmação** - ao conectar, você pode manter o canvas atual ou limpá-lo antes de carregar o novo contexto de banco
+- **Explorador de schema** - navegue por schemas, tabelas e colunas em árvore lateral
+- **Carregamento automático de tabelas** - ao conectar com sucesso, os metadados são carregados e as tabelas ficam disponíveis imediatamente no menu de busca
+- **Detecção automática de joins** - detecta relacionamentos FK e convenções de nome (`orders.customer_id -> customers.id`) e sugere o join correto
+- **Biblioteca de templates de consulta** - salve e carregue snippets reutilizáveis de grafos
 
 ### Ferramentas para desenvolvimento
-- **Painel de diagnóstico** — memória em tempo real, FPS e estado da conexão
-- **Overlay de benchmark** — mede tempo de renderização e compilação
-- **Suíte automatizada de testes** — compiladores de nós, emissão por dialeto, heurísticas de metadados e segurança de ciclo de vida/UX
+- **Painel de diagnóstico** - memória em tempo real, FPS e estado da conexão
+- **Overlay de benchmark** - mede tempo de renderização e compilação
+- **Suíte automatizada de testes** - compiladores de nós, emissão por dialeto, heurísticas de metadados e segurança de ciclo de vida/UX
 
 ### Atualizações recentes
-- **Hardening do preview SQL** — o SQL de preview evita placeholders bound no caminho de execução que exige SQL literal-safe
-- **Sincronização segura de provider** — o provider do Live SQL é sincronizado com o provider da conexão ativa para evitar erros entre dialetos (ex.: SQL Server com `LIMIT`)
-- **Consistência de UX em modais** — diálogos de overlay podem ser fechados por clique no backdrop e com `Esc`
+- **Hardening do preview SQL** - o SQL de preview evita placeholders bound no caminho de execução que exige SQL literal-safe
+- **Sincronização segura de provider** - o provider do Live SQL é sincronizado com o provider da conexão ativa para evitar erros entre dialetos
+- **Consistência de UX em modais** - diálogos de overlay podem ser fechados por clique no backdrop e com `Esc`
 
 ---
 
 ## Download
 
-Baixe o binário self-contained mais recente em [Releases](https://github.com/TheyCallMeErick/VisualSqlArchtect/releases) — sem necessidade de instalar .NET.
+Baixe o binário self-contained mais recente em [Releases](https://github.com/TheyCallMeErick/VisualSqlArchtect/releases) - sem necessidade de instalar .NET.
 
 | Plataforma | Binário |
 |---|---|
@@ -143,7 +146,7 @@ Diagrama da estrutura do projeto: veja [Diagramas compartilhados](#shared-diagra
 
 1. Faça um fork do repositório
 2. Crie uma branch de feature a partir de `main`
-3. Execute `dotnet test files.sln` — todos os testes devem passar
+3. Execute `dotnet test files.sln` - todos os testes devem passar
 4. Abra um pull request
 
 O pipeline de CI roda em todo PR; o pipeline de release publica binários automaticamente quando uma tag `v*` é enviada.
@@ -159,24 +162,24 @@ Visual SQL Architect is a node-based SQL designer with an infinite canvas. You c
 ### Features
 
 #### Canvas
-- **Infinite pan & zoom** — middle-mouse pan, scroll-wheel zoom, keyboard shortcuts
-- **Drag-and-drop nodes** — searchable palette with fuzzy find and keyboard-first workflow
-- **Wired connections** — bezier curves with live validation and type-checked pins
-- **Multi-select & align** — move, delete and align node groups
-- **Auto-layout** — one-click graph organization
-- **Undo / redo** — granular command stack (`Ctrl+Z` / `Ctrl+Y`)
-- **Save / load sessions** — JSON persistence with multi-tab support
+- **Infinite pan & zoom** - middle-mouse pan, scroll-wheel zoom, keyboard shortcuts
+- **Drag-and-drop nodes** - searchable palette with fuzzy find and keyboard-first workflow
+- **Wired connections** - bezier curves with live validation and type-checked pins
+- **Multi-select & align** - move, delete and align node groups
+- **Auto-layout** - one-click graph organization
+- **Undo / redo** - granular command stack (`Ctrl+Z` / `Ctrl+Y`)
+- **Save / load sessions** - JSON canvas persistence and workspace persistence (query + DDL)
 
 #### SQL Generation
-- **Real-time SQL preview** — updates instantly as the graph changes
-- **Multi-dialect** — SQL Server, PostgreSQL, MySQL and SQLite
-- **Safe previews** — `ExecutePreviewAsync` always rolls back (no data mutations)
-- **EXPLAIN plan** — visualize execution plans returned by the database
-- **SQL importer** — paste SQL and rebuild it as a node graph
+- **Real-time SQL preview** - updates instantly as the graph changes
+- **Multi-dialect** - SQL Server, PostgreSQL, MySQL and SQLite
+- **Safe previews** - `ExecutePreviewAsync` always rolls back (no data mutations)
+- **EXPLAIN plan** - visualize execution plans returned by the database
+- **SQL importer** - paste SQL and rebuild it as a node graph
 
 #### Pin type system
 
-Every pin has a **shape + color** that communicate what it carries — no need to read the label. Shape encodes the semantic family; color encodes the specific type.
+Every pin has a **shape + color** that communicates what it carries. Shape encodes the semantic family; color encodes the specific type.
 
 | Family | Shape | Types | Color |
 |---|---|---|---|
@@ -186,29 +189,29 @@ Every pin has a **shape + color** that communicate what it carries — no need t
 | Row set | Flat diamond `⬥` | RowSet | Pink |
 | Raw SQL | Dashed circle `○` | Expression | Gray |
 
-Incompatible pins fade out during drag — no aggressive error highlighting. Red is reserved for static validation errors (required pin with no connection).
+Incompatible pins fade out during drag. Red is reserved for static validation errors (required pin with no connection).
 
 Full reference: [docs/PIN_TYPES_REFERENCE.md](docs/PIN_TYPES_REFERENCE.md)
 
 ---
 
 #### Database Integration
-- **Connection manager** — store and test multiple connections quickly
-- **Connect confirmation flow** — choose whether to keep or clear the current canvas when connecting
-- **Schema explorer** — browse schemas, tables and columns
-- **Automatic table loading** — metadata loads on connect and tables become immediately available in search
-- **Auto-join detection** — infers relationships from FK metadata and naming conventions
-- **Query template library** — save reusable graph snippets
+- **Connection manager** - store and test multiple connections quickly
+- **Connect confirmation flow** - choose whether to keep or clear the current canvas when connecting
+- **Schema explorer** - browse schemas, tables and columns
+- **Automatic table loading** - metadata loads on connect and tables become immediately available in search
+- **Auto-join detection** - infers relationships from FK metadata and naming conventions
+- **Query template library** - save reusable graph snippets
 
 #### Developer Tooling
-- **Diagnostics panel** — memory, FPS and connection state
-- **Benchmark overlay** — render/compile timing insights
-- **Automated tests** — coverage for node compilation, dialect emission, metadata heuristics and lifecycle/UX safety
+- **Diagnostics panel** - memory, FPS and connection state
+- **Benchmark overlay** - render/compile timing insights
+- **Automated tests** - coverage for node compilation, dialect emission, metadata heuristics and lifecycle/UX safety
 
 #### Recent updates
-- **Preview SQL hardening** — avoids bound placeholders on literal-safe preview execution paths
-- **Provider synchronization** — Live SQL provider now follows the active connection provider to prevent cross-dialect issues
-- **Modal UX consistency** — overlay dialogs close via backdrop click and `Esc`
+- **Preview SQL hardening** - avoids bound placeholders on literal-safe preview execution paths
+- **Provider synchronization** - Live SQL provider now follows the active connection provider to prevent cross-dialect issues
+- **Modal UX consistency** - overlay dialogs close via backdrop click and `Esc`
 
 ### Download
 
@@ -262,7 +265,11 @@ flowchart TD
     C[customers]
     W[where status active]
     S[select id name total]
-    L[Live SQL Bar\nSELECT o.id c.name o.total\nFROM orders o\nLEFT JOIN customers c\nWHERE status active]
+    L["Live SQL Bar
+SELECT o.id c.name o.total
+FROM orders o
+LEFT JOIN customers c
+WHERE status active"]
 
     O --> S
     C --> S
@@ -358,6 +365,6 @@ flowchart TD
 ---
 
 <div align="center">
-Construído com Avalonia UI · .NET 9 · SqlKata
+Construído com Avalonia UI · .NET 9 · SqlKata  
 Built with Avalonia UI · .NET 9 · SqlKata
 </div>

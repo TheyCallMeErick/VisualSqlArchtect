@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using VisualSqlArchitect.Core;
 using VisualSqlArchitect.Providers;
+using VisualSqlArchitect.UI.Services.Localization;
 
 namespace VisualSqlArchitect.UI.Services;
 
@@ -15,6 +16,9 @@ namespace VisualSqlArchitect.UI.Services;
 public sealed partial class QueryExecutorService
 {
     private readonly ILogger<QueryExecutorService> _logger;
+    private const int DefaultCommandTimeoutSeconds = 300;
+
+    public int CommandTimeoutSeconds { get; set; } = DefaultCommandTimeoutSeconds;
 
     public QueryExecutorService(ILogger<QueryExecutorService>? logger = null)
     {
@@ -47,7 +51,10 @@ public sealed partial class QueryExecutorService
             return BuildDemoDataTable();
         }
         if (string.IsNullOrWhiteSpace(query))
-            throw new ArgumentException("Query cannot be empty", nameof(query));
+            throw new ArgumentException(
+                L("queryExecutor.error.queryEmpty", "Query cannot be empty"),
+                nameof(query)
+            );
 
         try
         {
@@ -71,7 +78,7 @@ public sealed partial class QueryExecutorService
         }
         catch (OperationCanceledException)
         {
-            _logger.LogWarning("Query execution was cancelled");
+            _logger.LogInformation("Query execution was cancelled");
             throw;
         }
         catch (Exception ex)
@@ -102,7 +109,12 @@ public sealed partial class QueryExecutorService
                 $"SELECT * FROM ({query}) AS __preview LIMIT {boundedMaxRows}",
             DatabaseProvider.SQLite =>
                 $"SELECT * FROM ({query}) AS __preview LIMIT {boundedMaxRows}",
-            _ => throw new NotSupportedException($"Provider {provider} is not supported")
+            _ => throw new NotSupportedException(
+                string.Format(
+                    L("queryExecutor.error.providerNotSupported", "Provider {0} is not supported"),
+                    provider
+                )
+            )
         };
     }
 
@@ -116,7 +128,10 @@ public sealed partial class QueryExecutorService
         {
             string trailing = trimmed[(semicolon + 1)..].Trim();
             if (trailing.Length > 0)
-                throw new ArgumentException("Preview accepts a single SQL statement only.", nameof(query));
+                throw new ArgumentException(
+                    L("queryExecutor.error.singleStatementOnly", "Preview accepts a single SQL statement only."),
+                    nameof(query)
+                );
         }
 
         string firstToken = Regex.Match(trimmed, @"^\s*(\w+)", RegexOptions.CultureInvariant)
@@ -125,12 +140,18 @@ public sealed partial class QueryExecutorService
             .ToUpperInvariant();
 
         if (string.IsNullOrWhiteSpace(firstToken))
-            throw new ArgumentException("Query cannot be empty.", nameof(query));
+            throw new ArgumentException(
+                L("queryExecutor.error.queryEmptyWithPeriod", "Query cannot be empty."),
+                nameof(query)
+            );
 
         // Preview mode must remain read-only.
         if (firstToken is "INSERT" or "UPDATE" or "DELETE" or "MERGE" or "TRUNCATE" or
             "DROP" or "ALTER" or "CREATE" or "REPLACE" or "GRANT" or "REVOKE" or "CALL" or "EXEC")
-            throw new ArgumentException("Preview mode only supports read-only SQL statements.", nameof(query));
+            throw new ArgumentException(
+                L("queryExecutor.error.readOnlyOnly", "Preview mode only supports read-only SQL statements."),
+                nameof(query)
+            );
 
         ValidateParameterBoundaries(trimmed, query);
     }
@@ -141,13 +162,19 @@ public sealed partial class QueryExecutorService
         // Reject placeholders to avoid accidental execution assumptions.
         if (NamedSqlParameterRegex().IsMatch(trimmedQuery))
             throw new ArgumentException(
-                "Preview mode does not support bound parameters in execution SQL. Inline safe literals or run the query outside preview.",
+                L(
+                    "queryExecutor.error.namedParametersNotSupported",
+                    "Preview mode does not support bound parameters in execution SQL. Inline safe literals or run the query outside preview."
+                ),
                 nameof(originalQuery)
             );
 
         if (PositionalSqlParameterRegex().IsMatch(trimmedQuery))
             throw new ArgumentException(
-                "Preview mode does not support positional parameter placeholders ('?' or '$1').",
+                L(
+                    "queryExecutor.error.positionalParametersNotSupported",
+                    "Preview mode does not support positional parameter placeholders ('?' or '$1')."
+                ),
                 nameof(originalQuery)
             );
     }
@@ -218,11 +245,15 @@ public sealed partial class QueryExecutorService
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
 
             if (method == null)
-                throw new InvalidOperationException("Cannot find OpenConnectionAsync method on orchestrator");
+                throw new InvalidOperationException(
+                    L("queryExecutor.error.openConnectionMethodNotFound", "Cannot find OpenConnectionAsync method on orchestrator")
+                );
 
             var task = method.Invoke(orchestrator, new object[] { ct }) as Task<DbConnection>;
             if (task == null)
-                throw new InvalidOperationException("Failed to invoke OpenConnectionAsync");
+                throw new InvalidOperationException(
+                    L("queryExecutor.error.openConnectionInvokeFailed", "Failed to invoke OpenConnectionAsync")
+                );
 
             _logger.LogDebug("Opening database connection");
             await using (DbConnection conn = await task)
@@ -232,7 +263,7 @@ public sealed partial class QueryExecutorService
                 using (var command = conn.CreateCommand())
                 {
                     command.CommandText = query;
-                    command.CommandTimeout = 300; // 5 minutes default timeout
+                    command.CommandTimeout = Math.Max(1, CommandTimeoutSeconds);
 
                     _logger.LogDebug("Executing command: {Query}", query);
                     using (var reader = await command.ExecuteReaderAsync(ct))
@@ -252,5 +283,11 @@ public sealed partial class QueryExecutorService
         }
 
         return dt;
+    }
+
+    private static string L(string key, string fallback)
+    {
+        string value = LocalizationService.Instance[key];
+        return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
     }
 }

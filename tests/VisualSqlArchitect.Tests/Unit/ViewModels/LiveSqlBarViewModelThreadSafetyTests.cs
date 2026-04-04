@@ -1,3 +1,4 @@
+﻿using VisualSqlArchitect.UI.Services.Benchmark;
 using System.Diagnostics;
 using VisualSqlArchitect.UI.ViewModels;
 using Xunit;
@@ -163,7 +164,7 @@ public class LiveSqlBarViewModelThreadSafetyTests
         Task timeout = Task.Delay(TimeSpan.FromSeconds(5));
         bool allCompleted = await Task.WhenAny(allTasks, timeout) == allTasks;
 
-        Assert.True(allCompleted, "Recompile() deadlocked — lock not used correctly");
+        Assert.True(allCompleted, "Recompile() deadlocked â€” lock not used correctly");
         if (allCompleted)
             await allTasks;
         Assert.Equal(20, completed);
@@ -191,3 +192,4 @@ public class LiveSqlBarViewModelThreadSafetyTests
         Assert.NotNull(liveSql.RawSql);
     }
 }
+

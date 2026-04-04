@@ -13,7 +13,7 @@ public class NodesListControlTemplateRegressionTests
         Assert.Contains("Classes=\"nodes-empty-state\"", xaml);
         Assert.Contains("IsVisible=\"{Binding HasResults}\"", xaml);
         Assert.Contains("HasResults, Converter={x:Static BoolConverters.Not}", xaml);
-        Assert.Contains("Nenhum node encontrado", xaml);
+        Assert.Contains("Text=\"{Binding [nodesList.empty], Source={x:Static loc:LocalizationService.Instance}}\"", xaml);
     }
 
     [Fact]

@@ -35,10 +35,23 @@ public sealed partial class NodeControl : UserControl
                     await vm.ToggleInlinePreviewAsync();
             };
 
-            HookWindowSlotButton("AddPartitionBtn", vm => vm.AddWindowPartitionSlot());
-            HookWindowSlotButton("RemovePartitionBtn", vm => vm.RemoveWindowPartitionSlot());
-            HookWindowSlotButton("AddOrderBtn", vm => vm.AddWindowOrderSlot());
-            HookWindowSlotButton("RemoveOrderBtn", vm => vm.RemoveWindowOrderSlot());
+        Button? openViewSubcanvas = this.FindControl<Button>("OpenViewSubcanvasBtn");
+        if (openViewSubcanvas is not null)
+            openViewSubcanvas.Click += (_, e) =>
+            {
+                e.Handled = true;
+                if (DataContext is not NodeViewModel node || !node.CanOpenViewSubcanvas)
+                    return;
+
+                CanvasViewModel? canvasVm = FindCanvasVm();
+                if (canvasVm is not null)
+                    _ = canvasVm.EnterViewEditorAsync(node);
+            };
+
+        HookWindowSlotButton("AddPartitionBtn", vm => vm.AddWindowPartitionSlot());
+        HookWindowSlotButton("RemovePartitionBtn", vm => vm.RemoveWindowPartitionSlot());
+        HookWindowSlotButton("AddOrderBtn", vm => vm.AddWindowOrderSlot());
+        HookWindowSlotButton("RemoveOrderBtn", vm => vm.RemoveWindowOrderSlot());
 
         PointerPressed += OnPressed;
         PointerMoved += OnMoved;

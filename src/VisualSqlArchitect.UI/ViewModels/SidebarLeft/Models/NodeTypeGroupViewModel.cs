@@ -23,10 +23,15 @@ public sealed class NodeTypeGroupViewModel : ViewModelBase
     public ObservableCollection<NodeTypeItemViewModel> Items { get; } = [];
 
     public NodeTypeGroupViewModel(NodeCategory category, string color)
+        : this(category, color, null)
+    {
+    }
+
+    public NodeTypeGroupViewModel(NodeCategory category, string color, string? customName)
     {
         Category = category;
         Color = color;
-        Name = GetCategoryName(category);
+        Name = string.IsNullOrWhiteSpace(customName) ? GetCategoryName(category) : customName.Trim();
         ToggleExpandCommand = new RelayCommand(() => IsExpanded = !IsExpanded);
     }
 

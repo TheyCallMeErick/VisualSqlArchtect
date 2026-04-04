@@ -1,3 +1,4 @@
+﻿using VisualSqlArchitect.UI.Services.Benchmark;
 using VisualSqlArchitect.UI.ViewModels;
 using Xunit;
 
@@ -93,3 +94,4 @@ public class StartMenuViewModelTests
         Assert.False(item.IsFavorite);
     }
 }
+

@@ -1,11 +1,12 @@
+﻿
 using Avalonia;
 using VisualSqlArchitect.Core;
 using VisualSqlArchitect.Nodes;
 using VisualSqlArchitect.UI.ViewModels;
-using VisualSqlArchitect.UI.ViewModels.QueryPreview.Services;
+using VisualSqlArchitect.UI.Services.QueryPreview;
+using static VisualSqlArchitect.Tests.Unit.ViewModels.QueryPreview.QueryPreviewTestNodeFactory;
 
 namespace VisualSqlArchitect.Tests.Unit.ViewModels.QueryPreview;
-
 public class QueryGraphBuilderComparisonValidationTests
 {
     [Fact]
@@ -15,7 +16,7 @@ public class QueryGraphBuilderComparisonValidationTests
         canvas.Nodes.Clear();
         canvas.Connections.Clear();
 
-        NodeViewModel orders = Table("public.orders", "id");
+        NodeViewModel orders = TableWithNameText("public.orders", "id");
         NodeViewModel equals = Node(NodeType.Equals);
         NodeViewModel columnList = Node(NodeType.ColumnList);
         NodeViewModel result = Node(NodeType.ResultOutput);
@@ -44,7 +45,7 @@ public class QueryGraphBuilderComparisonValidationTests
         canvas.Nodes.Clear();
         canvas.Connections.Clear();
 
-        NodeViewModel orders = Table("public.orders", "id");
+        NodeViewModel orders = TableWithNameText("public.orders", "id");
         NodeViewModel lowValue = Node(NodeType.ValueNumber);
         lowValue.Parameters["value"] = "1";
 
@@ -78,7 +79,7 @@ public class QueryGraphBuilderComparisonValidationTests
         canvas.Nodes.Clear();
         canvas.Connections.Clear();
 
-        NodeViewModel orders = Table("public.orders", "name");
+        NodeViewModel orders = TableWithNameText("public.orders", "name");
         NodeViewModel like = Node(NodeType.Like);
         like.Parameters["pattern"] = "";
 
@@ -102,25 +103,8 @@ public class QueryGraphBuilderComparisonValidationTests
         Assert.Contains(errors, e => e.Contains("LIKE node connected to WHERE/HAVING/QUALIFY has empty pattern", StringComparison.OrdinalIgnoreCase));
     }
 
-    private static NodeViewModel Node(NodeType type) =>
-        new(NodeDefinitionRegistry.Get(type), new Point(0, 0));
-
-    private static NodeViewModel Table(string tableName, params string[] columns) =>
-        new(tableName, columns.Select(c => (c, c.Equals("name", StringComparison.OrdinalIgnoreCase) ? PinDataType.Text : PinDataType.Number)), new Point(0, 0));
-
-    private static void Connect(
-        CanvasViewModel canvas,
-        NodeViewModel fromNode,
-        string fromPin,
-        NodeViewModel toNode,
-        string toPin)
-    {
-        PinViewModel from = fromNode.OutputPins.First(p => p.Name == fromPin);
-        PinViewModel to = toNode.InputPins.First(p => p.Name == toPin);
-
-        canvas.Connections.Add(new ConnectionViewModel(from, from.AbsolutePosition, to.AbsolutePosition)
-        {
-            ToPin = to,
-        });
-    }
 }
+
+
+
+

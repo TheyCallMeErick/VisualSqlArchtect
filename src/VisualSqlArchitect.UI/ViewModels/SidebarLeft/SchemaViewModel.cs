@@ -81,9 +81,10 @@ public sealed class SchemaViewModel : ViewModelBase
     /// </summary>
     public ObservableCollection<SchemaCategoryViewModel> Categories { get; } = new();
 
-    private readonly Action<string, IEnumerable<(string name, PinDataType type)>, Point>? _onAddTableNode;
+    private readonly Action<string, IEnumerable<(string name, PinDataType type)>, TableMetadata, Point>? _onAddTableNode;
 
-    public SchemaViewModel(Action<string, IEnumerable<(string name, PinDataType type)>, Point>? onAddTableNode = null)
+    public SchemaViewModel(
+        Action<string, IEnumerable<(string name, PinDataType type)>, TableMetadata, Point>? onAddTableNode = null)
     {
         _onAddTableNode = onAddTableNode;
     }
@@ -137,7 +138,7 @@ public sealed class SchemaViewModel : ViewModelBase
                     });
 
                     addNodeCmd = new RelayCommand(() =>
-                        _onAddTableNode(fullName, columns, new Point(200, 200))
+                        _onAddTableNode(fullName, columns, table, new Point(200, 200))
                     );
                 }
 

@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using VisualSqlArchitect.UI.Services.Localization;
 using VisualSqlArchitect.UI.Serialization;
 
 namespace VisualSqlArchitect.UI.ViewModels.Canvas;
@@ -50,7 +51,7 @@ public sealed class FileVersionHistoryViewModel(CanvasViewModel canvas) : ViewMo
     public bool CanRestore => SelectedVersion is not null && !IsBusy;
 
     public string CurrentFileLabel => string.IsNullOrWhiteSpace(_canvas.CurrentFilePath)
-        ? "No file selected"
+        ? L("fileHistory.currentFile.none", "No file selected")
         : Path.GetFileName(_canvas.CurrentFilePath);
 
     public void Open()
@@ -67,7 +68,7 @@ public sealed class FileVersionHistoryViewModel(CanvasViewModel canvas) : ViewMo
         {
             Versions.Clear();
             SelectedVersion = null;
-            StatusMessage = "Save the canvas first to enable local history.";
+            StatusMessage = L("fileHistory.status.saveFirst", "Save the canvas first to enable local history.");
             RaisePropertyChanged(nameof(HasVersions));
             RaisePropertyChanged(nameof(CurrentFileLabel));
             return Task.CompletedTask;
@@ -83,8 +84,11 @@ public sealed class FileVersionHistoryViewModel(CanvasViewModel canvas) : ViewMo
 
             SelectedVersion = Versions.FirstOrDefault();
             StatusMessage = Versions.Count == 0
-                ? "No local versions found yet. Save this file to create history entries."
-                : $"{Versions.Count} local version(s) available.";
+                ? L("fileHistory.status.noneFound", "No local versions found yet. Save this file to create history entries.")
+                : string.Format(
+                    L("fileHistory.status.countAvailable", "{0} local version(s) available."),
+                    Versions.Count
+                );
 
             RaisePropertyChanged(nameof(HasVersions));
             RaisePropertyChanged(nameof(CurrentFileLabel));
@@ -109,21 +113,33 @@ public sealed class FileVersionHistoryViewModel(CanvasViewModel canvas) : ViewMo
 
             if (!result.Success)
             {
-                StatusMessage = $"Restore failed: {result.Error}";
+                StatusMessage = string.Format(
+                    L("fileHistory.restore.failedWithReason", "Restore failed: {0}"),
+                    result.Error
+                );
                 return;
             }
 
             _canvas.IsDirty = false;
-            StatusMessage = $"Restored version from {SelectedVersion.CreatedAtLocalLabel}.";
+            StatusMessage = string.Format(
+                L("fileHistory.restore.successFrom", "Restored version from {0}."),
+                SelectedVersion.CreatedAtLocalLabel
+            );
 
             if (result.Warnings is { Count: > 0 })
             {
                 foreach (string w in result.Warnings)
                 {
                     _canvas.Diagnostics.AddWarning(
-                        area: "Canvas Migration",
-                        message: $"Version restore: {w}",
-                        recommendation: "Review diagnostics and save the canvas to persist the migrated schema.",
+                        area: L("diagnostics.canvasMigration", "Canvas Migration"),
+                        message: string.Format(
+                            L("diagnostics.canvasMigration.versionRestoreWarning", "Version restore: {0}"),
+                            w
+                        ),
+                        recommendation: L(
+                            "diagnostics.recommendation.saveMigratedSchema",
+                            "Review diagnostics and save the canvas to persist the migrated schema."
+                        ),
                         openPanel: true
                     );
                 }
@@ -133,11 +149,20 @@ public sealed class FileVersionHistoryViewModel(CanvasViewModel canvas) : ViewMo
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Restore failed: {ex.Message}";
+            StatusMessage = string.Format(
+                L("fileHistory.restore.failedWithReason", "Restore failed: {0}"),
+                ex.Message
+            );
         }
         finally
         {
             IsBusy = false;
         }
+    }
+
+    private static string L(string key, string fallback)
+    {
+        string value = LocalizationService.Instance[key];
+        return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
     }
 }

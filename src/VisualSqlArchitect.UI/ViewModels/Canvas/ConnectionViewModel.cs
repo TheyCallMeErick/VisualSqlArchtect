@@ -1,6 +1,8 @@
 using Avalonia;
 using Avalonia.Media;
+using VisualSqlArchitect.CanvasKit;
 using VisualSqlArchitect.Nodes;
+using VisualSqlArchitect.Nodes.PinTypes;
 
 namespace VisualSqlArchitect.UI.ViewModels;
 
@@ -10,9 +12,12 @@ namespace VisualSqlArchitect.UI.ViewModels;
 /// </summary>
 public sealed class ConnectionViewModel : ViewModelBase
 {
+    // Backward compatibility for existing tests and call sites.
     public enum EWireDashKind
     {
         Solid,
+        ShortDash,
+        MediumDash,
         LongDash,
         WideDash,
         Dotted,
@@ -73,30 +78,33 @@ public sealed class ConnectionViewModel : ViewModelBase
     /// <summary>Opacity increases when highlighted.</summary>
     public double WireOpacity => IsHighlighted ? 1.0 : 0.75;
 
-    public EWireDashKind DashKind =>
-        FromPin.EffectiveDataType switch
-        {
-            PinDataType.ColumnSet => EWireDashKind.LongDash,
-            PinDataType.RowSet => EWireDashKind.WideDash,
-            PinDataType.Expression => EWireDashKind.Dotted,
-            _ => EWireDashKind.Solid,
-        };
+    public CanvasWireDashKind CanvasDashKind => PinTypeRegistry.GetType(FromPin.EffectiveDataType).WireDashKind switch
+    {
+        PinWireDashKind.ShortDash => CanvasWireDashKind.ShortDash,
+        PinWireDashKind.MediumDash => CanvasWireDashKind.MediumDash,
+        PinWireDashKind.LongDash => CanvasWireDashKind.LongDash,
+        PinWireDashKind.WideDash => CanvasWireDashKind.WideDash,
+        PinWireDashKind.Dotted => CanvasWireDashKind.Dotted,
+        _ => CanvasWireDashKind.Solid,
+    };
+
+    public EWireDashKind DashKind => CanvasDashKind switch
+    {
+        CanvasWireDashKind.ShortDash => EWireDashKind.ShortDash,
+        CanvasWireDashKind.MediumDash => EWireDashKind.MediumDash,
+        CanvasWireDashKind.LongDash => EWireDashKind.LongDash,
+        CanvasWireDashKind.WideDash => EWireDashKind.WideDash,
+        CanvasWireDashKind.Dotted => EWireDashKind.Dotted,
+        _ => EWireDashKind.Solid,
+    };
 
     /// <summary>Thickness varies by pin family and increases when highlighted.</summary>
     public double WireThickness
     {
         get
         {
-            double baseThickness = FromPin.EffectiveDataType switch
-            {
-                PinDataType.ColumnRef => 2.0,
-                PinDataType.ColumnSet => 2.2,
-                PinDataType.RowSet => 2.5,
-                PinDataType.Expression => 1.5,
-                _ => 1.8,
-            };
-
-            return IsHighlighted ? baseThickness + 0.7 : baseThickness;
+            double baseThickness = PinTypeRegistry.GetType(FromPin.EffectiveDataType).WireThickness;
+            return CanvasWireStylePolicy.ResolveThickness(baseThickness, IsHighlighted);
         }
     }
 
@@ -106,13 +114,6 @@ public sealed class ConnectionViewModel : ViewModelBase
     /// </summary>
     public string BezierPath
     {
-        get
-        {
-            double dx = Math.Abs(ToPoint.X - FromPoint.X);
-            double off = Math.Max(60, dx * 0.5);
-            return $"M {FromPoint.X:F1},{FromPoint.Y:F1} "
-                + $"C {FromPoint.X + off:F1},{FromPoint.Y:F1} {ToPoint.X - off:F1},{ToPoint.Y:F1} "
-                + $"{ToPoint.X:F1},{ToPoint.Y:F1}";
-        }
+        get => CanvasWireGeometry.BuildBezierPath(FromPoint.X, FromPoint.Y, ToPoint.X, ToPoint.Y);
     }
 }

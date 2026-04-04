@@ -30,6 +30,11 @@ public sealed class NodeLayoutManager : ViewModelBase
     /// <summary>Grid size used for snap-to-grid (in canvas units).</summary>
     public const int GridSize = 16;
 
+    private const double LayoutNodeWidth = 230;
+    private const double LayoutNodeHeight = 130;
+    private const double LayoutColGap = 80;
+    private const double LayoutRowGap = 40;
+
     public double Zoom
     {
         get => _zoom;
@@ -131,6 +136,27 @@ public sealed class NodeLayoutManager : ViewModelBase
     }
 
     /// <summary>
+    /// Centers the viewport around a specific node, keeping current zoom unless it is too far out.
+    /// </summary>
+    public void FocusOnNode(NodeViewModel node)
+    {
+        if (node is null)
+            return;
+
+        if (Zoom < 0.75)
+            Zoom = 0.75;
+
+        double width = node.Width > 0 ? node.Width : FallbackNodeWidth;
+        double nodeCenterX = node.Position.X + width / 2.0;
+        double nodeCenterY = node.Position.Y + FallbackNodeHeight / 2.0;
+
+        PanOffset = new Point(
+            _viewportWidth / 2.0 - nodeCenterX * Zoom,
+            _viewportHeight / 2.0 - nodeCenterY * Zoom
+        );
+    }
+
+    /// <summary>
     /// Fits all nodes into the current viewport by computing the real bounding box
     /// and deriving an appropriate zoom level and pan offset.
     /// Falls back to no-op when there are no nodes.
@@ -178,4 +204,94 @@ public sealed class NodeLayoutManager : ViewModelBase
     /// Call when SnapToGrid is enabled to keep nodes on the grid.
     /// </summary>
     public static double Snap(double v) => Math.Round(v / GridSize) * GridSize;
+
+    public static Dictionary<NodeViewModel, Point> ComputeAutoLayout(
+        IReadOnlyList<NodeViewModel> nodes,
+        IReadOnlyList<ConnectionViewModel> connections,
+        Func<NodeViewModel, bool>? isSinkNode = null,
+        Point? origin = null
+    )
+    {
+        if (nodes.Count == 0)
+            return [];
+
+        Point start = origin ?? new Point(60, 60);
+
+        var forward = nodes.ToDictionary(n => n, _ => new HashSet<NodeViewModel>());
+        var backward = nodes.ToDictionary(n => n, _ => new HashSet<NodeViewModel>());
+
+        foreach (ConnectionViewModel conn in connections)
+        {
+            NodeViewModel from = conn.FromPin.Owner;
+            NodeViewModel? to = conn.ToPin?.Owner;
+            if (to is null || !forward.ContainsKey(from) || !forward.ContainsKey(to))
+                continue;
+
+            forward[from].Add(to);
+            backward[to].Add(from);
+        }
+
+        var layer = new Dictionary<NodeViewModel, int>();
+        var inDegree = nodes.ToDictionary(n => n, n => backward[n].Count);
+        var queue = new Queue<NodeViewModel>(nodes.Where(n => inDegree[n] == 0));
+
+        while (queue.Count > 0)
+        {
+            NodeViewModel node = queue.Dequeue();
+            layer[node] =
+                backward[node].Count == 0
+                    ? 0
+                    : backward[node].Max(p => layer.TryGetValue(p, out int l) ? l : 0) + 1;
+
+            foreach (NodeViewModel next in forward[node])
+            {
+                inDegree[next]--;
+                if (inDegree[next] == 0)
+                    queue.Enqueue(next);
+            }
+        }
+
+        foreach (NodeViewModel node in nodes.Where(n => !layer.ContainsKey(n)))
+            layer[node] = 0;
+
+        if (isSinkNode is not null)
+        {
+            int maxLayer = layer.Values.DefaultIfEmpty(0).Max();
+            int sinkLayer = maxLayer + 1;
+            foreach (NodeViewModel node in nodes.Where(isSinkNode))
+                layer[node] = sinkLayer;
+        }
+
+        int finalMaxLayer = layer.Values.DefaultIfEmpty(0).Max();
+
+        var byLayer = Enumerable
+            .Range(0, finalMaxLayer + 1)
+            .ToDictionary(
+                l => l,
+                l =>
+                    nodes
+                        .Where(n => layer[n] == l)
+                        .OrderBy(n =>
+                            backward[n].Count == 0
+                                ? n.Position.Y
+                                : backward[n].Average(p => p.Position.Y)
+                        )
+                        .ToList()
+            );
+
+        var result = new Dictionary<NodeViewModel, Point>();
+        for (int col = 0; col <= finalMaxLayer; col++)
+        {
+            List<NodeViewModel> nodesInCol = byLayer[col];
+            double x = start.X + col * (LayoutNodeWidth + LayoutColGap);
+
+            for (int row = 0; row < nodesInCol.Count; row++)
+            {
+                double y = start.Y + row * (LayoutNodeHeight + LayoutRowGap);
+                result[nodesInCol[row]] = new Point(x, y);
+            }
+        }
+
+        return result;
+    }
 }

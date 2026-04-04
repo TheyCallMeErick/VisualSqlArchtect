@@ -1,7 +1,8 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using System.Diagnostics;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using VisualSqlArchitect.Nodes;
 
 namespace VisualSqlArchitect.UI.ViewModels.Canvas;
@@ -13,6 +14,7 @@ namespace VisualSqlArchitect.UI.ViewModels.Canvas;
 public sealed class ValidationManager(CanvasViewModel canvasViewModel) : ViewModelBase
 {
     private readonly CanvasViewModel _canvasViewModel = canvasViewModel;
+    private readonly ILogger<ValidationManager> _logger = NullLogger<ValidationManager>.Instance;
     private readonly object _validationLock = new();  // Synchronization for _validationCts
     private CancellationTokenSource? _validationCts;
 
@@ -97,7 +99,7 @@ public sealed class ValidationManager(CanvasViewModel canvasViewModel) : ViewMod
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[ValidationManager] Unhandled exception during validation: {ex}");
+            _logger.LogError(ex, "Unhandled exception during validation");
         }
     }
 
@@ -107,7 +109,12 @@ public sealed class ValidationManager(CanvasViewModel canvasViewModel) : ViewMod
     /// </summary>
     private void RunValidation()
     {
-        IReadOnlyList<ValidationIssue> allIssues = GraphValidator.Validate(_canvasViewModel);
+        NamingConventionPolicy namingPolicy = _canvasViewModel.PropertyPanel.BuildNamingConventionPolicy();
+        IReadOnlyList<ValidationIssue> allIssues = GraphValidator.Validate(
+            _canvasViewModel,
+            namingPolicy,
+            _canvasViewModel.AliasConventions
+        );
         var byNode = allIssues
             .Where(i => !string.IsNullOrEmpty(i.NodeId))
             .GroupBy(i => i.NodeId)
@@ -147,7 +154,11 @@ public sealed class ValidationManager(CanvasViewModel canvasViewModel) : ViewMod
         HasOrphanNodes = hasOrphans;
         OrphanCount = orphanCount;
         HasNamingViolations = hasNaming;
-        NamingConformance = NamingConventionValidator.ConformancePercent(_canvasViewModel);
+        NamingConformance = NamingConventionValidator.ConformancePercent(
+            _canvasViewModel,
+            namingPolicy,
+            _canvasViewModel.AliasConventions
+        );
 
         // Notify command buttons of state changes
         CleanupOrphansCommand?.NotifyCanExecuteChanged();

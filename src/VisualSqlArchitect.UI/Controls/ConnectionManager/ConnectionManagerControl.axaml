@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:VisualSqlArchitect.UI.ViewModels"
+             xmlns:connmodels="using:VisualSqlArchitect.UI.Services.ConnectionManager.Models"
              xmlns:loc="using:VisualSqlArchitect.UI.Services.Localization"
              xmlns:mi="using:Material.Icons.Avalonia"
              x:Class="VisualSqlArchitect.UI.Controls.ConnectionManagerControl"
@@ -96,7 +97,7 @@
                   Width="28" Height="28" Padding="0"
                   HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
               ToolTip.Tip="{Binding [tooltip.closeEsc], Source={x:Static loc:LocalizationService.Instance}}"
-                  AutomationProperties.Name="Close connection manager">
+                  AutomationProperties.Name="{Binding [connection.close], Source={x:Static loc:LocalizationService.Instance}}">
             <mi:MaterialIcon Kind="Close" Width="14" Height="14"/>
           </Button>
         </Grid>
@@ -118,7 +119,7 @@
                      IsVisible="{Binding ActiveProfileId, Converter={x:Static ObjectConverters.IsNotNull}}"/>
           <Button Grid.Column="4" Classes="secondary" Command="{Binding RefreshHealthCommand}"
               Padding="6,4" ToolTip.Tip="{Binding [tooltip.recheckConnectionHealth], Source={x:Static loc:LocalizationService.Instance}}"
-                  AutomationProperties.Name="Refresh health">
+                  AutomationProperties.Name="{Binding [connection.refreshHealth], Source={x:Static loc:LocalizationService.Instance}}">
             <StackPanel Orientation="Horizontal" Spacing="5">
               <mi:MaterialIcon Kind="Refresh" Width="11" Height="11"/>
               <TextBlock Text="{Binding [connection.ping], Source={x:Static loc:LocalizationService.Instance}}" FontSize="10"/>
@@ -147,7 +148,7 @@
                      BorderThickness="0"
                      ScrollViewer.VerticalScrollBarVisibility="Auto">
               <ListBox.ItemTemplate>
-                <DataTemplate x:DataType="vm:ConnectionProfile">
+                <DataTemplate x:DataType="connmodels:ConnectionProfile">
                   <Grid ColumnDefinitions="Auto,*">
                     <TextBlock Grid.Column="0" Text="●" FontSize="8" Foreground="#3B82F6"
                                VerticalAlignment="Center" Margin="0,0,8,0"/>
@@ -259,7 +260,7 @@
                         Command="{Binding DeleteProfileCommand}"
                         IsVisible="{Binding SelectedProfile, Converter={x:Static ObjectConverters.IsNotNull}}"
                   ToolTip.Tip="{Binding [tooltip.deleteConnection], Source={x:Static loc:LocalizationService.Instance}}"
-                        AutomationProperties.Name="Delete connection">
+                        AutomationProperties.Name="{Binding [tooltip.deleteConnection], Source={x:Static loc:LocalizationService.Instance}}">
                   <mi:MaterialIcon Kind="Delete" Width="14" Height="14"/>
                 </Button>
 
@@ -267,7 +268,7 @@
                 <Button Grid.Column="2" Classes="secondary"
                         Command="{Binding TestConnectionCommand}"
                   ToolTip.Tip="{Binding [tooltip.testConnection], Source={x:Static loc:LocalizationService.Instance}}"
-                        AutomationProperties.Name="Test connection">
+                        AutomationProperties.Name="{Binding [tooltip.testConnection], Source={x:Static loc:LocalizationService.Instance}}">
                   <StackPanel Orientation="Horizontal" Spacing="6">
                     <mi:MaterialIcon Kind="LanConnect" Width="13" Height="13"
                                      IsVisible="{Binding !IsTesting}"/>
@@ -281,7 +282,7 @@
                 <Button Grid.Column="4" Classes="secondary"
                         Command="{Binding SaveProfileCommand}"
                   ToolTip.Tip="{Binding [tooltip.saveConnection], Source={x:Static loc:LocalizationService.Instance}}"
-                        AutomationProperties.Name="Save connection">
+                        AutomationProperties.Name="{Binding [tooltip.saveConnection], Source={x:Static loc:LocalizationService.Instance}}">
                   <StackPanel Orientation="Horizontal" Spacing="6">
                     <mi:MaterialIcon Kind="ContentSave" Width="13" Height="13"/>
                     <TextBlock Text="{Binding [connection.save], Source={x:Static loc:LocalizationService.Instance}}" FontSize="12"/>
@@ -292,7 +293,7 @@
                 <Button Grid.Column="6" Classes="primary"
                         Command="{Binding ConnectCommand}"
                         ToolTip.Tip="{Binding [tooltip.activateConnection], Source={x:Static loc:LocalizationService.Instance}}"
-                        AutomationProperties.Name="Connect">
+                        AutomationProperties.Name="{Binding [connection.connect], Source={x:Static loc:LocalizationService.Instance}}">
                   <StackPanel Orientation="Horizontal" Spacing="6">
                     <mi:MaterialIcon Kind="DatabaseArrowRight" Width="13" Height="13"/>
                     <TextBlock Text="{Binding [connection.connect], Source={x:Static loc:LocalizationService.Instance}}" FontSize="12"/>

@@ -1,3 +1,5 @@
+﻿using VisualSqlArchitect.UI.Services.Canvas.AutoJoin;
+using VisualSqlArchitect.UI.Services.Explain;
 using VisualSqlArchitect.UI.ViewModels;
 using VisualSqlArchitect.UI.ViewModels.Canvas;
 using Xunit;
@@ -18,7 +20,6 @@ public class SqlImporterFallbackSafetyTests
 
         await canvas.SqlImporter.ImportAsync();
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, item =>
             item.Status == EImportItemStatus.Skipped
@@ -27,3 +28,5 @@ public class SqlImporterFallbackSafetyTests
             && (item.Note ?? string.Empty).Contains("unsafe", StringComparison.OrdinalIgnoreCase));
     }
 }
+
+

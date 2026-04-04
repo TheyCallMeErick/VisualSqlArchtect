@@ -95,18 +95,18 @@
 
   <!-- ── TextBox ─────────────────────────────────────────────────────────── -->
   <Style Selector="TextBox">
-    <Setter Property="Background"   Value="#131720"/>
-    <Setter Property="BorderBrush"  Value="#252C3F"/>
-    <Setter Property="Foreground"   Value="#E8EAED"/>
-    <Setter Property="CaretBrush"   Value="#60A5FA"/>
-    <Setter Property="SelectionBrush" Value="#1E3A60"/>
+    <Setter Property="Background"   Value="{StaticResource InputBgBrush}"/>
+    <Setter Property="BorderBrush"  Value="{StaticResource BorderBrush}"/>
+    <Setter Property="Foreground"   Value="{StaticResource TextPrimaryBrush}"/>
+    <Setter Property="CaretBrush"   Value="{StaticResource StatusInfoBrush}"/>
+    <Setter Property="SelectionBrush" Value="{StaticResource InputSelectionBrush}"/>
     <Setter Property="CornerRadius" Value="6"/>
   </Style>
   <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
-    <Setter Property="BorderBrush" Value="#3B82F6"/>
+    <Setter Property="BorderBrush" Value="{StaticResource BorderActiveBrush}"/>
   </Style>
   <Style Selector="TextBox /template/ TextBlock#PART_Watermark">
-    <Setter Property="Foreground" Value="#4A5568"/>
+    <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}"/>
   </Style>
 
   <Style Selector="TextBox.sidebar-input">
@@ -129,11 +129,18 @@
   <!-- ── Button ─────────────────────────────────────────────────────────── -->
   <Style Selector="Button">
     <Setter Property="CornerRadius"  Value="7"/>
+    <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
     <Setter Property="Transitions">
       <Transitions>
         <BrushTransition Property="Background" Duration="0:0:0.10"/>
+        <BrushTransition Property="Foreground" Duration="0:0:0.10"/>
+        <BrushTransition Property="BorderBrush" Duration="0:0:0.10"/>
+        <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.10"/>
       </Transitions>
     </Setter>
+  </Style>
+  <Style Selector="Button:pressed">
+    <Setter Property="RenderTransform" Value="scale(0.985)"/>
   </Style>
 
   <!-- Semantic button variants -->
@@ -159,19 +166,19 @@
   <Style Selector="Button.success">
     <Setter Property="Background" Value="{StaticResource BtnSuccessBgBrush}"/>
     <Setter Property="Foreground" Value="{StaticResource BtnSuccessFgBrush}"/>
-    <Setter Property="BorderBrush" Value="#22C55E"/>
+    <Setter Property="BorderBrush" Value="{StaticResource StatusOkBrush}"/>
     <Setter Property="BorderThickness" Value="1"/>
   </Style>
   <Style Selector="Button.warning">
     <Setter Property="Background" Value="{StaticResource BtnWarningBgBrush}"/>
     <Setter Property="Foreground" Value="{StaticResource BtnWarningFgBrush}"/>
-    <Setter Property="BorderBrush" Value="#F97316"/>
+    <Setter Property="BorderBrush" Value="{StaticResource StatusWarningBrush}"/>
     <Setter Property="BorderThickness" Value="1"/>
   </Style>
   <Style Selector="Button.danger">
     <Setter Property="Background" Value="{StaticResource BtnDangerBgBrush}"/>
     <Setter Property="Foreground" Value="{StaticResource BtnDangerFgBrush}"/>
-    <Setter Property="BorderBrush" Value="#FB7185"/>
+    <Setter Property="BorderBrush" Value="{StaticResource StatusErrorBrush}"/>
     <Setter Property="BorderThickness" Value="1"/>
   </Style>
   <Style Selector="Button.ghost">
@@ -200,19 +207,19 @@
   <!-- Shown only when focused via keyboard (:focus-visible), not mouse click  -->
   <Style Selector="Button:focus-visible">
     <Setter Property="BorderThickness" Value="2"/>
-    <Setter Property="BorderBrush"     Value="#3B82F6"/>
+    <Setter Property="BorderBrush"     Value="{StaticResource BorderActiveBrush}"/>
   </Style>
 
   <!-- TreeView keyboard focus -->
   <Style Selector="TreeViewItem:focus-visible /template/ Border#headerBorder">
-    <Setter Property="BorderBrush"     Value="#3B82F6"/>
+    <Setter Property="BorderBrush"     Value="{StaticResource BorderActiveBrush}"/>
     <Setter Property="BorderThickness" Value="1"/>
     <Setter Property="CornerRadius"    Value="4"/>
   </Style>
 
   <!-- ComboBox / ListBoxItem keyboard focus -->
   <Style Selector="ListBoxItem:focus-visible">
-    <Setter Property="BorderBrush"     Value="#3B82F6"/>
+    <Setter Property="BorderBrush"     Value="{StaticResource BorderActiveBrush}"/>
     <Setter Property="BorderThickness" Value="1"/>
   </Style>
 
@@ -224,14 +231,14 @@
   <!-- ── ScrollBar (minimal) ─────────────────────────────────────────────── -->
   <Style Selector="ScrollBar">
     <Setter Property="Background"  Value="Transparent"/>
-    <Setter Property="Foreground"  Value="#252C3F"/>
+    <Setter Property="Foreground"  Value="{StaticResource BorderBrush}"/>
   </Style>
   <Style Selector="ScrollBar /template/ Thumb">
-    <Setter Property="Background"  Value="#252C3F"/>
+    <Setter Property="Background"  Value="{StaticResource BorderBrush}"/>
     <Setter Property="CornerRadius" Value="4"/>
   </Style>
   <Style Selector="ScrollBar /template/ Thumb:pointerover">
-    <Setter Property="Background"  Value="#3B4560"/>
+    <Setter Property="Background"  Value="{StaticResource MacroBorderSubtleBrush}"/>
   </Style>
 
   <!-- ── TreeView ─────────────────────────────────────────────────────────── -->
@@ -240,20 +247,20 @@
     <Setter Property="BorderThickness" Value="0"/>
   </Style>
   <Style Selector="TreeViewItem">
-    <Setter Property="Foreground"  Value="#8B95A8"/>
+    <Setter Property="Foreground"  Value="{StaticResource TextSecondaryBrush}"/>
     <Setter Property="FontSize"    Value="12"/>
     <Setter Property="Padding"     Value="3,3"/>
   </Style>
   <Style Selector="TreeViewItem:pointerover /template/ Border#headerBorder">
-    <Setter Property="Background"  Value="#131720"/>
+    <Setter Property="Background"  Value="{StaticResource InputBgBrush}"/>
   </Style>
 
   <!-- ── ToolTip ─────────────────────────────────────────────────────────── -->
   <Style Selector="ToolTip">
-    <Setter Property="Background"   Value="#1A1E2C"/>
-    <Setter Property="BorderBrush"  Value="#252C3F"/>
+    <Setter Property="Background"   Value="{StaticResource PanelElevatedBrush}"/>
+    <Setter Property="BorderBrush"  Value="{StaticResource BorderBrush}"/>
     <Setter Property="BorderThickness" Value="1"/>
-    <Setter Property="Foreground"   Value="#E8EAED"/>
+    <Setter Property="Foreground"   Value="{StaticResource TextPrimaryBrush}"/>
     <Setter Property="CornerRadius" Value="7"/>
     <Setter Property="Padding"      Value="10,6"/>
     <Setter Property="FontSize"     Value="11"/>
@@ -261,8 +268,8 @@
 
   <!-- ── ProgressBar ─────────────────────────────────────────────────────── -->
   <Style Selector="ProgressBar">
-    <Setter Property="Background"   Value="#1A2335"/>
-    <Setter Property="Foreground"   Value="#3B82F6"/>
+    <Setter Property="Background"   Value="{StaticResource BorderSoftBrush}"/>
+    <Setter Property="Foreground"   Value="{StaticResource BorderActiveBrush}"/>
   </Style>
   <Style Selector="ProgressBar /template/ Border">
     <Setter Property="CornerRadius" Value="2"/>
@@ -270,43 +277,43 @@
 
   <!-- ── DataGrid ─────────────────────────────────────────────────────────── -->
   <Style Selector="DataGrid">
-    <Setter Property="Background"   Value="#0D0F14"/>
-    <Setter Property="Foreground"   Value="#C8D0DC"/>
+    <Setter Property="Background"   Value="{StaticResource CanvasBgBrush}"/>
+    <Setter Property="Foreground"   Value="{StaticResource TextPrimaryBrush}"/>
     <Setter Property="BorderThickness" Value="0"/>
     <Setter Property="GridLinesVisibility" Value="All"/>
-    <Setter Property="HorizontalGridLinesBrush" Value="#1A2335"/>
-    <Setter Property="VerticalGridLinesBrush"   Value="#1A2335"/>
+    <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource BorderSoftBrush}"/>
+    <Setter Property="VerticalGridLinesBrush"   Value="{StaticResource BorderSoftBrush}"/>
     <Setter Property="RowBackground"            Value="Transparent"/>
     <!-- <Setter Property="AlternatingRowBackground" Value="#08FFFFFF"/> -->
     <Setter Property="FontSize"     Value="12"/>
   </Style>
 
   <Style Selector="DataGridColumnHeader">
-    <Setter Property="Background"   Value="#0F1118"/>
-    <Setter Property="Foreground"   Value="#60A5FA"/>
+    <Setter Property="Background"   Value="{StaticResource MacroBg0Brush}"/>
+    <Setter Property="Foreground"   Value="{StaticResource StatusInfoBrush}"/>
     <Setter Property="FontSize"     Value="11"/>
     <Setter Property="FontWeight"   Value="SemiBold"/>
     <Setter Property="Padding"      Value="12,8"/>
-    <Setter Property="BorderBrush"  Value="#1E2335"/>
+    <Setter Property="BorderBrush"  Value="{StaticResource BorderSoftBrush}"/>
     <Setter Property="BorderThickness" Value="0,0,1,1"/>
   </Style>
 
   <Style Selector="DataGridCell">
     <Setter Property="Padding"      Value="12,6"/>
-    <Setter Property="BorderBrush"  Value="#1A2335"/>
+    <Setter Property="BorderBrush"  Value="{StaticResource BorderSoftBrush}"/>
   </Style>
 
   <Style Selector="DataGridRow:pointerover">
-    <Setter Property="Background"   Value="#0F1828"/>
+    <Setter Property="Background"   Value="{StaticResource Surface0Brush}"/>
   </Style>
 
   <Style Selector="DataGridRow:selected">
-    <Setter Property="Background"   Value="#0F2040"/>
+    <Setter Property="Background"   Value="{StaticResource Surface1Brush}"/>
   </Style>
 
   <!-- ── Separator ─────────────────────────────────────────────────────────── -->
   <Style Selector="Separator">
-    <Setter Property="Background" Value="#252C3F"/>
+    <Setter Property="Background" Value="{StaticResource BorderBrush}"/>
   </Style>
 
   <!-- ── Start Menu typography consistency ─────────────────────────────── -->

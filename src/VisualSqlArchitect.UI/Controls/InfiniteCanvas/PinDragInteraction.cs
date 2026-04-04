@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using CanvasControl = Avalonia.Controls.Canvas;
 using VisualSqlArchitect.UI.ViewModels;
 
 namespace VisualSqlArchitect.UI.Controls;
@@ -22,10 +23,10 @@ namespace VisualSqlArchitect.UI.Controls;
 /// This class is owned by <see cref="InfiniteCanvas"/> which calls it from
 /// its pointer event handlers.
 /// </summary>
-public sealed class PinDragInteraction(CanvasViewModel vm, Canvas scene)
+public sealed class PinDragInteraction(CanvasViewModel vm, CanvasControl scene)
 {
     private readonly CanvasViewModel _vm = vm;
-    private readonly Canvas _scene = scene;
+    private readonly CanvasControl _scene = scene;
     private PinDragState? _dragState;
     private ConnectionViewModel? _rerouteExistingWire;
 

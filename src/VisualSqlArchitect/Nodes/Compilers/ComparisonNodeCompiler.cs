@@ -1,5 +1,6 @@
 using VisualSqlArchitect.Expressions;
 using VisualSqlArchitect.Nodes.Definitions;
+using System.Globalization;
 
 namespace VisualSqlArchitect.Nodes.Compilers;
 
@@ -59,8 +60,83 @@ public sealed class ComparisonNodeCompiler : INodeCompiler
     )
     {
         ISqlExpression left = ctx.ResolveInput(node.Id, "left");
-        ISqlExpression right = ctx.ResolveInput(node.Id, "right");
+        ISqlExpression right = ResolveComparisonRightOperand(node, ctx, left.OutputType);
         return new ComparisonExpr(left, op, right);
+    }
+
+    private static ISqlExpression ResolveComparisonRightOperand(
+        NodeInstance node,
+        INodeCompilationContext ctx,
+        PinDataType leftOutputType
+    )
+    {
+        Connection? wire = ctx.Graph.GetSingleInputConnection(node.Id, "right");
+        if (wire is not null)
+            return ctx.Resolve(wire.FromNodeId, wire.FromPinName);
+
+        if (node.PinLiterals.TryGetValue("right", out string? literal))
+            return ParseInlineLiteral(literal, leftOutputType);
+
+        return ctx.ResolveInput(node.Id, "right");
+    }
+
+    private static ISqlExpression ParseInlineLiteral(string? raw, PinDataType leftOutputType)
+    {
+        string value = raw?.Trim() ?? string.Empty;
+
+        if (value.Equals("NULL", StringComparison.OrdinalIgnoreCase))
+            return NullExpr.Instance;
+
+        if (value.Equals("TRUE", StringComparison.OrdinalIgnoreCase))
+            return new LiteralExpr("TRUE", PinDataType.Boolean);
+
+        if (value.Equals("FALSE", StringComparison.OrdinalIgnoreCase))
+            return new LiteralExpr("FALSE", PinDataType.Boolean);
+
+        if (
+            double.TryParse(
+                value,
+                NumberStyles.Any,
+                CultureInfo.InvariantCulture,
+                out double numeric
+            )
+        )
+        {
+            return new NumberLiteralExpr(numeric);
+        }
+
+        if (TryUnquoteString(value, out string unquoted))
+            return new StringLiteralExpr(unquoted);
+
+        if (leftOutputType == PinDataType.Boolean && value == "1")
+            return new LiteralExpr("TRUE", PinDataType.Boolean);
+        if (leftOutputType == PinDataType.Boolean && value == "0")
+            return new LiteralExpr("FALSE", PinDataType.Boolean);
+
+        // For comparison literals, default to string semantics.
+        // Column-vs-column comparisons should use a wire on the right pin.
+        return new StringLiteralExpr(value);
+    }
+
+    private static bool TryUnquoteString(string value, out string unquoted)
+    {
+        unquoted = value;
+        if (value.Length < 2)
+            return false;
+
+        char first = value[0];
+        char last = value[^1];
+
+        if ((first == '\'' && last == '\'') || (first == '"' && last == '"'))
+        {
+            string inner = value[1..^1];
+            unquoted = first == '\''
+                ? inner.Replace("''", "'", StringComparison.Ordinal)
+                : inner.Replace("\"\"", "\"", StringComparison.Ordinal);
+            return true;
+        }
+
+        return false;
     }
 
     private static ISqlExpression CompileBetween(

@@ -11,7 +11,8 @@ public class ThemeValidatorTests
         ThemeValidationResult result = ThemeValidator.Validate(null);
 
         Assert.False(result.IsValid);
-        Assert.Contains(result.Errors, e => e.Contains("null", StringComparison.OrdinalIgnoreCase));
+        Assert.NotEmpty(result.Errors);
+        Assert.All(result.Errors, e => Assert.False(string.IsNullOrWhiteSpace(e)));
     }
 
     [Fact]

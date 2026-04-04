@@ -1,15 +1,17 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mi="using:Material.Icons.Avalonia"
+             xmlns:loc="using:VisualSqlArchitect.UI.Services.Localization"
              x:Class="VisualSqlArchitect.UI.Controls.Shell.AppHeaderBar"
              x:Name="Root">
   <Border Classes="app-header-shell"
           PointerPressed="Header_PointerPressed">
-    <Grid ColumnDefinitions="Auto,*,Auto">
+    <Grid ColumnDefinitions="*,Auto">
       <StackPanel Grid.Column="0"
                   Orientation="Horizontal"
                   Spacing="8"
-                  VerticalAlignment="Center">
+                  VerticalAlignment="Center"
+                  HorizontalAlignment="Left">
         <Border Width="22"
                 Height="22"
                 CornerRadius="6"
@@ -17,7 +19,7 @@
                 BorderBrush="{StaticResource AccentBlueBrush}"
                 BorderThickness="1"
                 IsVisible="{Binding ShowBrandBadge, ElementName=Root}">
-          <TextBlock Text="VS"
+          <TextBlock Text="{Binding [app.brandBadge], Source={x:Static loc:LocalizationService.Instance}}"
                      FontSize="8"
                      FontWeight="ExtraBold"
                      Foreground="{StaticResource AccentBlueBrush}"
@@ -30,16 +32,14 @@
           Click="TitleButton_Click"
           VerticalAlignment="Center"/>
 
+        <ContentPresenter Content="{Binding CenterContent, ElementName=Root}"
+                          VerticalAlignment="Center"/>
+
         <ContentPresenter Content="{Binding LeftContent, ElementName=Root}"
                           VerticalAlignment="Center"/>
       </StackPanel>
 
-      <ContentPresenter Grid.Column="1"
-                        Content="{Binding CenterContent, ElementName=Root}"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center"/>
-
-      <StackPanel Grid.Column="2"
+      <StackPanel Grid.Column="1"
                   Orientation="Horizontal"
                   Spacing="4"
                   VerticalAlignment="Center">
@@ -53,7 +53,7 @@
                   Click="Minimize_Click"
                   Width="28"
                   Height="28"
-                  ToolTip.Tip="Minimizar janela">
+                  ToolTip.Tip="{Binding [window.minimize], Source={x:Static loc:LocalizationService.Instance}}">
             <mi:MaterialIcon Kind="WindowMinimize" Width="14" Height="14"/>
           </Button>
 
@@ -61,7 +61,7 @@
                   Click="Maximize_Click"
                   Width="28"
                   Height="28"
-                  ToolTip.Tip="Maximizar/restaurar janela">
+                  ToolTip.Tip="{Binding [window.maximizeRestore], Source={x:Static loc:LocalizationService.Instance}}">
             <mi:MaterialIcon Kind="WindowMaximize" Width="14" Height="14"/>
           </Button>
 
@@ -69,7 +69,7 @@
                   Click="Close_Click"
                   Width="28"
                   Height="28"
-                  ToolTip.Tip="Fechar janela">
+                  ToolTip.Tip="{Binding [window.close], Source={x:Static loc:LocalizationService.Instance}}">
             <mi:MaterialIcon Kind="Close" Width="14" Height="14"/>
           </Button>
         </StackPanel>

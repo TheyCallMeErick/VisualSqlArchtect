@@ -16,5 +16,16 @@ public static class PinDataTypeExtensions
         type is PinDataType.Integer or PinDataType.Decimal or PinDataType.Number;
 
     public static bool IsStructural(this PinDataType type) =>
-        type is PinDataType.ColumnRef or PinDataType.ColumnSet or PinDataType.RowSet;
+        type
+            is PinDataType.ColumnRef
+                or PinDataType.ColumnSet
+                or PinDataType.RowSet
+                or PinDataType.TableDef
+                or PinDataType.ViewDef
+                or PinDataType.ColumnDef
+                or PinDataType.Constraint
+                or PinDataType.IndexDef
+                or PinDataType.TypeDef
+                or PinDataType.SequenceDef
+                or PinDataType.AlterOp;
 }

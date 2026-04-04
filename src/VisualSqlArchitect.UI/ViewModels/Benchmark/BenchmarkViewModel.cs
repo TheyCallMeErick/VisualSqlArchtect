@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
-using System.Diagnostics;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using VisualSqlArchitect.UI.Services.Benchmark;
 
 namespace VisualSqlArchitect.UI.ViewModels;
 
@@ -17,6 +19,14 @@ namespace VisualSqlArchitect.UI.ViewModels;
 public sealed class BenchmarkViewModel : ViewModelBase
 {
     private readonly CanvasViewModel _canvas;
+    private readonly ILogger<BenchmarkViewModel> _logger;
+    private readonly IBenchmarkExecutionService _executionService;
+    private readonly IBenchmarkTextProvider _textProvider;
+    private readonly IBenchmarkProgressPresenter _progressPresenter;
+    private readonly IBenchmarkRunStateCoordinator _runStateCoordinator;
+    private readonly IBenchmarkRunContextFactory _runContextFactory;
+    private readonly IBenchmarkResultCoordinator _resultCoordinator;
+    private readonly IBenchmarkInitializationService _initializationService;
 
     // ── Visibility ────────────────────────────────────────────────────────────
 
@@ -29,28 +39,28 @@ public sealed class BenchmarkViewModel : ViewModelBase
 
     // ── Configuration ─────────────────────────────────────────────────────────
 
-    private int _iterations = 10;
+    private int _iterations;
     public int Iterations
     {
         get => _iterations;
-        set => Set(ref _iterations, Math.Clamp(value, 1, 100));
+        set => Set(ref _iterations, BenchmarkRunConfiguration.NormalizeIterations(value));
     }
 
-    private int _warmupIterations = 2;
+    private int _warmupIterations;
     public int WarmupIterations
     {
         get => _warmupIterations;
-        set => Set(ref _warmupIterations, Math.Clamp(value, 0, 10));
+        set => Set(ref _warmupIterations, BenchmarkRunConfiguration.NormalizeWarmupIterations(value));
     }
 
-    private int _intervalMs = 0;
+    private int _intervalMs;
     public int IntervalMs
     {
         get => _intervalMs;
-        set => Set(ref _intervalMs, Math.Clamp(value, 0, 5000));
+        set => Set(ref _intervalMs, BenchmarkRunConfiguration.NormalizeIntervalMs(value));
     }
 
-    private string _runLabel = "Run 1";
+    private string _runLabel = string.Empty;
     public string RunLabel
     {
         get => _runLabel;
@@ -124,13 +134,52 @@ public sealed class BenchmarkViewModel : ViewModelBase
 
     // ── Constructor ───────────────────────────────────────────────────────────
 
-    public BenchmarkViewModel(CanvasViewModel canvas)
+    public BenchmarkViewModel(
+        CanvasViewModel canvas,
+        IBenchmarkIterationExecutor? iterationExecutor = null,
+        IBenchmarkConfigurationProvider? configurationProvider = null,
+        IBenchmarkRunner? benchmarkRunner = null,
+        IBenchmarkExecutionService? executionService = null,
+        IBenchmarkTextProvider? textProvider = null,
+        IBenchmarkProgressPresenter? progressPresenter = null,
+        IBenchmarkRunStateCoordinator? runStateCoordinator = null,
+        IBenchmarkRunContextFactory? runContextFactory = null,
+        IBenchmarkResultCoordinator? resultCoordinator = null,
+        IBenchmarkInitializationService? initializationService = null,
+        ILogger<BenchmarkViewModel>? logger = null)
     {
         _canvas = canvas;
-        RunCommand          = new RelayCommand(StartRunSafe, () => !IsRunning);
-        CancelCommand       = new RelayCommand(Cancel, () => IsRunning);
-        ClearHistoryCommand = new RelayCommand(() => { History.Clear(); LatestResult = null; });
-        CloseCommand        = new RelayCommand(() => IsVisible = false);
+        IBenchmarkIterationExecutor resolvedIterationExecutor = iterationExecutor ?? new SimulatedBenchmarkIterationExecutor();
+        IBenchmarkConfigurationProvider resolvedConfigurationProvider = configurationProvider ?? new EnvironmentBenchmarkConfigurationProvider();
+        IBenchmarkRunner resolvedBenchmarkRunner = benchmarkRunner ?? new BenchmarkRunner(resolvedIterationExecutor);
+        _executionService = executionService ?? new BenchmarkExecutionService(resolvedBenchmarkRunner);
+        _textProvider = textProvider ?? new LocalizedBenchmarkTextProvider();
+        _progressPresenter = progressPresenter ?? new BenchmarkProgressPresenter(_textProvider);
+        _runStateCoordinator = runStateCoordinator ?? new BenchmarkRunStateCoordinator(_textProvider);
+        _runContextFactory = runContextFactory ?? new BenchmarkRunContextFactory(_textProvider);
+        _resultCoordinator = resultCoordinator ?? new BenchmarkResultCoordinator(_textProvider);
+        _initializationService = initializationService
+            ?? new BenchmarkInitializationService(resolvedConfigurationProvider, _textProvider);
+        _logger = logger ?? NullLogger<BenchmarkViewModel>.Instance;
+
+        BenchmarkInitialState initial = _initializationService.BuildInitialState();
+        _iterations = initial.Iterations;
+        _warmupIterations = initial.WarmupIterations;
+        _intervalMs = initial.IntervalMs;
+        _runLabel = initial.RunLabel;
+
+        BenchmarkCommandBindings commands = BenchmarkCommandFactory.Create(
+            startRun: StartRunSafe,
+            canRun: () => !IsRunning,
+            cancel: Cancel,
+            canCancel: () => IsRunning,
+            clearHistory: () => { History.Clear(); LatestResult = null; },
+            close: () => IsVisible = false
+        );
+        RunCommand = commands.RunCommand;
+        CancelCommand = commands.CancelCommand;
+        ClearHistoryCommand = commands.ClearHistoryCommand;
+        CloseCommand = commands.CloseCommand;
     }
 
     private void StartRunSafe() => _ = RunAsyncSafe();
@@ -143,10 +192,12 @@ public sealed class BenchmarkViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            Progress = $"Benchmark failed: {ex.Message}";
-            IsRunning = false;
-            ProgressFraction = 0;
-            Debug.WriteLine($"[Benchmark] Unhandled exception in fire-and-forget run: {ex}");
+            Progress = _runStateCoordinator.BuildFailureMessage(ex.Message);
+            BenchmarkRunUiState finished = _runStateCoordinator.BuildFinishState(Progress);
+            IsRunning = finished.IsRunning;
+            Progress = finished.Progress;
+            ProgressFraction = finished.ProgressFraction;
+            _logger.LogError(ex, "Unhandled exception in fire-and-forget benchmark run");
         }
     }
 
@@ -154,7 +205,7 @@ public sealed class BenchmarkViewModel : ViewModelBase
     {
         Sql = _canvas.LiveSql.RawSql;
         // Auto-increment label per run
-        RunLabel = $"Run {History.Count + 1}";
+        RunLabel = _textProvider.BuildRunLabel(History.Count + 1);
         IsVisible = true;
     }
 
@@ -162,75 +213,52 @@ public sealed class BenchmarkViewModel : ViewModelBase
 
     private async Task RunAsync()
     {
-        var sql = _canvas.LiveSql.RawSql;
-        if (string.IsNullOrWhiteSpace(sql))
+        BenchmarkRunContextCreationResult creation = _runContextFactory.TryCreate(
+            _canvas.LiveSql.RawSql,
+            Iterations,
+            WarmupIterations,
+            IntervalMs);
+        if (!creation.CanStart)
         {
-            Progress = "No SQL to benchmark — build a query first.";
+            Progress = creation.RejectionMessage ?? string.Empty;
             return;
         }
 
-        Sql = sql;
-        _cts = new CancellationTokenSource();
-        var ct = _cts.Token;
+        BenchmarkRunContext context = creation.Context!.Value;
+        Sql = context.Sql;
+        using CancellationTokenSource cts = context.CancellationTokenSource;
+        _cts = cts;
+        CancellationToken ct = cts.Token;
 
-        IsRunning = true;
-        Progress = "";
-        ProgressFraction = 0;
-
-        var latencies = new List<double>(Iterations);
-        var total = WarmupIterations + Iterations;
+        BenchmarkRunUiState started = _runStateCoordinator.BuildStartState();
+        IsRunning = started.IsRunning;
+        Progress = started.Progress;
+        ProgressFraction = started.ProgressFraction;
 
         try
         {
-            // ── Warm-up passes ────────────────────────────────────────────────
-            for (int i = 0; i < WarmupIterations; i++)
-            {
-                ct.ThrowIfCancellationRequested();
-                Progress = $"Warm-up {i + 1}/{WarmupIterations}…";
-                ProgressFraction = (double)(i + 1) / total;
-                await SimulateIterationAsync(ct);
-                if (IntervalMs > 0) await Task.Delay(IntervalMs, ct);
-            }
+            BenchmarkRunResult result = await _executionService.ExecuteAsync(
+                RunLabel,
+                context.Configuration,
+                onProgress: OnRunProgress,
+                cancellationToken: ct);
 
-            // ── Measured passes ───────────────────────────────────────────────
-            for (int i = 0; i < Iterations; i++)
-            {
-                ct.ThrowIfCancellationRequested();
-                Progress = $"Iteration {i + 1}/{Iterations}…";
-                ProgressFraction = (double)(WarmupIterations + i + 1) / total;
-
-                var ms = await SimulateIterationAsync(ct);
-                latencies.Add(ms);
-
-                if (IntervalMs > 0) await Task.Delay(IntervalMs, ct);
-            }
-
-            // ── Compute statistics ────────────────────────────────────────────
-            latencies.Sort();
-            var result = new BenchmarkRunResult(
-                Label     : RunLabel,
-                Iterations: Iterations,
-                MinMs     : latencies[0],
-                MaxMs     : latencies[^1],
-                AvgMs     : latencies.Average(),
-                MedianMs  : Percentile(latencies, 0.50),
-                P95Ms     : Percentile(latencies, 0.95),
-                RunAt     : DateTime.Now
-            );
-
-            LatestResult = result;
-            History.Insert(0, result);
-            Progress = $"Done — {result.Summary}";
-            RunLabel = $"Run {History.Count + 1}";
+            BenchmarkResultApplicationState success = _resultCoordinator.ApplySuccess(History, result);
+            LatestResult = success.LatestResult;
+            Progress = success.Progress;
+            RunLabel = success.NextRunLabel;
         }
         catch (OperationCanceledException)
         {
-            Progress = "Benchmark cancelled.";
+            Progress = _runStateCoordinator.BuildCancelledMessage();
         }
         finally
         {
-            IsRunning = false;
-            ProgressFraction = 0;
+            _cts = null;
+            BenchmarkRunUiState finished = _runStateCoordinator.BuildFinishState(Progress);
+            IsRunning = finished.IsRunning;
+            Progress = finished.Progress;
+            ProgressFraction = finished.ProgressFraction;
         }
     }
 
@@ -239,37 +267,11 @@ public sealed class BenchmarkViewModel : ViewModelBase
         _cts?.Cancel();
     }
 
-    // ── Simulation / execution ────────────────────────────────────────────────
-
-    /// <summary>
-    /// Simulates one query execution and returns elapsed milliseconds.
-    /// Replace this with a real orchestrator call when a live connection is wired.
-    /// The simulation produces realistic latencies with random jitter so that
-    /// p95 differs meaningfully from the average.
-    /// Uses Random.Shared which is thread-safe (available in .NET 6+)
-    /// </summary>
-    private static async Task<double> SimulateIterationAsync(CancellationToken ct)
+    private void OnRunProgress(BenchmarkRunProgress progress)
     {
-        // Base latency 30–80ms with occasional spikes (10 % chance of 200–600ms)
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        int delay = Random.Shared.NextDouble() < 0.10
-            ? Random.Shared.Next(200, 600)
-            : Random.Shared.Next(30, 80);
-        await Task.Delay(delay, ct);
-        sw.Stop();
-        return sw.Elapsed.TotalMilliseconds;
+        BenchmarkProgressViewState viewState = _progressPresenter.Build(progress, WarmupIterations, Iterations);
+        Progress = viewState.Message;
+        ProgressFraction = viewState.Fraction;
     }
 
-    // ── Statistics ────────────────────────────────────────────────────────────
-
-    private static double Percentile(List<double> sorted, double p)
-    {
-        if (sorted.Count == 0) return 0;
-        if (sorted.Count == 1) return sorted[0];
-        double idx = p * (sorted.Count - 1);
-        int lo = (int)idx;
-        int hi = Math.Min(lo + 1, sorted.Count - 1);
-        double frac = idx - lo;
-        return sorted[lo] + frac * (sorted[hi] - sorted[lo]);
-    }
 }

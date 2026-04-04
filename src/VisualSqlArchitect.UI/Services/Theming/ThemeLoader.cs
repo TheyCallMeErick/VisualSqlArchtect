@@ -1,4 +1,5 @@
 using System.Text.Json;
+using VisualSqlArchitect.UI.Services.Localization;
 
 namespace VisualSqlArchitect.UI.Services.Theming;
 
@@ -35,7 +36,10 @@ public static class ThemeLoader
                 return new ThemeLoadResult
                 {
                     Status = ThemeLoadStatus.NotFound,
-                    Message = $"Theme file not found: {path}",
+                    Message = string.Format(
+                        L("themeLoader.status.notFoundWithPath", "Theme file not found: {0}"),
+                        path
+                    ),
                 };
             }
 
@@ -46,7 +50,7 @@ public static class ThemeLoader
                 return new ThemeLoadResult
                 {
                     Status = ThemeLoadStatus.InvalidJson,
-                    Message = "Theme JSON deserialized to null.",
+                    Message = L("themeLoader.status.deserializedNull", "Theme JSON deserialized to null."),
                 };
             }
 
@@ -54,7 +58,7 @@ public static class ThemeLoader
             {
                 Status = ThemeLoadStatus.Loaded,
                 Config = config,
-                Message = "Theme JSON loaded successfully.",
+                Message = L("themeLoader.status.loaded", "Theme JSON loaded successfully."),
             };
         }
         catch (JsonException ex)
@@ -78,5 +82,11 @@ public static class ThemeLoader
     public static string GetDefaultThemePath()
     {
         return Path.Combine(AppContext.BaseDirectory, "Assets", "Themes", "user-theme.json");
+    }
+
+    private static string L(string key, string fallback)
+    {
+        string value = LocalizationService.Instance[key];
+        return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
     }
 }

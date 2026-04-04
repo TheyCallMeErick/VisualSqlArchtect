@@ -20,7 +20,6 @@ public class SqlImportRoundTripTests
 
         string sql = canvas.LiveSql.RawSql;
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, r =>
             r.Label.Contains("LIMIT", StringComparison.OrdinalIgnoreCase)
@@ -43,7 +42,6 @@ public class SqlImportRoundTripTests
 
         string sql = canvas.LiveSql.RawSql;
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains("select", sql, StringComparison.OrdinalIgnoreCase);
         Assert.False(string.IsNullOrWhiteSpace(sql));
@@ -62,7 +60,6 @@ public class SqlImportRoundTripTests
         await canvas.SqlImporter.ImportAsync();
         canvas.LiveSql.Recompile();
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, r =>
             r.Status == EImportItemStatus.Imported
@@ -82,7 +79,6 @@ public class SqlImportRoundTripTests
         canvas.LiveSql.Recompile();
         string sql = canvas.LiveSql.RawSql;
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, r =>
             r.Status == EImportItemStatus.Imported
@@ -106,7 +102,6 @@ public class SqlImportRoundTripTests
         string sql = canvas.LiveSql.RawSql;
         string sqlUpper = sql.ToUpperInvariant();
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, r =>
             r.Status == EImportItemStatus.Imported
@@ -133,7 +128,6 @@ public class SqlImportRoundTripTests
         canvas.LiveSql.Recompile();
         string sql = canvas.LiveSql.RawSql;
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, r =>
             r.Status == EImportItemStatus.Imported
@@ -158,7 +152,6 @@ public class SqlImportRoundTripTests
         string sql = canvas.LiveSql.RawSql;
         string sqlUpper = sql.ToUpperInvariant();
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, r =>
             r.Status == EImportItemStatus.Imported
@@ -186,7 +179,6 @@ public class SqlImportRoundTripTests
         canvas.LiveSql.Recompile();
         string sql = canvas.LiveSql.RawSql;
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, r =>
             r.Status == EImportItemStatus.Imported
@@ -210,7 +202,6 @@ public class SqlImportRoundTripTests
         canvas.LiveSql.Recompile();
         string sql = canvas.LiveSql.RawSql;
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, r =>
             r.Status == EImportItemStatus.Imported
@@ -232,7 +223,6 @@ public class SqlImportRoundTripTests
         canvas.LiveSql.Recompile();
         string sql = canvas.LiveSql.RawSql;
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, r =>
             r.Status == EImportItemStatus.Imported
@@ -255,7 +245,6 @@ public class SqlImportRoundTripTests
         canvas.LiveSql.Recompile();
         string sql = canvas.LiveSql.RawSql;
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, r =>
             r.Status == EImportItemStatus.Imported

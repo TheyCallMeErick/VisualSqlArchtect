@@ -1,9 +1,12 @@
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using VisualSqlArchitect.Core;
 using VisualSqlArchitect.Metadata;
 using VisualSqlArchitect.Nodes;
 using VisualSqlArchitect.UI.Controls;
+using VisualSqlArchitect.UI.Services.Localization;
 using VisualSqlArchitect.UI.Serialization;
 using VisualSqlArchitect.UI.ViewModels;
 
@@ -12,7 +15,11 @@ namespace VisualSqlArchitect.UI.Services;
 /// <summary>
 /// Handles file save/open dialogs and canvas serialization.
 /// </summary>
-public class FileOperationsService(Window window, CanvasViewModel vm)
+public class FileOperationsService(
+    Window window,
+    CanvasViewModel vm,
+    CanvasViewModel? ddlVm = null,
+    ILogger<FileOperationsService>? logger = null)
 {
     private static readonly FilePickerFileType FileType = new("SQL Architect Canvas")
     {
@@ -22,6 +29,8 @@ public class FileOperationsService(Window window, CanvasViewModel vm)
 
     private readonly Window _window = window;
     private readonly CanvasViewModel _vm = vm;
+    private readonly CanvasViewModel? _ddlVm = ddlVm;
+    private readonly ILogger<FileOperationsService> _logger = logger ?? NullLogger<FileOperationsService>.Instance;
 
     public async Task SaveAsync(bool saveAs = false)
     {
@@ -32,10 +41,10 @@ public class FileOperationsService(Window window, CanvasViewModel vm)
             IStorageFile? r = await _window.StorageProvider.SaveFilePickerAsync(
                 new FilePickerSaveOptions
                 {
-                    Title = "Save Canvas",
+                    Title = L("file.saveDialog.title", "Save Canvas"),
                     DefaultExtension = "vsaq",
                     FileTypeChoices = [FileType],
-                    SuggestedFileName = "Query1",
+                    SuggestedFileName = L("file.saveDialog.suggestedName", "Query1"),
                 }
             );
             path = r?.TryGetLocalPath();
@@ -46,15 +55,19 @@ public class FileOperationsService(Window window, CanvasViewModel vm)
 
         try
         {
-            await CanvasSerializer.SaveToFileAsync(path, _vm);
+            await CanvasSerializer.SaveToFileAsync(path, _vm, _ddlVm);
             _vm.CurrentFilePath = path;
             _vm.IsDirty = false;
             RecentFilesStore.Touch(path);
-            _vm.NotifySuccess("Canvas saved successfully.", path);
+            _vm.NotifySuccess(L("file.save.success", "Canvas saved successfully."), path);
         }
         catch (Exception ex)
         {
-            _vm.DataPreview.ShowError($"Save failed: {ex.Message}", ex);
+            _logger.LogError(ex, "Failed to save canvas to file");
+            _vm.DataPreview.ShowError(
+                string.Format(L("file.save.failedWithReason", "Save failed: {0}"), ex.Message),
+                ex
+            );
         }
     }
 
@@ -63,7 +76,7 @@ public class FileOperationsService(Window window, CanvasViewModel vm)
         IReadOnlyList<IStorageFile> results = await _window.StorageProvider.OpenFilePickerAsync(
             new FilePickerOpenOptions
             {
-                Title = "Open Canvas",
+                Title = L("file.openDialog.title", "Open Canvas"),
                 FileTypeFilter = [FileType],
                 AllowMultiple = false,
             }
@@ -83,10 +96,13 @@ public class FileOperationsService(Window window, CanvasViewModel vm)
 
         try
         {
-            CanvasLoadResult result = await CanvasSerializer.LoadFromFileAsync(path, _vm, BuildColumnLookup());
+            CanvasLoadResult result = await CanvasSerializer.LoadFromFileAsync(path, _vm, _ddlVm, BuildColumnLookup());
             if (!result.Success)
             {
-                _vm.DataPreview.ShowError($"Open failed: {result.Error}", null);
+                _vm.DataPreview.ShowError(
+                    string.Format(L("file.open.failedWithReason", "Open failed: {0}"), result.Error),
+                    null
+                );
                 return;
             }
 
@@ -99,25 +115,29 @@ public class FileOperationsService(Window window, CanvasViewModel vm)
                 ? string.Join(Environment.NewLine, result.Warnings)
                 : null;
             if (warningDetails is null)
-                _vm.NotifySuccess("Canvas opened successfully.", path);
+                _vm.NotifySuccess(L("file.open.success", "Canvas opened successfully."), path);
             else
                 _vm.NotifyWarning(
-                    "Canvas opened with warnings.",
+                    L("file.open.successWithWarnings", "Canvas opened with warnings."),
                     $"{path}{Environment.NewLine}{Environment.NewLine}{warningDetails}"
                 );
 
             if (result.Warnings is { Count: > 0 })
                 foreach (string w in result.Warnings)
                     _vm.Diagnostics.AddWarning(
-                        area: "Canvas Migration",
-                        message: $"Open: {w}",
-                        recommendation: "Review diagnostics and re-save the canvas to persist the latest schema.",
+                        area: L("diagnostics.canvasMigration", "Canvas Migration"),
+                        message: string.Format(L("diagnostics.canvasMigration.openWarning", "Open: {0}"), w),
+                        recommendation: L("diagnostics.recommendation.resaveLatestSchema", "Review diagnostics and re-save the canvas to persist the latest schema."),
                         openPanel: true
                     );
         }
         catch (Exception ex)
         {
-            _vm.DataPreview.ShowError($"Open failed: {ex.Message}", ex);
+            _logger.LogError(ex, "Failed to open canvas from path {Path}", path);
+            _vm.DataPreview.ShowError(
+                string.Format(L("file.open.failedWithReason", "Open failed: {0}"), ex.Message),
+                ex
+            );
         }
     }
 
@@ -160,5 +180,11 @@ public class FileOperationsService(Window window, CanvasViewModel vm)
             ColumnSemanticType.Other => PinDataType.Text,
             _ => PinDataType.Text,
         };
+    }
+
+    private static string L(string key, string fallback)
+    {
+        string value = LocalizationService.Instance[key];
+        return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
     }
 }

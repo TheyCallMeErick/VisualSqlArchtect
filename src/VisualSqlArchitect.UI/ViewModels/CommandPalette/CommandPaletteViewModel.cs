@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using VisualSqlArchitect.UI.Services.CommandPalette;
 
 namespace VisualSqlArchitect.UI.ViewModels;
 
@@ -9,6 +10,7 @@ public sealed class CommandPaletteViewModel : ViewModelBase
     private bool _isVisible;
     private string _query = "";
     private int _selectedIndex = 0;
+    private readonly ICommandPaletteFilterService _filterService;
 
     private readonly List<PaletteCommandItem> _all = [];
 
@@ -36,10 +38,22 @@ public sealed class CommandPaletteViewModel : ViewModelBase
         set => Set(ref _selectedIndex, value);
     }
 
+    public CommandPaletteViewModel(ICommandPaletteFilterService? filterService = null)
+    {
+        _filterService = filterService ?? new CommandPaletteFilterService();
+    }
+
     // ── Registration ─────────────────────────────────────────────────────────
 
     public void RegisterCommands(IEnumerable<PaletteCommandItem> commands) =>
         _all.AddRange(commands);
+
+    public void SetCommands(IEnumerable<PaletteCommandItem> commands)
+    {
+        _all.Clear();
+        _all.AddRange(commands);
+        Filter();
+    }
 
     // ── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -86,16 +100,9 @@ public sealed class CommandPaletteViewModel : ViewModelBase
     {
         Results.Clear();
         SelectedIndex = 0;
-        string q = _query.Trim();
+        IReadOnlyList<PaletteCommandItem> filtered = _filterService.FilterAndSort(_all, _query);
 
-        IOrderedEnumerable<(PaletteCommandItem Command, int Score)> scored = _all.Select(c =>
-                (Command: c, Score: FuzzyScorer.Score(c, q))
-            )
-            .Where(x => x.Score > 0)
-            .OrderByDescending(x => x.Score)
-            .ThenBy(x => x.Command.Name);
-
-        foreach ((PaletteCommandItem cmd, int _) in scored)
+        foreach (PaletteCommandItem cmd in filtered)
             Results.Add(cmd);
     }
 }

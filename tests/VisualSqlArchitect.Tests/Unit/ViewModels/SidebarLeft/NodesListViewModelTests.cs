@@ -1,4 +1,5 @@
 using VisualSqlArchitect.UI.ViewModels;
+using VisualSqlArchitect.Nodes;
 using Xunit;
 
 namespace VisualSqlArchitect.Tests.Unit.ViewModels.SidebarLeft;
@@ -59,5 +60,30 @@ public class NodesListViewModelTests
         Assert.True(vm.ShowIntro);
         Assert.Equal(string.Empty, vm.SearchQuery);
         Assert.Equal(initialCount, vm.FilteredGroups.Count);
+    }
+
+    [Fact]
+    public void CanvasContext_Ddl_ShowsOnlyDdlCategory()
+    {
+        var vm = new NodesListViewModel((_, _) => { });
+
+        vm.CanvasContext = CanvasContext.Ddl;
+
+        Assert.NotEmpty(vm.FilteredGroups);
+        Assert.All(vm.FilteredGroups, g => Assert.Equal(NodeCategory.Ddl, g.Category));
+        Assert.Contains(vm.FilteredGroups, g => g.Name == "Definitions");
+        Assert.Contains(vm.FilteredGroups, g => g.Name == "Outputs");
+    }
+
+    [Fact]
+    public void CanvasContext_Transition_ClearsResidualSearch()
+    {
+        var vm = new NodesListViewModel((_, _) => { });
+        vm.SearchQuery = "join";
+
+        vm.CanvasContext = CanvasContext.Ddl;
+
+        Assert.Equal(string.Empty, vm.SearchQuery);
+        Assert.True(vm.ShowIntro);
     }
 }

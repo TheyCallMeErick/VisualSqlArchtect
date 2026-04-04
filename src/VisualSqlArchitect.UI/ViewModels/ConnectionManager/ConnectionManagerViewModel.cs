@@ -1,13 +1,11 @@
 using System.Collections.ObjectModel;
 using VisualSqlArchitect.UI;
-using System.IO;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using VisualSqlArchitect.Core;
 using VisualSqlArchitect.Metadata;
-using VisualSqlArchitect.Providers;
 using VisualSqlArchitect.UI.Services;
+using VisualSqlArchitect.UI.Services.ConnectionManager;
 using VisualSqlArchitect.UI.Services.Localization;
 using VisualSqlArchitect.UI.ViewModels.Canvas;
 
@@ -17,8 +15,6 @@ namespace VisualSqlArchitect.UI.ViewModels;
 
 public sealed class ConnectionManagerViewModel : ViewModelBase
 {
-    private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true };
-
     // Latency above this threshold is considered "Degraded" rather than "Online"
     private const double DegradedLatencyThresholdMs = 500.0;
     // How often the background health monitor pings the active connection (seconds)
@@ -30,6 +26,18 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
     private readonly ILogger<ConnectionManagerViewModel> _logger;
     private readonly CredentialVaultStore _credentialVault;
     private readonly LocalizationService _loc = LocalizationService.Instance;
+    private readonly IConnectionErrorMessageMapper _errorMessageMapper;
+    private readonly IConnectionStatusPresenter _statusPresenter;
+    private readonly IConnectionCanvasPromptCoordinator _canvasPromptCoordinator;
+    private readonly IConnectionHealthMonitorService _healthMonitorService;
+    private readonly IConnectionSessionOrchestrator _sessionOrchestrator;
+    private readonly IConnectionProfileStore _profileStore;
+    private readonly IConnectionTestExecutor _connectionTestExecutor;
+    private readonly IConnectionProfileFormMapper _formMapper;
+    private readonly IConnectionActivationWorkflow _activationWorkflow;
+    private readonly IConnectionProfileLifecycleService _profileLifecycleService;
+    private readonly IFireAndForgetSafetyExecutor _fireAndForgetSafetyExecutor;
+    private readonly IConnectionHealthLifecycleCoordinator _healthLifecycleCoordinator;
 
     /// <summary>
     /// Reference to the canvas search menu where database tables will be loaded.
@@ -233,6 +241,7 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
     // ── Background health monitor ─────────────────────────────────────────────
 
     private CancellationTokenSource? _healthMonitorCts;
+    private CancellationTokenSource? _connectCts;
 
     // ── Provider list for ComboBox ────────────────────────────────────────────
 
@@ -258,11 +267,35 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
 
     // ── Constructor ───────────────────────────────────────────────────────────
 
-    public ConnectionManagerViewModel()
+    public ConnectionManagerViewModel(
+        IConnectionErrorMessageMapper? errorMessageMapper = null,
+        IConnectionStatusPresenter? statusPresenter = null,
+        IConnectionCanvasPromptCoordinator? canvasPromptCoordinator = null,
+        IConnectionHealthMonitorService? healthMonitorService = null,
+        IConnectionSessionOrchestrator? sessionOrchestrator = null,
+        IConnectionProfileStore? profileStore = null,
+        IConnectionTestExecutor? connectionTestExecutor = null,
+        IConnectionProfileFormMapper? formMapper = null,
+        IConnectionActivationWorkflow? activationWorkflow = null,
+        IConnectionProfileLifecycleService? profileLifecycleService = null,
+        IFireAndForgetSafetyExecutor? fireAndForgetSafetyExecutor = null,
+        IConnectionHealthLifecycleCoordinator? healthLifecycleCoordinator = null)
     {
         _logger = NullLogger<ConnectionManagerViewModel>.Instance;
         _dbConnectionService = new DatabaseConnectionService();
         _credentialVault = new CredentialVaultStore();
+        _errorMessageMapper = errorMessageMapper ?? new ConnectionErrorMessageMapper(_loc);
+        _statusPresenter = statusPresenter ?? new ConnectionStatusPresenter(_loc);
+        _canvasPromptCoordinator = canvasPromptCoordinator ?? new ConnectionCanvasPromptCoordinator();
+        _healthMonitorService = healthMonitorService ?? new ConnectionHealthMonitorService();
+        _sessionOrchestrator = sessionOrchestrator ?? new ConnectionSessionOrchestrator();
+        _profileStore = profileStore ?? new ConnectionProfileStore();
+        _connectionTestExecutor = connectionTestExecutor ?? new DbOrchestratorConnectionTestExecutor();
+        _formMapper = formMapper ?? new ConnectionProfileFormMapper(_loc);
+        _activationWorkflow = activationWorkflow ?? new ConnectionActivationWorkflow();
+        _profileLifecycleService = profileLifecycleService ?? new ConnectionProfileLifecycleService();
+        _fireAndForgetSafetyExecutor = fireAndForgetSafetyExecutor ?? new FireAndForgetSafetyExecutor(_logger);
+        _healthLifecycleCoordinator = healthLifecycleCoordinator ?? new ConnectionHealthLifecycleCoordinator(_healthMonitorService);
 
         _loc.PropertyChanged += (_, _) =>
         {
@@ -286,7 +319,7 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
         RefreshHealthCommand  = new RelayCommand(StartRefreshHealthSafe, () => _activeProfileId is not null);
         ClearCanvasAfterConnectCommand = new RelayCommand(ClearCanvasAfterConnect);
         KeepCanvasAfterConnectCommand = new RelayCommand(KeepCanvasAfterConnect);
-        CloseClearCanvasPromptCommand = new RelayCommand(CloseClearCanvasPrompt);
+        CloseClearCanvasPromptCommand = new RelayCommand(() => CloseClearCanvasPrompt(dismissedByUser: true));
 
         LoadProfiles();
     }
@@ -300,16 +333,7 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
         _selectedProfile = null;
         RaisePropertyChanged(nameof(SelectedProfile));
 
-        _editId = Guid.NewGuid().ToString();
-        EditName = _loc["connection.new"];
-        EditProvider = DatabaseProvider.Postgres;
-        EditHost = AppConstants.DefaultHost;
-        EditPort = 5432;
-        EditDatabase = "";
-        EditUsername = "";
-        EditPassword = "";
-        EditUseIntegratedSecurity = false;
-        EditTimeout = 30;
+        ApplyFormData(_formMapper.CreateNew());
         IsEditing = true;
         TestStatus = "";
         TestConnectionCommand.NotifyCanExecuteChanged();
@@ -317,16 +341,7 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
 
     private void LoadProfileIntoForm(ConnectionProfile p)
     {
-        _editId = p.Id;
-        EditName = p.Name;
-        EditProvider = p.Provider;
-        EditHost = p.Host;
-        EditPort = p.Port;
-        EditDatabase = p.Database;
-        EditUsername = p.Username;
-        EditPassword = p.Password;
-        EditUseIntegratedSecurity = p.UseIntegratedSecurity;
-        EditTimeout = p.TimeoutSeconds;
+        ApplyFormData(_formMapper.FromProfile(p));
         IsEditing = true;
         TestStatus = "";
         TestConnectionCommand.NotifyCanExecuteChanged();
@@ -334,36 +349,13 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
 
     private void SaveProfile()
     {
-        var profile = new ConnectionProfile
-        {
-            Id                    = _editId,
-            Name                  = EditName,
-            Provider              = EditProvider,
-            Host                  = EditHost,
-            Port                  = EditPort,
-            Database              = EditDatabase,
-            Username              = EditUsername,
-            Password              = EditPassword,
-            UseIntegratedSecurity = EditUseIntegratedSecurity,
-            TimeoutSeconds        = EditTimeout,
-        };
+        ConnectionProfile profile = _formMapper.ToProfile(CaptureFormData());
 
-        var existing = Profiles.FirstOrDefault(p => p.Id == profile.Id);
-        if (existing is null)
-        {
-            Profiles.Add(profile);
-            _selectedProfile = profile;
-            RaisePropertyChanged(nameof(SelectedProfile));
-        }
-        else
-        {
-            var idx = Profiles.IndexOf(existing);
-            Profiles[idx] = profile;
-            _selectedProfile = profile;
-            RaisePropertyChanged(nameof(SelectedProfile));
-        }
+        ConnectionProfileSaveResult save = _profileLifecycleService.Save(Profiles, profile, _activeProfileId);
+        _selectedProfile = save.SelectedProfile;
+        RaisePropertyChanged(nameof(SelectedProfile));
 
-        if (_activeProfileId == profile.Id)
+        if (save.ActiveProfileAffected)
         {
             RaisePropertyChanged(nameof(ActiveConnectionLabel));
             RaisePropertyChanged(nameof(ConnectionHealthTooltip));
@@ -374,33 +366,45 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
 
     private void DeleteProfile()
     {
-        if (SelectedProfile is null) return;
-        if (SelectedProfile.Id == ActiveProfileId) ActiveProfileId = null;
-        _credentialVault.RemoveSecret(SelectedProfile.Id);
-        Profiles.Remove(SelectedProfile);
+        ConnectionProfileDeleteResult deleted = _profileLifecycleService.Delete(Profiles, SelectedProfile, ActiveProfileId);
+        if (!deleted.Deleted)
+            return;
+
+        if (!string.IsNullOrWhiteSpace(deleted.RemovedProfileId))
+            _credentialVault.RemoveSecret(deleted.RemovedProfileId);
+
+        ActiveProfileId = deleted.NextActiveProfileId;
         SelectedProfile = null;
-        IsEditing = false;
-        TestStatus = "";
+        IsEditing = deleted.IsEditing;
+        TestStatus = deleted.TestStatus;
         PersistProfiles();
     }
 
     private void Connect()
     {
-        if (SelectedProfile is null) return;
-        IsConnecting = true;
+        ConnectionConnectState state = _sessionOrchestrator.BeginConnect(SelectedProfile, _connectCts);
+        if (!state.Started || state.Profile is null)
+            return;
+
+        _connectCts = state.ConnectCts;
+        IsConnecting = state.IsConnecting;
         RaisePropertyChanged(nameof(IsNotConnecting));
-        TestStatus = _loc["connection.status.connecting"];
-        TestStatusColor = "#FBBF24";
-        ActiveProfileId = SelectedProfile.Id;
+        ApplyTestStatus(_statusPresenter.Connecting());
+        ActiveProfileId = state.ActiveProfileId;
         // Run an immediate health check for the newly activated connection
         StartRefreshHealthSafe();
         // Load database tables into the search menu in the background
-        StartLoadDatabaseTablesSafe(SelectedProfile);
+        StartLoadDatabaseTablesSafe(state.Profile, _connectCts!.Token);
     }
 
     private void Disconnect()
     {
-        ActiveProfileId = null;
+        ConnectionDisconnectState state = _sessionOrchestrator.BeginDisconnect(_connectCts);
+        _connectCts = state.ConnectCts;
+        _dbConnectionService.Cancel();
+        IsConnecting = state.IsConnecting;
+        RaisePropertyChanged(nameof(IsNotConnecting));
+        ActiveProfileId = state.ActiveProfileId;
         DisconnectCommand.NotifyCanExecuteChanged();
         ConnectCommand.NotifyCanExecuteChanged();
         RefreshHealthCommand.NotifyCanExecuteChanged();
@@ -414,55 +418,56 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
     /// 3. Populates the search menu with available tables
     /// 4. Resets the canvas to show the new database
     /// </summary>
-    private async Task LoadDatabaseTablesAsync(ConnectionProfile profile)
-    {
-        // If SearchMenu is not set, we can't load tables (initialization not complete)
-        if (SearchMenu is null)
-        {
-            TestStatus = "Connection failed: search menu not initialized.";
-            TestStatusColor = "#EF4444";
-            IsConnecting = false;
-            RaisePropertyChanged(nameof(IsNotConnecting));
-            return;
-        }
+    private Task LoadDatabaseTablesAsync(ConnectionProfile profile)
+        => LoadDatabaseTablesAsync(profile, CancellationToken.None);
 
+    private async Task LoadDatabaseTablesAsync(ConnectionProfile profile, CancellationToken ct)
+    {
         try
         {
-            var config = profile.ToConnectionConfig();
-            await _dbConnectionService.ConnectAndLoadAsync(config, SearchMenu);
+            ConnectionActivationResult result = await _activationWorkflow.ExecuteAsync(
+                profile,
+                SearchMenu,
+                Canvas,
+                async (config, searchMenu, token) =>
+                {
+                    await _dbConnectionService.ConnectAndLoadAsync(config, searchMenu, token);
+                    return _dbConnectionService.LoadedMetadata;
+                },
+                ct);
 
-            // Update canvas with the loaded metadata and connection config, and reset it
-            if (Canvas is not null && _dbConnectionService.LoadedMetadata is not null)
+            switch (result.Outcome)
             {
-                DbMetadata metadata = _dbConnectionService.LoadedMetadata;
-                Canvas.SetDatabaseContext(metadata, config);
+                case EConnectionActivationOutcome.Connected:
+                    if (result.ShouldOpenClearCanvasPrompt && result.Metadata is not null && result.Config is not null)
+                        OpenClearCanvasPrompt(result.Metadata, result.Config);
+                    else
+                        CloseClearCanvasPrompt(dismissedByUser: false);
 
-                if (Canvas.IsCanvasEmpty)
-                    CloseClearCanvasPrompt();
-                else
-                    OpenClearCanvasPrompt(metadata, config);
+                    ApplyTestStatus(_statusPresenter.Connected());
+                    IsVisible = false;
+                    ConnectionActivated?.Invoke(profile);
+                    break;
 
-                TestStatus = _loc["connection.status.connected"];
-                TestStatusColor = "#4ADE80";
-                IsVisible = false;
-                ConnectionActivated?.Invoke(profile);
+                case EConnectionActivationOutcome.SearchMenuUnavailable:
+                    string reason = $"{result.FailureReason ?? L("connection.error.searchMenuNotInitialized", "search menu not initialized")}.";
+                    ApplyTestStatus(_statusPresenter.FailedWithPrefix(reason));
+                    break;
+
+                case EConnectionActivationOutcome.MetadataUnavailable:
+                    ApplyTestStatus(_statusPresenter.MetadataUnavailable());
+                    break;
+
+                case EConnectionActivationOutcome.Cancelled:
+                    ApplyTestStatus(_statusPresenter.Cancelled());
+                    break;
+
+                case EConnectionActivationOutcome.Failed:
+                    Exception ex = result.FailureException ?? new InvalidOperationException("Unknown connection activation failure.");
+                    ApplyTestStatus(_statusPresenter.FailedWithPrefix(_errorMessageMapper.Map(ex, profile.Provider)));
+                    _logger?.LogError(ex, "Failed to load database tables for connection {Profile}", profile.Name);
+                    break;
             }
-            else
-            {
-                TestStatus = _loc["connection.status.metadataUnavailable"];
-                TestStatusColor = "#EF4444";
-            }
-        }
-        catch (Exception ex)
-        {
-            TestStatus = $"{_loc["connection.status.failedPrefix"]}: {MapConnectionException(ex, profile.Provider)}";
-            TestStatusColor = "#EF4444";
-            // Log error but don't crash — connection health check already provided feedback
-            _logger?.LogError(
-                ex,
-                "Failed to load database tables for connection {Profile}",
-                profile.Name
-            );
         }
         finally
         {
@@ -474,8 +479,7 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
     private async Task TestConnectionAsync()
     {
         IsTesting = true;
-        TestStatus = _loc["connection.status.testing"];
-        TestStatusColor = "#FBBF24";
+        ApplyTestStatus(_statusPresenter.Testing());
 
         try
         {
@@ -491,25 +495,20 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
                 TimeoutSeconds        = EditTimeout,
             }.ToConnectionConfig();
 
-            var result = await RunTestAsync(config, EditProvider, EditTimeout);
+            ConnectionTestResult result = await _connectionTestExecutor.ExecuteAsync(config, EditProvider, EditTimeout);
 
             if (result.Success)
             {
-                var ms = result.Latency?.TotalMilliseconds ?? 0;
-                var lag = ms >= DegradedLatencyThresholdMs ? $" — {_loc["connection.status.highLatency"]} ({ms:0}ms)" : $" · {ms:0}ms";
-                TestStatus = $"{_loc["connection.status.connected"]}{lag}";
-                TestStatusColor = ms >= DegradedLatencyThresholdMs ? "#FBBF24" : "#4ADE80";
+                ApplyTestStatus(_statusPresenter.TestSuccess(result.Latency, DegradedLatencyThresholdMs));
             }
             else
             {
-                TestStatus = result.ErrorMessage ?? "Connection failed";
-                TestStatusColor = "#EF4444";
+                ApplyTestStatus(_statusPresenter.Failed(result.ErrorMessage ?? _loc["connection.status.failedPrefix"]));
             }
         }
         catch (Exception ex)
         {
-            TestStatus = MapConnectionException(ex, EditProvider);
-            TestStatusColor = "#EF4444";
+            ApplyTestStatus(_statusPresenter.Failed(_errorMessageMapper.Map(ex, EditProvider)));
         }
         finally
         {
@@ -521,171 +520,106 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
 
     private void RestartHealthMonitor()
     {
-        _healthMonitorCts?.Cancel();
-        _healthMonitorCts?.Dispose();
-
-        if (_activeProfileId is null) return;
-
-        _healthMonitorCts = new CancellationTokenSource();
-        StartHealthMonitorLoopSafe(_healthMonitorCts.Token);
+        _healthMonitorCts = _healthLifecycleCoordinator.Restart(
+            _activeProfileId,
+            _healthMonitorCts,
+            StartHealthMonitorLoopSafe);
     }
 
     private void StartTestConnectionSafe() =>
-        _ = ExecuteFireAndForgetSafeAsync(TestConnectionAsync, "test connection");
+        _ = _fireAndForgetSafetyExecutor.ExecuteSafeAsync(TestConnectionAsync, "test connection");
 
     private void StartRefreshHealthSafe() =>
-        _ = ExecuteFireAndForgetSafeAsync(() => RunHealthCheckAsync(), "refresh health");
+        _ = _fireAndForgetSafetyExecutor.ExecuteSafeAsync(() => RunHealthCheckAsync(), "refresh health");
 
-    private void StartLoadDatabaseTablesSafe(ConnectionProfile profile) =>
-        _ = ExecuteFireAndForgetSafeAsync(() => LoadDatabaseTablesAsync(profile), "load database tables");
+    private void StartLoadDatabaseTablesSafe(ConnectionProfile profile, CancellationToken ct) =>
+        _ = _fireAndForgetSafetyExecutor.ExecuteSafeAsync(() => LoadDatabaseTablesAsync(profile, ct), "load database tables");
 
     private void StartHealthMonitorLoopSafe(CancellationToken token) =>
-        _ = ExecuteFireAndForgetSafeAsync(() => HealthMonitorLoopAsync(token), "health monitor loop");
-
-    private async Task ExecuteFireAndForgetSafeAsync(Func<Task> operation, string operationName)
-    {
-        try
-        {
-            await operation();
-        }
-        catch (OperationCanceledException)
-        {
-            // expected cancellation path
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Unhandled exception in fire-and-forget operation: {Operation}", operationName);
-        }
-    }
+        _ = _fireAndForgetSafetyExecutor.ExecuteSafeAsync(() => HealthMonitorLoopAsync(token), "health monitor loop");
 
     private async Task HealthMonitorLoopAsync(CancellationToken ct)
     {
-        // Skip the first tick — Connect() already triggers RunHealthCheckAsync
-        try
-        {
-            while (!ct.IsCancellationRequested)
-            {
-                await Task.Delay(TimeSpan.FromSeconds(AppConstants.HealthCheckIntervalSeconds), ct);
-                if (!ct.IsCancellationRequested)
-                    await RunHealthCheckAsync(ct);
-            }
-        }
-        catch (OperationCanceledException) { /* normal shutdown */ }
+        await _healthMonitorService.HealthMonitorLoopAsync(ct, RunHealthCheckAsync);
     }
 
     private async Task RunHealthCheckAsync(CancellationToken ct = default)
     {
-        var profile = Profiles.FirstOrDefault(x => x.Id == _activeProfileId);
-        if (profile is null)
-        {
-            ActiveHealthStatus = EConnectionHealthStatus.Unknown;
-            return;
-        }
-
-        try
-        {
-            var result = await RunTestAsync(profile.ToConnectionConfig(), profile.Provider, profile.TimeoutSeconds, ct);
-            if (!result.Success)
-            {
-                ActiveHealthStatus = EConnectionHealthStatus.Offline;
-                return;
-            }
-            var ms = result.Latency?.TotalMilliseconds ?? 0;
-            ActiveHealthStatus = ms >= DegradedLatencyThresholdMs
-                ? EConnectionHealthStatus.Degraded
-                : EConnectionHealthStatus.Online;
-        }
-        catch (OperationCanceledException)
-        {
-            // either shutdown or timeout — mark offline only if the monitor wasn't cancelled
-            if (!ct.IsCancellationRequested)
-                ActiveHealthStatus = EConnectionHealthStatus.Offline;
-        }
-        catch
-        {
-            ActiveHealthStatus = EConnectionHealthStatus.Offline;
-        }
+        ActiveHealthStatus = await _healthLifecycleCoordinator.EvaluateActiveStatusAsync(
+            Profiles,
+            _activeProfileId,
+            _connectionTestExecutor.ExecuteAsync,
+            DegradedLatencyThresholdMs,
+            ct);
     }
 
-    // ── Shared test helper ────────────────────────────────────────────────────
-
-    private static async Task<ConnectionTestResult> RunTestAsync(
-        ConnectionConfig config,
-        DatabaseProvider provider,
-        int timeoutSeconds,
-        CancellationToken ct = default)
+    private string L(string key, string fallback)
     {
-        IDbOrchestrator orchestrator = provider switch
-        {
-            DatabaseProvider.Postgres  => new PostgresOrchestrator(config),
-            DatabaseProvider.MySql     => new MySqlOrchestrator(config),
-            DatabaseProvider.SqlServer => new SqlServerOrchestrator(config),
-            DatabaseProvider.SQLite    => new SqliteOrchestrator(config),
-            _                          => throw new NotSupportedException($"Unknown provider: {provider}"),
-        };
-
-        await using (orchestrator)
-        {
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
-            return await orchestrator.TestConnectionAsync(cts.Token);
-        }
+        string value = _loc[key];
+        return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
     }
 
-    // ── Friendly error mapping ────────────────────────────────────────────────
-
-    private static string MapConnectionException(Exception ex, DatabaseProvider provider)
+    private void ApplyTestStatus(ConnectionStatusViewState state)
     {
-        // Avoid leaking passwords — only use ex.Message, never connection strings
-        var msg = ex.Message;
-
-        if (ex is OperationCanceledException or TimeoutException)
-            return "Connection timed out — check that the server is reachable and increase the timeout if needed.";
-
-        var lower = msg.ToLowerInvariant();
-
-        if (ContainsAny(lower, "password", "authentication failed", "invalid password",
-                        "no pg_hba.conf entry", "login failed", "access denied"))
-            return $"Authentication failed — verify username and password for {provider}.";
-
-        if (ContainsAny(lower, "does not exist", "unknown database", "database", "catalog"))
-            return $"Database not found — confirm the database name exists on {provider}.";
-
-        if (ContainsAny(lower, "name or service not known", "no such host", "getaddrinfo",
-                        "nodename nor servname", "server not found", "host", "dns"))
-            return "Host not found — check the server address and DNS resolution.";
-
-        if (ContainsAny(lower, "connection refused", "refused", "econnrefused"))
-            return $"Port {(lower.Contains("refused") ? "" : "connection")} refused — check the port number and that the server is running / firewall rules allow access.";
-
-        if (ContainsAny(lower, "ssl", "tls", "certificate", "x509"))
-            return "SSL/TLS error — check the server's SSL configuration or disable SSL for local connections.";
-
-        if (ContainsAny(lower, "timeout", "timed out", "deadlock"))
-            return "Connection timed out — the server may be overloaded or unreachable. Try increasing the timeout.";
-
-        if (ContainsAny(lower, "permission denied", "privilege"))
-            return "Insufficient privileges — the user may lack permission to connect to this database.";
-
-        // Truncate very long messages to keep UI clean
-        return msg.Length > 160 ? msg[..160] + "…" : msg;
+        TestStatus = state.Message;
+        TestStatusColor = state.Color;
     }
 
-    private static bool ContainsAny(string source, params string[] tokens)
-        => tokens.Any(t => source.Contains(t, StringComparison.OrdinalIgnoreCase));
+    private ConnectionProfileFormData CaptureFormData() =>
+        new(
+            Id: _editId,
+            Name: EditName,
+            Provider: EditProvider,
+            Host: EditHost,
+            Port: EditPort,
+            Database: EditDatabase,
+            Username: EditUsername,
+            Password: EditPassword,
+            UseIntegratedSecurity: EditUseIntegratedSecurity,
+            TimeoutSeconds: EditTimeout);
+
+    private void ApplyFormData(ConnectionProfileFormData formData)
+    {
+        _editId = formData.Id;
+        EditName = formData.Name;
+        EditProvider = formData.Provider;
+        EditHost = formData.Host;
+        EditPort = formData.Port;
+        EditDatabase = formData.Database;
+        EditUsername = formData.Username;
+        EditPassword = formData.Password;
+        EditUseIntegratedSecurity = formData.UseIntegratedSecurity;
+        EditTimeout = formData.TimeoutSeconds;
+    }
 
     private void OpenClearCanvasPrompt(DbMetadata metadata, ConnectionConfig config)
     {
-        _pendingLoadedMetadata = metadata;
-        _pendingLoadedConfig = config;
-        IsClearCanvasPromptVisible = true;
+        ConnectionCanvasPromptState state = _canvasPromptCoordinator.Open(metadata, config);
+        _pendingLoadedMetadata = state.PendingMetadata;
+        _pendingLoadedConfig = state.PendingConfig;
+        IsClearCanvasPromptVisible = state.IsVisible;
     }
 
-    private void CloseClearCanvasPrompt()
+    private void CloseClearCanvasPrompt(bool dismissedByUser)
     {
-        IsClearCanvasPromptVisible = false;
-        _pendingLoadedMetadata = null;
-        _pendingLoadedConfig = null;
+        bool shouldAddWarning = _canvasPromptCoordinator.ShouldAddDismissWarning(
+            dismissedByUser,
+            IsClearCanvasPromptVisible,
+            _pendingLoadedMetadata);
+        if (shouldAddWarning && Canvas is not null)
+        {
+            Canvas.Diagnostics.AddWarning(
+                area: L("diagnostics.area.connection", "Connection"),
+                message: L("connection.warning.canvasMayContainOldTables", "The canvas may still contain tables from a previous connection."),
+                recommendation: L("connection.warning.canvasMayContainOldTablesRecommendation", "Clear the canvas manually or reconnect and choose keep/clear again."),
+                openPanel: false
+            );
+        }
+
+        ConnectionCanvasPromptState state = _canvasPromptCoordinator.Close();
+        IsClearCanvasPromptVisible = state.IsVisible;
+        _pendingLoadedMetadata = state.PendingMetadata;
+        _pendingLoadedConfig = state.PendingConfig;
     }
 
     private void ClearCanvasAfterConnect()
@@ -693,99 +627,28 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
         if (Canvas is not null && _pendingLoadedMetadata is not null)
             Canvas.SetDatabaseAndResetCanvas(_pendingLoadedMetadata, _pendingLoadedConfig);
 
-        CloseClearCanvasPrompt();
+        CloseClearCanvasPrompt(dismissedByUser: false);
     }
 
     private void KeepCanvasAfterConnect()
     {
-        CloseClearCanvasPrompt();
+        CloseClearCanvasPrompt(dismissedByUser: false);
     }
 
     // ── Persistence ───────────────────────────────────────────────────────────
 
-    private static string ProfilesFilePath =>
-        Path.Combine(
-            global::VisualSqlArchitect.UI.AppConstants.AppDataDirectory,
-            "connections.json");
-
     private void LoadProfiles()
     {
-        try
+        Profiles.Clear();
+        IReadOnlyList<ConnectionProfile> loaded = _profileStore.LoadProfiles(_credentialVault);
+        foreach (ConnectionProfile profile in loaded)
         {
-            if (!File.Exists(ProfilesFilePath)) return;
-            var json = File.ReadAllText(ProfilesFilePath);
-            var profiles = JsonSerializer.Deserialize<List<ConnectionProfile>>(json, JsonOpts);
-            if (profiles is null) return;
-
-            bool migratedLegacyInlinePassword = false;
-            foreach (var p in profiles)
-            {
-                string? vaultSecret = _credentialVault.TryGetSecret(p.Id);
-                if (!string.IsNullOrEmpty(vaultSecret))
-                {
-                    p.Password = vaultSecret;
-                    Profiles.Add(p);
-                    continue;
-                }
-
-                // Legacy migration path: password was stored inline (plaintext or enc:/dpapi:)
-                string legacy = p.WithUnprotectedPassword().Password;
-                if (!string.IsNullOrEmpty(legacy))
-                {
-                    _credentialVault.SaveSecret(p.Id, legacy);
-                    p.Password = legacy;
-                    migratedLegacyInlinePassword = true;
-                }
-                else
-                {
-                    p.Password = string.Empty;
-                }
-
-                Profiles.Add(p);
-            }
-
-            // Rewrite connections.json without inline passwords after migration.
-            if (migratedLegacyInlinePassword)
-                PersistProfiles();
+            Profiles.Add(profile);
         }
-        catch { /* ignore corrupt/missing file */ }
     }
 
     private void PersistProfiles()
     {
-        try
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(ProfilesFilePath)!);
-
-            // Store secrets in dedicated vault and keep profile file free of passwords.
-            foreach (ConnectionProfile profile in Profiles)
-            {
-                if (profile.UseIntegratedSecurity)
-                    _credentialVault.RemoveSecret(profile.Id);
-                else
-                    _credentialVault.SaveSecret(profile.Id, profile.Password);
-            }
-
-            var persistedProfiles = Profiles
-                .Select(p => new ConnectionProfile
-                {
-                    Id = p.Id,
-                    Name = p.Name,
-                    Provider = p.Provider,
-                    Host = p.Host,
-                    Port = p.Port,
-                    Database = p.Database,
-                    Username = p.Username,
-                    Password = string.Empty,
-                    UseIntegratedSecurity = p.UseIntegratedSecurity,
-                    TimeoutSeconds = p.TimeoutSeconds,
-                })
-                .ToList();
-
-            File.WriteAllText(
-                ProfilesFilePath,
-                JsonSerializer.Serialize(persistedProfiles, JsonOpts));
-        }
-        catch { /* persistence is best-effort */ }
+        _profileStore.PersistProfiles(Profiles, _credentialVault);
     }
 }

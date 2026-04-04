@@ -1,5 +1,7 @@
 using System.Data;
 using Avalonia.Data.Converters;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace VisualSqlArchitect.UI.Converters;
 
@@ -10,20 +12,22 @@ namespace VisualSqlArchitect.UI.Converters;
 /// </summary>
 public class DataTableConverter : IValueConverter
 {
+    private static readonly ILogger<DataTableConverter> _logger = NullLogger<DataTableConverter>.Instance;
+
     public object? Convert(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo? culture)
     {
-        System.Console.WriteLine($"[DataTableConverter] Convert called with value type: {value?.GetType().Name ?? "null"}");
+        _logger.LogDebug("Convert called with value type: {ValueType}", value?.GetType().Name ?? "null");
 
         if (value is DataTable dt)
         {
             // Return the DefaultView which supports proper binding and change notifications
-            System.Console.WriteLine($"[DataTableConverter] Converting DataTable with {dt.Rows.Count} rows to DefaultView");
+            _logger.LogDebug("Converting DataTable with {RowCount} rows to DefaultView", dt.Rows.Count);
             var view = dt.DefaultView;
-            System.Console.WriteLine($"[DataTableConverter] DefaultView created, RowFilter: '{view.RowFilter}', Count: {view.Count}");
+            _logger.LogDebug("DefaultView created, RowFilter='{RowFilter}', Count={Count}", view.RowFilter, view.Count);
             return view;
         }
 
-        System.Console.WriteLine($"[DataTableConverter] Value is not DataTable, returning null");
+        _logger.LogDebug("Value is not DataTable, returning null");
         return null;
     }
 

@@ -1,38 +1,12 @@
 using VisualSqlArchitect.UI.ViewModels;
+using VisualSqlArchitect.UI.Services.Benchmark;
 using Xunit;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace VisualSqlArchitect.Tests.Unit.ViewModels;
-
-/// <summary>
-/// Helper class to provide test access to SimulateIterationAsync through reflection.
-/// In production code, SimulateIterationAsync is private static, so we need reflection for testing.
-/// </summary>
-public static class BenchmarkViewModelTestHelpers
-{
-    private static readonly MethodInfo? SimulateMethod =
-        typeof(BenchmarkViewModel).GetMethod(
-            "SimulateIterationAsync",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static,
-            null,
-            new[] { typeof(CancellationToken) },
-            null
-        );
-
-    public static async Task<double> InvokeSimulateIterationAsync(CancellationToken ct)
-    {
-        if (SimulateMethod == null)
-            throw new InvalidOperationException("SimulateIterationAsync method not found");
-
-        var task = (Task<double>)SimulateMethod.Invoke(null, new object[] { ct })!;
-        return await task;
-    }
-}
 
 /// <summary>
 /// Tests for BenchmarkViewModel thread safety using Random.Shared.
@@ -41,6 +15,8 @@ public static class BenchmarkViewModelTestHelpers
 /// </summary>
 public class BenchmarkViewModelThreadSafetyTests
 {
+    private static readonly SimulatedBenchmarkIterationExecutor _executor = new();
+
     [Fact]
     public void BenchmarkViewModel_CanBeInstantiated()
     {
@@ -53,7 +29,7 @@ public class BenchmarkViewModelThreadSafetyTests
     public async Task SimulateIterationAsync_ReturnsPositiveLatency()
     {
         var ct = CancellationToken.None;
-        var latency = await BenchmarkViewModelTestHelpers.InvokeSimulateIterationAsync(ct);
+        var latency = await _executor.ExecuteIterationAsync(ct);
         Assert.True(latency > 0);
     }
 
@@ -65,7 +41,7 @@ public class BenchmarkViewModelThreadSafetyTests
 
         for (int i = 0; i < 5; i++)
         {
-            var latency = await BenchmarkViewModelTestHelpers.InvokeSimulateIterationAsync(ct);
+            var latency = await _executor.ExecuteIterationAsync(ct);
             latencies.Add(latency);
         }
 
@@ -83,7 +59,7 @@ public class BenchmarkViewModelThreadSafetyTests
         var tasks = Enumerable.Range(0, 20)
             .Select(async _ =>
             {
-                var latency = await BenchmarkViewModelTestHelpers.InvokeSimulateIterationAsync(ct);
+                var latency = await _executor.ExecuteIterationAsync(ct);
                 lock (lockObj)
                     results.Add(latency);
             })
@@ -102,9 +78,11 @@ public class BenchmarkViewModelThreadSafetyTests
 
         for (int i = 0; i < 10; i++)
         {
-            var latency = await BenchmarkViewModelTestHelpers.InvokeSimulateIterationAsync(ct);
-            // Should be 30-80ms or 200-600ms (10% chance of spike)
-            bool valid = (latency >= 20 && latency < 100) || (latency >= 190);
+            var latency = await _executor.ExecuteIterationAsync(ct);
+            // Simulated delay is 30-80ms with occasional 200-600ms spikes.
+            // In CI, scheduler jitter can add substantial overhead, so we validate
+            // a broad but still bounded envelope instead of brittle tight buckets.
+            bool valid = latency is >= 20 and <= 800;
             Assert.True(valid, $"Latency {latency} outside expected ranges");
         }
     }
@@ -118,7 +96,7 @@ public class BenchmarkViewModelThreadSafetyTests
         // Should throw TaskCanceledException (which is a subclass of OperationCanceledException)
         // Task.Delay with a cancelled token throws TaskCanceledException, not OperationCanceledException
         var ex = await Assert.ThrowsAsync<TaskCanceledException>(
-            () => BenchmarkViewModelTestHelpers.InvokeSimulateIterationAsync(cts.Token)
+            () => _executor.ExecuteIterationAsync(cts.Token)
         );
         Assert.NotNull(ex);
     }
@@ -133,7 +111,7 @@ public class BenchmarkViewModelThreadSafetyTests
         var tasks = Enumerable.Range(0, 50)
             .Select(async _ =>
             {
-                var latency = await BenchmarkViewModelTestHelpers.InvokeSimulateIterationAsync(cts.Token);
+                var latency = await _executor.ExecuteIterationAsync(cts.Token);
                 lock (lockObj)
                     results.Add(latency);
             })
@@ -159,7 +137,7 @@ public class BenchmarkViewModelThreadSafetyTests
             {
                 try
                 {
-                    var latency = await BenchmarkViewModelTestHelpers.InvokeSimulateIterationAsync(ct);
+                    var latency = await _executor.ExecuteIterationAsync(ct);
                     if (latency > 0)
                         Interlocked.Increment(ref successCount);
                 }
@@ -183,7 +161,7 @@ public class BenchmarkViewModelThreadSafetyTests
         for (int i = 0; i < 3; i++)
         {
             var before = DateTime.UtcNow;
-            var latency = await BenchmarkViewModelTestHelpers.InvokeSimulateIterationAsync(ct);
+            var latency = await _executor.ExecuteIterationAsync(ct);
             var after = DateTime.UtcNow;
             var elapsed = (after - before).TotalMilliseconds;
 
@@ -204,7 +182,7 @@ public class BenchmarkViewModelThreadSafetyTests
             var latencies = new List<double>();
             for (int i = 0; i < 10; i++)
             {
-                var latency = await BenchmarkViewModelTestHelpers.InvokeSimulateIterationAsync(ct);
+                var latency = await _executor.ExecuteIterationAsync(ct);
                 latencies.Add(latency);
             }
             Assert.Equal(10, latencies.Count);

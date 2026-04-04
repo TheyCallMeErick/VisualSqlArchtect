@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using VisualSqlArchitect.Metadata;
+using VisualSqlArchitect.UI.Services.Localization;
 
 namespace VisualSqlArchitect.UI.ViewModels;
 
@@ -14,6 +16,8 @@ namespace VisualSqlArchitect.UI.ViewModels;
 /// </summary>
 public sealed class AutoJoinOverlayViewModel : ViewModelBase, IDisposable
 {
+    private readonly ILocalizationService _localization;
+    private readonly PropertyChangedEventHandler _localizationChangedHandler;
     private bool _isVisible;
     private string _droppedTable = string.Empty;
     private int _acceptedCount;
@@ -39,7 +43,29 @@ public sealed class AutoJoinOverlayViewModel : ViewModelBase, IDisposable
     }
 
     public bool HasCards => Cards.Any(c => c.IsVisible);
-    public string Title => $"Auto-Join suggestions for {DroppedTable}";
+    public string Title =>
+        string.Format(_localization["autoJoin.titleForTable"], DroppedTable);
+
+    public RelayCommand AcceptAllCommand { get; }
+    public RelayCommand DismissCommand { get; }
+
+    public AutoJoinOverlayViewModel(ILocalizationService? localization = null)
+    {
+        _localization = localization ?? LocalizationService.Instance;
+        _localizationChangedHandler = (_, e) =>
+        {
+            if (e.PropertyName is "" or "Item[]" or nameof(ILocalizationService.CurrentCulture))
+            {
+                RaisePropertyChanged(nameof(Title));
+                foreach (JoinSuggestionCardViewModel card in Cards)
+                    card.RefreshLocalization();
+            }
+        };
+        _localization.PropertyChanged += _localizationChangedHandler;
+
+        AcceptAllCommand = new RelayCommand(AcceptAll);
+        DismissCommand = new RelayCommand(Dismiss);
+    }
 
     // ── Events ────────────────────────────────────────────────────────────────
 
@@ -60,6 +86,7 @@ public sealed class AutoJoinOverlayViewModel : ViewModelBase, IDisposable
         {
             card.Accepted -= OnCardAccepted;
             card.Dismissed -= OnCardDismissed;
+            card.Dispose();
         }
 
         // Now clear the collection
@@ -76,7 +103,7 @@ public sealed class AutoJoinOverlayViewModel : ViewModelBase, IDisposable
 
         foreach (JoinSuggestion s in suggestions)
         {
-            var card = new JoinSuggestionCardViewModel(s);
+            var card = new JoinSuggestionCardViewModel(s, _localization);
             card.Accepted += OnCardAccepted;
             card.Dismissed += OnCardDismissed;
             Cards.Add(card);
@@ -130,5 +157,6 @@ public sealed class AutoJoinOverlayViewModel : ViewModelBase, IDisposable
     public void Dispose()
     {
         ClearCardsAndUnsubscribe();
+        _localization.PropertyChanged -= _localizationChangedHandler;
     }
 }

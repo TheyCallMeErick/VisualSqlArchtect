@@ -1,3 +1,5 @@
+﻿using VisualSqlArchitect.UI.Services.Canvas.AutoJoin;
+using VisualSqlArchitect.UI.Services.Explain;
 using VisualSqlArchitect.UI.ViewModels;
 using VisualSqlArchitect.UI.ViewModels.Canvas;
 using VisualSqlArchitect.UI.ViewModels.UndoRedo;
@@ -143,7 +145,7 @@ public class SqlImportStatePreservationTests
     [Fact]
     public void RegressionTest_SqlImportDoesNotLeaveCanvasInInconsistentState()
     {
-        // Regression test for: "SQL Import destrói canvas sem possibilidade de undo"
+        // Regression test for: "SQL Import destrÃ³i canvas sem possibilidade de undo"
         // Previously: import would clear the canvas with no way to get it back
         // Now: RestoreCanvasStateCommand allows restoring pre-import state via Ctrl+Z
 
@@ -319,3 +321,5 @@ public class SqlImportStatePreservationTests
         Assert.Same(nodeReference, restoredNode);
     }
 }
+
+

@@ -13,6 +13,7 @@ public class PinDragInteractionTests
     public void CancelDrag_WhileRerouting_KeepsOriginalConnection()
     {
         var vm = new CanvasViewModel();
+        vm.InitializeDemoNodes();
         AssignDistinctPinPositions(vm);
 
         var original = vm.Connections.First(c => c.ToPin is not null);
@@ -34,6 +35,7 @@ public class PinDragInteractionTests
     public void EndDrag_WithoutValidTarget_KeepsOriginalConnection()
     {
         var vm = new CanvasViewModel();
+        vm.InitializeDemoNodes();
         AssignDistinctPinPositions(vm);
 
         var original = vm.Connections.First(c => c.ToPin is not null);
@@ -53,6 +55,7 @@ public class PinDragInteractionTests
     public void EndDrag_WithValidTarget_ReroutesConnection()
     {
         var vm = new CanvasViewModel();
+        vm.InitializeDemoNodes();
         AssignDistinctPinPositions(vm);
 
         var original = vm.Connections.First(c => c.ToPin is not null);
@@ -76,6 +79,7 @@ public class PinDragInteractionTests
     public void DragPendingWire_DoesNotResetWindowFunctionPartitionSlots()
     {
         var vm = new CanvasViewModel();
+        vm.InitializeDemoNodes();
         AssignDistinctPinPositions(vm);
 
         NodeViewModel window = vm.SpawnNode(
@@ -102,6 +106,7 @@ public class PinDragInteractionTests
     public void DragRerouteCommit_DoesNotResetWindowFunctionPartitionSlots()
     {
         var vm = new CanvasViewModel();
+        vm.InitializeDemoNodes();
         AssignDistinctPinPositions(vm);
 
         NodeViewModel window = vm.SpawnNode(
@@ -133,6 +138,7 @@ public class PinDragInteractionTests
     public void DragRerouteCommit_DoesNotResetWindowFunctionOrderSlots()
     {
         var vm = new CanvasViewModel();
+        vm.InitializeDemoNodes();
         AssignDistinctPinPositions(vm);
 
         NodeViewModel window = vm.SpawnNode(

@@ -5,5 +5,4 @@ public enum ESidebarTab
     Nodes,
     Connection,
     Schema,
-    Diagnostics,
 }

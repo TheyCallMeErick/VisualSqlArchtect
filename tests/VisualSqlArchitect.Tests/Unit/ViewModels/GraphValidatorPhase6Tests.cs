@@ -1,3 +1,4 @@
+﻿using VisualSqlArchitect.UI.Services.Benchmark;
 using Avalonia;
 using VisualSqlArchitect.Nodes;
 using VisualSqlArchitect.UI.ViewModels;
@@ -54,3 +55,4 @@ public class GraphValidatorPhase6Tests
             && i.Severity == EIssueSeverity.Warning);
     }
 }
+

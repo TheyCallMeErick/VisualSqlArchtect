@@ -6,6 +6,7 @@ using Avalonia.Media;
 using Avalonia.Input;
 using System.Collections.Generic;
 using System.Linq;
+using VisualSqlArchitect.UI.Services.Localization;
 
 namespace VisualSqlArchitect.UI.Controls;
 
@@ -13,52 +14,7 @@ public sealed class KeyboardShortcutsWindow : Window
 {
     private sealed record ShortcutItem(string Section, string Key, string Action);
 
-    private readonly List<ShortcutItem> _allShortcuts =
-    [
-        // Arquivo e geral
-        new("Arquivo e geral", "F1", "Abrir esta tela de atalhos"),
-        new("Arquivo e geral", "Ctrl+N", "Novo canvas"),
-        new("Arquivo e geral", "Ctrl+O", "Abrir arquivo"),
-        new("Arquivo e geral", "Ctrl+S", "Salvar"),
-        new("Arquivo e geral", "Ctrl+Shift+S", "Salvar como"),
-        new("Arquivo e geral", "Ctrl+K", "Command Palette"),
-
-        // Edição
-        new("Edição", "Ctrl+Z", "Undo"),
-        new("Edição", "Ctrl+Y", "Redo"),
-        new("Edição", "Ctrl+A", "Selecionar todos"),
-        new("Edição", "Del ou Backspace", "Excluir seleção"),
-        new("Edição", "Esc", "Fechar overlays / cancelar ações"),
-
-        // Canvas e navegação
-        new("Canvas e navegação", "Shift+A", "Abrir busca de nodes"),
-        new("Canvas e navegação", "Ctrl+F", "Abrir busca de nodes"),
-        new("Canvas e navegação", "Ctrl+0", "Reset de viewport"),
-        new("Canvas e navegação", "F", "Centralizar seleção"),
-        new("Canvas e navegação", "Shift+F", "Enquadrar seleção"),
-        new("Canvas e navegação", "Ctrl+L", "Auto Layout"),
-        new("Canvas e navegação", "Ctrl+G", "Toggle Snap to Grid"),
-        new("Canvas e navegação", "Ctrl+PgUp", "Bring Forward"),
-        new("Canvas e navegação", "Ctrl+PgDown", "Send Backward"),
-        new("Canvas e navegação", "Ctrl+Shift+PgUp", "Bring to Front"),
-        new("Canvas e navegação", "Ctrl+Shift+PgDown", "Send to Back"),
-
-        // Zoom, pan e precisão
-        new("Zoom, pan e precisão", "Ctrl++ / Ctrl+-", "Zoom in / out"),
-        new("Zoom, pan e precisão", "Botão do meio + arrastar", "Pan"),
-        new("Zoom, pan e precisão", "Botão direito + arrastar", "Pan"),
-        new("Zoom, pan e precisão", "Space + arrastar", "Pan temporário"),
-        new("Zoom, pan e precisão", "Alt + arrastar esquerdo", "Pan alternativo"),
-        new("Zoom, pan e precisão", "Setas", "Nudge fino da seleção"),
-        new("Zoom, pan e precisão", "Shift + Setas", "Nudge acelerado"),
-
-        // Preview e inspeção
-        new("Preview e inspeção", "F3", "Toggle data preview"),
-        new("Preview e inspeção", "F4", "Explain plan"),
-        new("Preview e inspeção", "F5", "Run preview"),
-        new("Preview e inspeção", "Ctrl+Shift+C", "Connection manager"),
-        new("Preview e inspeção", "Ctrl+Shift+H", "Flow version history"),
-    ];
+    private readonly List<ShortcutItem> _allShortcuts;
 
     private TextBox? _searchBox;
     private TextBlock? _resultInfo;
@@ -66,7 +22,8 @@ public sealed class KeyboardShortcutsWindow : Window
 
     public KeyboardShortcutsWindow()
     {
-        Title = "Keyboard Shortcuts";
+        _allShortcuts = BuildShortcuts();
+        Title = L("shortcuts.windowTitle", "Keyboard Shortcuts");
         Width = 760;
         Height = 700;
         MinWidth = 620;
@@ -91,7 +48,7 @@ public sealed class KeyboardShortcutsWindow : Window
 
         root.Children.Add(new TextBlock
         {
-            Text = "Visual SQL Architect — Atalhos",
+            Text = L("shortcuts.headerTitle", "Visual SQL Architect — Shortcuts"),
             FontSize = 20,
             FontWeight = FontWeight.SemiBold,
             Foreground = new SolidColorBrush(Color.Parse("#E8EAED")),
@@ -99,14 +56,14 @@ public sealed class KeyboardShortcutsWindow : Window
 
         root.Children.Add(new TextBlock
         {
-            Text = "Dica: use Ctrl+K para abrir a Command Palette e pesquisar comandos.",
+            Text = L("shortcuts.headerHint", "Tip: use Ctrl+K to open the Command Palette and search commands."),
             FontSize = 12,
             Foreground = new SolidColorBrush(Color.Parse("#8B95A8")),
         });
 
         _searchBox = new TextBox
         {
-            Watermark = "Filtrar atalho por tecla ou ação...",
+            Watermark = L("shortcuts.filterWatermark", "Filter shortcuts by key or action..."),
             Background = new SolidColorBrush(Color.Parse("#101521")),
             BorderBrush = new SolidColorBrush(Color.Parse("#1E2335")),
             BorderThickness = new Thickness(1),
@@ -178,14 +135,14 @@ public sealed class KeyboardShortcutsWindow : Window
 
         if (_resultInfo is not null)
             _resultInfo.Text = string.IsNullOrWhiteSpace(f)
-                ? $"{_allShortcuts.Count} atalhos"
-                : $"{filtered.Count} resultado(s) para \"{f}\"";
+                ? string.Format(L("shortcuts.resultCount", "{0} shortcuts"), _allShortcuts.Count)
+                : string.Format(L("shortcuts.resultFilter", "{0} result(s) for \"{1}\""), filtered.Count, f);
 
         if (filtered.Count == 0)
         {
             _sectionsHost.Children.Add(new TextBlock
             {
-                Text = "Nenhum atalho encontrado.",
+                Text = L("shortcuts.noneFound", "No shortcuts found."),
                 Foreground = new SolidColorBrush(Color.Parse("#8B95A8")),
             });
             return;
@@ -223,7 +180,7 @@ public sealed class KeyboardShortcutsWindow : Window
                 Child = new TextBlock
                 {
                     Text = key,
-                    FontFamily = new FontFamily("Consolas,monospace"),
+                    FontFamily = new FontFamily("JetBrains Mono,IBM Plex Mono,Cascadia Code,Consolas,monospace"),
                     FontSize = 12,
                     Foreground = new SolidColorBrush(Color.Parse("#E8EAED")),
                 },
@@ -253,5 +210,62 @@ public sealed class KeyboardShortcutsWindow : Window
             Padding = new Thickness(12),
             Child = list,
         };
+    }
+
+    private List<ShortcutItem> BuildShortcuts()
+    {
+        string fileGeneral = L("shortcuts.section.fileGeneral", "File and General");
+        string editing = L("shortcuts.section.editing", "Editing");
+        string canvasNav = L("shortcuts.section.canvasNavigation", "Canvas and Navigation");
+        string zoomPan = L("shortcuts.section.zoomPanPrecision", "Zoom, pan and precision");
+        string previewInspect = L("shortcuts.section.previewInspection", "Preview and Inspection");
+
+        return
+        [
+            new(fileGeneral, "F1", L("shortcuts.action.openShortcutScreen", "Open this shortcuts screen")),
+            new(fileGeneral, "Ctrl+N", L("shortcuts.action.newCanvas", "New canvas")),
+            new(fileGeneral, "Ctrl+O", L("shortcuts.action.openFile", "Open file")),
+            new(fileGeneral, "Ctrl+S", L("shortcuts.action.save", "Save")),
+            new(fileGeneral, "Ctrl+Shift+S", L("shortcuts.action.saveAs", "Save as")),
+            new(fileGeneral, "Ctrl+K", L("shortcuts.action.commandPalette", "Command Palette")),
+
+            new(editing, "Ctrl+Z", L("shortcuts.action.undo", "Undo")),
+            new(editing, "Ctrl+Y", L("shortcuts.action.redo", "Redo")),
+            new(editing, "Ctrl+A", L("shortcuts.action.selectAll", "Select all")),
+            new(editing, L("shortcuts.key.deleteOrBackspace", "Del or Backspace"), L("shortcuts.action.deleteSelection", "Delete selection")),
+            new(editing, "Esc", L("shortcuts.action.closeOverlayCancel", "Close overlays / cancel actions")),
+
+            new(canvasNav, "Shift+A", L("shortcuts.action.openNodeSearch", "Open node search")),
+            new(canvasNav, "Ctrl+F", L("shortcuts.action.openNodeSearch", "Open node search")),
+            new(canvasNav, "Ctrl+0", L("shortcuts.action.resetViewport", "Reset viewport")),
+            new(canvasNav, "F", L("shortcuts.action.centerSelection", "Center selection")),
+            new(canvasNav, "Shift+F", L("shortcuts.action.fitSelection", "Fit selection")),
+            new(canvasNav, "Ctrl+L", L("shortcuts.action.autoLayout", "Auto Layout")),
+            new(canvasNav, "Ctrl+G", L("shortcuts.action.toggleSnapToGrid", "Toggle Snap to Grid")),
+            new(canvasNav, "Ctrl+PgUp", L("shortcuts.action.bringForward", "Bring Forward")),
+            new(canvasNav, "Ctrl+PgDown", L("shortcuts.action.sendBackward", "Send Backward")),
+            new(canvasNav, "Ctrl+Shift+PgUp", L("shortcuts.action.bringToFront", "Bring to Front")),
+            new(canvasNav, "Ctrl+Shift+PgDown", L("shortcuts.action.sendToBack", "Send to Back")),
+
+            new(zoomPan, "Ctrl++ / Ctrl+-", L("shortcuts.action.zoomInOut", "Zoom in / out")),
+            new(zoomPan, L("shortcuts.key.middleDrag", "Middle mouse + drag"), L("shortcuts.action.pan", "Pan")),
+            new(zoomPan, L("shortcuts.key.rightDrag", "Right mouse + drag"), L("shortcuts.action.pan", "Pan")),
+            new(zoomPan, L("shortcuts.key.spaceDrag", "Space + drag"), L("shortcuts.action.temporaryPan", "Temporary pan")),
+            new(zoomPan, L("shortcuts.key.altLeftDrag", "Alt + left drag"), L("shortcuts.action.alternatePan", "Alternate pan")),
+            new(zoomPan, L("shortcuts.key.arrows", "Arrows"), L("shortcuts.action.fineNudge", "Fine nudge selection")),
+            new(zoomPan, L("shortcuts.key.shiftArrows", "Shift + Arrows"), L("shortcuts.action.fastNudge", "Fast nudge")),
+
+            new(previewInspect, "F3", L("shortcuts.action.togglePreview", "Toggle data preview")),
+            new(previewInspect, "F4", L("shortcuts.action.explainPlan", "Explain plan")),
+            new(previewInspect, "F5", L("shortcuts.action.runPreview", "Run preview")),
+            new(previewInspect, "Ctrl+Shift+C", L("shortcuts.action.connectionManager", "Connection manager")),
+            new(previewInspect, "Ctrl+Shift+H", L("shortcuts.action.flowVersionHistory", "Flow version history")),
+        ];
+    }
+
+    private static string L(string key, string fallback)
+    {
+        string value = LocalizationService.Instance[key];
+        return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
     }
 }

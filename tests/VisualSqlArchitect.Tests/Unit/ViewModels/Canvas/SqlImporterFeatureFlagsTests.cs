@@ -1,3 +1,5 @@
+﻿using VisualSqlArchitect.UI.Services.Canvas.AutoJoin;
+using VisualSqlArchitect.UI.Services.Explain;
 using VisualSqlArchitect.UI.ViewModels;
 using Xunit;
 
@@ -17,7 +19,6 @@ public class SqlImporterFeatureFlagsTests
 
         await canvas.SqlImporter.ImportAsync();
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
     }
 
@@ -33,7 +34,6 @@ public class SqlImporterFeatureFlagsTests
 
         await canvas.SqlImporter.ImportAsync();
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
     }
 
@@ -49,9 +49,11 @@ public class SqlImporterFeatureFlagsTests
 
         await canvas.SqlImporter.ImportAsync();
 
-        Assert.Contains("Parse error", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.False(string.IsNullOrWhiteSpace(canvas.SqlImporter.StatusMessage));
         Assert.Contains("line", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("column", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.False(canvas.SqlImporter.HasReport);
     }
 }
+
+

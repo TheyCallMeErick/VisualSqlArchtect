@@ -13,6 +13,20 @@ public sealed class PinShapeControl : Control
 {
     private const double DefaultPinSize = 10;
 
+    private enum EPinGeometryKind
+    {
+        Circle,
+        ColumnRefDiamond,
+        ColumnSetDiamond,
+        RowSetDiamond,
+        TableDefRoundedSquare,
+        ColumnDefDoubleCircle,
+        ConstraintDiamond,
+        TypeDefDiamond,
+        IndexDefTriangle,
+        AlterOpRoundedArrow,
+    }
+
     public static readonly StyledProperty<PinDataType> DataTypeProperty =
         AvaloniaProperty.Register<PinShapeControl, PinDataType>(nameof(DataType));
 
@@ -114,19 +128,45 @@ public sealed class PinShapeControl : Control
         double halfW = (bounds.Width * 0.5) * sx;
         double halfH = (bounds.Height * 0.5) * sx;
 
-        switch (DataType)
+        switch (ResolveGeometryKind(DataType))
         {
-            case PinDataType.ColumnRef:
+            case EPinGeometryKind.ColumnRefDiamond:
                 DrawDiamond(context, center, halfW, halfH, Fill, pen);
                 break;
 
-            case PinDataType.ColumnSet:
+            case EPinGeometryKind.ColumnSetDiamond:
                 DrawDiamond(context, center, halfW, halfH, Fill, pen);
                 DrawDiamond(context, center, halfW * 0.38, halfH * 0.38, Brushes.Transparent, new Pen(stroke, 1));
                 break;
 
-            case PinDataType.RowSet:
+            case EPinGeometryKind.RowSetDiamond:
                 DrawDiamond(context, center, halfW, halfH * 0.7, Fill, pen);
+                break;
+
+            case EPinGeometryKind.TableDefRoundedSquare:
+                DrawRoundedSquare(context, center, halfW * 0.95, halfH * 0.95, Fill, pen);
+                break;
+
+            case EPinGeometryKind.ColumnDefDoubleCircle:
+                context.DrawEllipse(Fill, pen, center, halfW, halfH);
+                context.DrawEllipse(Brushes.Transparent, new Pen(stroke, 1), center, halfW * 0.55, halfH * 0.55);
+                break;
+
+            case EPinGeometryKind.ConstraintDiamond:
+                DrawDiamond(context, center, halfW, halfH, Fill, pen);
+                break;
+
+            case EPinGeometryKind.TypeDefDiamond:
+                DrawDiamond(context, center, halfW, halfH, Fill, pen);
+                DrawDiamond(context, center, halfW * 0.42, halfH * 0.42, Brushes.Transparent, new Pen(stroke, 1));
+                break;
+
+            case EPinGeometryKind.IndexDefTriangle:
+                DrawTriangle(context, center, halfW, halfH, Fill, pen);
+                break;
+
+            case EPinGeometryKind.AlterOpRoundedArrow:
+                DrawRoundedArrow(context, center, halfW, halfH, Fill, pen);
                 break;
 
             default:
@@ -134,6 +174,22 @@ public sealed class PinShapeControl : Control
                 break;
         }
     }
+
+    private static EPinGeometryKind ResolveGeometryKind(PinDataType dataType) =>
+        dataType switch
+        {
+            PinDataType.ColumnRef => EPinGeometryKind.ColumnRefDiamond,
+            PinDataType.ColumnSet => EPinGeometryKind.ColumnSetDiamond,
+            PinDataType.RowSet => EPinGeometryKind.RowSetDiamond,
+            PinDataType.TableDef => EPinGeometryKind.TableDefRoundedSquare,
+            PinDataType.ViewDef => EPinGeometryKind.TableDefRoundedSquare,
+            PinDataType.ColumnDef => EPinGeometryKind.ColumnDefDoubleCircle,
+            PinDataType.Constraint => EPinGeometryKind.ConstraintDiamond,
+            PinDataType.TypeDef => EPinGeometryKind.TypeDefDiamond,
+            PinDataType.IndexDef => EPinGeometryKind.IndexDefTriangle,
+            PinDataType.AlterOp => EPinGeometryKind.AlterOpRoundedArrow,
+            _ => EPinGeometryKind.Circle,
+        };
 
     private static void DrawDiamond(DrawingContext context, Point center, double halfW, double halfH, IBrush? fill, Pen pen)
     {
@@ -144,6 +200,48 @@ public sealed class PinShapeControl : Control
             gc.LineTo(new Point(center.X + halfW, center.Y));
             gc.LineTo(new Point(center.X, center.Y + halfH));
             gc.LineTo(new Point(center.X - halfW, center.Y));
+            gc.EndFigure(true);
+        }
+
+        context.DrawGeometry(fill, pen, geometry);
+    }
+
+    private static void DrawTriangle(DrawingContext context, Point center, double halfW, double halfH, IBrush? fill, Pen pen)
+    {
+        var geometry = new StreamGeometry();
+        using (StreamGeometryContext gc = geometry.Open())
+        {
+            gc.BeginFigure(new Point(center.X, center.Y - halfH), true);
+            gc.LineTo(new Point(center.X + halfW, center.Y + halfH));
+            gc.LineTo(new Point(center.X - halfW, center.Y + halfH));
+            gc.EndFigure(true);
+        }
+
+        context.DrawGeometry(fill, pen, geometry);
+    }
+
+    private static void DrawRoundedSquare(DrawingContext context, Point center, double halfW, double halfH, IBrush? fill, Pen pen)
+    {
+        var rect = new Rect(center.X - halfW, center.Y - halfH, halfW * 2, halfH * 2);
+        context.DrawRectangle(fill, pen, rect, 2.5, 2.5);
+    }
+
+    private static void DrawRoundedArrow(DrawingContext context, Point center, double halfW, double halfH, IBrush? fill, Pen pen)
+    {
+        var geometry = new StreamGeometry();
+        using (StreamGeometryContext gc = geometry.Open())
+        {
+            double left = center.X - halfW;
+            double right = center.X + halfW;
+            double top = center.Y - halfH * 0.7;
+            double bottom = center.Y + halfH * 0.7;
+            double shaftEnd = center.X + halfW * 0.18;
+
+            gc.BeginFigure(new Point(left, top), true);
+            gc.LineTo(new Point(shaftEnd, top));
+            gc.LineTo(new Point(right, center.Y));
+            gc.LineTo(new Point(shaftEnd, bottom));
+            gc.LineTo(new Point(left, bottom));
             gc.EndFigure(true);
         }
 

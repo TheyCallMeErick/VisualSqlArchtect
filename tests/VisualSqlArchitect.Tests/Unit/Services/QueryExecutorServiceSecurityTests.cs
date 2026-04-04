@@ -52,4 +52,14 @@ public class QueryExecutorServiceSecurityTests
         Assert.Contains("LIMIT 1", sqlLow);
         Assert.Contains("LIMIT 10000", sqlHigh);
     }
+
+    [Fact]
+    public void QueryExecutorService_ExposesConfigurableCommandTimeout()
+    {
+        var executor = new QueryExecutorService();
+        Assert.Equal(300, executor.CommandTimeoutSeconds);
+
+        executor.CommandTimeoutSeconds = 42;
+        Assert.Equal(42, executor.CommandTimeoutSeconds);
+    }
 }

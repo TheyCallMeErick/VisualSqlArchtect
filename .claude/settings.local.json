@@ -28,7 +28,13 @@
       "Bash(rm \"c:/Users/azeve/Documents/VisualSqlArchtect/src/VisualSqlArchitect.UI/Controls/BezierWireLayer.cs\")",
       "Bash(rm \"c:/Users/azeve/Documents/VisualSqlArchtect/src/VisualSqlArchitect.UI/Controls/PinDragInteraction.cs\")",
       "Bash(grep -v \"private\\\\|//\")",
-      "Bash(grep -v \"//\")"
+      "Bash(grep -v \"//\")",
+      "Bash(find \"c:\\\\Users\\\\azeve\\\\Documents\\\\VisualSqlArchtect/src/VisualSqlArchitect.UI/Controls/InfiniteCanvas\" -name \"*.cs\" -exec wc -l {} \\\\;)",
+      "Bash(wc -l /home/erickazevedo/Documentos/VisualSqlArchtect/src/VisualSqlArchitect/Providers/*.cs)",
+      "Bash(grep -E \"\\\\.cs$\")",
+      "Bash(grep -n \"class NodeDefinitionRegistry\\\\|static class NodeDefinitionRegistry\" /home/erickazevedo/Documentos/VisualSqlArchtect/src/VisualSqlArchitect/Nodes/*.cs)",
+      "Read(//tmp/**)",
+      "Bash(sqlite3 --version)"
     ]
   }
 }

@@ -1,3 +1,5 @@
+﻿using VisualSqlArchitect.UI.Services.Canvas.AutoJoin;
+using VisualSqlArchitect.UI.Services.Explain;
 using Avalonia;
 using Avalonia.Media;
 using VisualSqlArchitect.Nodes;
@@ -88,3 +90,5 @@ public class PinViewModelVisualStateTests
         Assert.True(pin.HasAbsolutePosition);
     }
 }
+
+

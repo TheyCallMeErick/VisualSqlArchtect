@@ -20,17 +20,9 @@ public sealed partial class LiveSqlBar : UserControl
         if (formatBtn is not null)
             formatBtn.Click += (_, _) => (DataContext as LiveSqlBarViewModel)?.FormatSql();
         if (benchmarkBtn is not null)
-            benchmarkBtn.Click += (_, _) =>
-            {
-                if (TopLevel.GetTopLevel(this)?.DataContext is CanvasViewModel canvas)
-                    canvas.Benchmark.Open();
-            };
+            benchmarkBtn.Click += (_, _) => (DataContext as LiveSqlBarViewModel)?.OpenBenchmark();
         if (explainBtn is not null)
-            explainBtn.Click += (_, _) =>
-            {
-                if (TopLevel.GetTopLevel(this)?.DataContext is CanvasViewModel canvas)
-                    canvas.ExplainPlan.Open();
-            };
+            explainBtn.Click += (_, _) => (DataContext as LiveSqlBarViewModel)?.OpenExplainPlan();
     }
 
     private async Task CopyToClipboardAsync()

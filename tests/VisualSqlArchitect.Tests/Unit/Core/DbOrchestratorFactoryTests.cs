@@ -12,9 +12,10 @@ public class DbOrchestratorFactoryTests
     [InlineData(DatabaseProvider.SQLite, typeof(VisualSqlArchitect.Providers.SqliteOrchestrator))]
     public void Create_ReturnsRegisteredDefaultOrchestrator(DatabaseProvider provider, Type expectedType)
     {
+        IDbOrchestratorFactory factory = DbOrchestratorFactory.CreateDefault();
         var config = BuildConfig(provider);
 
-        IDbOrchestrator orchestrator = DbOrchestratorFactory.Create(config);
+        IDbOrchestrator orchestrator = factory.Create(config);
 
         Assert.IsType(expectedType, orchestrator);
     }
@@ -22,22 +23,29 @@ public class DbOrchestratorFactoryTests
     [Fact]
     public void Register_AllowsOverridingFactory_AndCanRestorePrevious()
     {
+        IDbOrchestratorFactory factory = DbOrchestratorFactory.CreateDefault();
+        var concrete = Assert.IsType<DbOrchestratorFactory>(factory);
         var config = BuildConfig(DatabaseProvider.SQLite);
 
-        Func<ConnectionConfig, IDbOrchestrator>? previous = DbOrchestratorFactory.Register(
+        Func<ConnectionConfig, IDbOrchestrator>? previous = concrete.Register(
             DatabaseProvider.SQLite,
-            cfg => new FakeOrchestrator(cfg));
+            cfg => new FakeOrchestrator(cfg)
+        );
 
-        try
-        {
-            IDbOrchestrator orchestrator = DbOrchestratorFactory.Create(config);
-            Assert.IsType<FakeOrchestrator>(orchestrator);
-        }
-        finally
-        {
-            Assert.NotNull(previous);
-            DbOrchestratorFactory.Register(DatabaseProvider.SQLite, previous!);
-        }
+        Assert.NotNull(previous);
+        IDbOrchestrator orchestrator = concrete.Create(config);
+        Assert.IsType<FakeOrchestrator>(orchestrator);
+
+        _ = concrete.Register(DatabaseProvider.SQLite, previous!);
+        IDbOrchestrator restored = concrete.Create(config);
+        Assert.IsNotType<FakeOrchestrator>(restored);
+    }
+
+    [Fact]
+    public void IsRegistered_AfterRegister_ReturnsTrue()
+    {
+        var concrete = DbOrchestratorFactory.CreateDefault();
+        Assert.True(concrete.IsRegistered(DatabaseProvider.Postgres));
     }
 
     private static ConnectionConfig BuildConfig(DatabaseProvider provider) =>
@@ -47,12 +55,12 @@ public class DbOrchestratorFactoryTests
             Port: provider == DatabaseProvider.SQLite ? 0 : 5432,
             Database: provider == DatabaseProvider.SQLite ? "test.db" : "db",
             Username: "user",
-            Password: "pass");
+            Password: "pass"
+        );
 
     private sealed class FakeOrchestrator(ConnectionConfig config) : IDbOrchestrator
     {
         public DatabaseProvider Provider => config.Provider;
-
         public ConnectionConfig Config => config;
 
         public Task<ConnectionTestResult> TestConnectionAsync(CancellationToken ct = default) =>
@@ -61,8 +69,17 @@ public class DbOrchestratorFactoryTests
         public Task<DatabaseSchema> GetSchemaAsync(CancellationToken ct = default) =>
             Task.FromResult(new DatabaseSchema("fake", config.Provider, []));
 
-        public Task<PreviewResult> ExecutePreviewAsync(string sql, int maxRows = 200, CancellationToken ct = default) =>
-            Task.FromResult(new PreviewResult(true));
+        public Task<PreviewResult> ExecutePreviewAsync(
+            string sql,
+            int maxRows = PreviewExecutionOptions.UseConfiguredDefault,
+            CancellationToken ct = default
+        ) => Task.FromResult(new PreviewResult(true));
+
+        public Task<DdlExecutionResult> ExecuteDdlAsync(
+            string sql,
+            bool stopOnError = true,
+            CancellationToken ct = default
+        ) => Task.FromResult(new DdlExecutionResult(true, []));
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
