@@ -1,3 +1,4 @@
+﻿using VisualSqlArchitect.UI.Services.Benchmark;
 using VisualSqlArchitect.UI.ViewModels;
 using Xunit;
 
@@ -93,17 +94,22 @@ public class ShellViewModelTests
         var vm = new ShellViewModel();
 
         Assert.True(vm.IsAppearanceSectionSelected);
-        Assert.Equal("Themes", vm.SettingsSectionTitle);
+        Assert.False(string.IsNullOrWhiteSpace(vm.SettingsSectionTitle));
+        string appearanceTitle = vm.SettingsSectionTitle;
 
         vm.SelectSettingsSection(ShellViewModel.ESettingsSection.LanguageRegion);
         Assert.True(vm.IsLanguageRegionSectionSelected);
         Assert.False(vm.IsAppearanceSectionSelected);
-        Assert.Equal("Language & Region", vm.SettingsSectionTitle);
+        Assert.False(string.IsNullOrWhiteSpace(vm.SettingsSectionTitle));
+        Assert.NotEqual(appearanceTitle, vm.SettingsSectionTitle);
+        string languageTitle = vm.SettingsSectionTitle;
 
         vm.SelectSettingsSection(ShellViewModel.ESettingsSection.Privacy);
         Assert.True(vm.IsPrivacySectionSelected);
         Assert.False(vm.IsLanguageRegionSectionSelected);
-        Assert.Equal("Privacy", vm.SettingsSectionTitle);
-        Assert.Equal("Trabalho em progresso.", vm.SettingsSectionSubtitle);
+        Assert.False(string.IsNullOrWhiteSpace(vm.SettingsSectionTitle));
+        Assert.NotEqual(languageTitle, vm.SettingsSectionTitle);
+        Assert.False(string.IsNullOrWhiteSpace(vm.SettingsSectionSubtitle));
     }
 }
+

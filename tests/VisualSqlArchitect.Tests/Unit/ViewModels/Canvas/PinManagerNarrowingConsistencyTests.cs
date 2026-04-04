@@ -1,3 +1,5 @@
+﻿using VisualSqlArchitect.UI.Services.Canvas.AutoJoin;
+using VisualSqlArchitect.UI.Services.Explain;
 using Avalonia;
 using System.Reflection;
 using VisualSqlArchitect.Nodes;
@@ -41,3 +43,5 @@ public class PinManagerNarrowingConsistencyTests
         Assert.Equal(PinDataType.Number, anyPin.NarrowedDataType);
     }
 }
+
+

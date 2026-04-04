@@ -261,7 +261,7 @@
                           <TextBlock Text="{Binding CreatedAtFormatted}"
                                      FontSize="10"
                                      Foreground="#4A5568"
-                                     FontFamily="Consolas,monospace"/>
+                                     FontFamily="{StaticResource MonoFont}"/>
                           <TextBlock Text="{Binding NodeCount}"
                                      FontSize="10"
                                      Foreground="#2A3348"/>
@@ -330,7 +330,7 @@
                     <TextBlock Grid.Column="0"
                                Text="{Binding Icon}"
                                Foreground="{Binding KindBrush}"
-                               FontFamily="Consolas,monospace"
+                               FontFamily="{StaticResource MonoFont}"
                                FontSize="12"
                                FontWeight="Bold"
                                VerticalAlignment="Center"/>

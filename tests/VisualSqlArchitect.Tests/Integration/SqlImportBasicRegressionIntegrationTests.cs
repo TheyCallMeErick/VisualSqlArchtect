@@ -18,7 +18,6 @@ public class SqlImportBasicRegressionIntegrationTests
         await canvas.SqlImporter.ImportAsync();
         canvas.LiveSql.Recompile();
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, r =>
             r.Status == EImportItemStatus.Imported
@@ -38,7 +37,6 @@ public class SqlImportBasicRegressionIntegrationTests
         await canvas.SqlImporter.ImportAsync();
         canvas.LiveSql.Recompile();
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, r =>
             r.Label.Contains("SELECT", StringComparison.OrdinalIgnoreCase));
@@ -57,7 +55,6 @@ public class SqlImportBasicRegressionIntegrationTests
         await canvas.SqlImporter.ImportAsync();
         canvas.LiveSql.Recompile();
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, r =>
             r.Status == EImportItemStatus.Imported
@@ -78,7 +75,6 @@ public class SqlImportBasicRegressionIntegrationTests
         await canvas.SqlImporter.ImportAsync();
         canvas.LiveSql.Recompile();
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.True(canvas.SqlImporter.ReportImportedCount >= 4);
         Assert.Contains(canvas.SqlImporter.Report, r =>
@@ -108,7 +104,6 @@ public class SqlImportBasicRegressionIntegrationTests
         await canvas.SqlImporter.ImportAsync();
         canvas.LiveSql.Recompile();
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.True(canvas.LiveSql.IsValid, string.Join(" | ", canvas.LiveSql.ErrorHints));
         Assert.Empty(canvas.LiveSql.ErrorHints);

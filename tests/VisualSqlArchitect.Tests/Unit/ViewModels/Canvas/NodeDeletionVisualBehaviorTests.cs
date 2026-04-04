@@ -1,3 +1,5 @@
+﻿using VisualSqlArchitect.UI.Services.Canvas.AutoJoin;
+using VisualSqlArchitect.UI.Services.Explain;
 using VisualSqlArchitect.UI.ViewModels;
 using Xunit;
 
@@ -9,6 +11,7 @@ public class NodeDeletionVisualBehaviorTests
     public void DeleteSelected_WithMultipleNodes_RemovesNodesAndAttachedWiresOnly()
     {
         var vm = new CanvasViewModel();
+        vm.InitializeDemoNodes();
 
         Assert.True(vm.Nodes.Count >= 3);
         Assert.True(vm.Connections.Count >= 3);
@@ -38,6 +41,7 @@ public class NodeDeletionVisualBehaviorTests
     public void DeleteSelected_WhenNothingSelected_IsNoOp()
     {
         var vm = new CanvasViewModel();
+        vm.InitializeDemoNodes();
 
         int beforeNodeCount = vm.Nodes.Count;
         int beforeConnCount = vm.Connections.Count;
@@ -48,3 +52,5 @@ public class NodeDeletionVisualBehaviorTests
         Assert.Equal(beforeConnCount, vm.Connections.Count);
     }
 }
+
+

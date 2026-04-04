@@ -13,12 +13,10 @@ public class SidebarControlTemplateRegressionTests
         Assert.Contains("x:Name=\"NodesTabButton\"", xaml);
         Assert.Contains("x:Name=\"ConnectionTabButton\"", xaml);
         Assert.Contains("x:Name=\"SchemaTabButton\"", xaml);
-        Assert.Contains("x:Name=\"DiagnosticsTabButton\"", xaml);
 
         Assert.Contains("Classes.active=\"{Binding ShowNodes}\"", xaml);
         Assert.Contains("Classes.active=\"{Binding ShowConnection}\"", xaml);
         Assert.Contains("Classes.active=\"{Binding ShowSchema}\"", xaml);
-        Assert.Contains("Classes.active=\"{Binding ShowDiagnostics}\"", xaml);
     }
 
     [Fact]
@@ -29,12 +27,10 @@ public class SidebarControlTemplateRegressionTests
         Assert.Contains("<ctrl:NodesListControl x:Name=\"NodesControl\"/>", xaml);
         Assert.Contains("<ctrl:ConnectionTabControl x:Name=\"ConnectionControl\"/>", xaml);
         Assert.Contains("<ctrl:SchemaControl x:Name=\"SchemaControl\"/>", xaml);
-        Assert.Contains("<ctrl:SidebarDiagnosticsControl x:Name=\"DiagnosticsControl\"/>", xaml);
 
         Assert.Contains("IsVisible=\"{Binding ShowNodes}\"", xaml);
         Assert.Contains("IsVisible=\"{Binding ShowConnection}\"", xaml);
         Assert.Contains("IsVisible=\"{Binding ShowSchema}\"", xaml);
-        Assert.Contains("IsVisible=\"{Binding ShowDiagnostics}\"", xaml);
     }
 
     [Fact]

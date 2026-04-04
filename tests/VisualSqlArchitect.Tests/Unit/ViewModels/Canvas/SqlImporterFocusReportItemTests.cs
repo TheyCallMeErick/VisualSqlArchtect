@@ -1,3 +1,5 @@
+﻿using VisualSqlArchitect.UI.Services.Canvas.AutoJoin;
+using VisualSqlArchitect.UI.Services.Explain;
 using VisualSqlArchitect.UI.ViewModels;
 using VisualSqlArchitect.UI.ViewModels.Canvas;
 using Xunit;
@@ -35,3 +37,5 @@ public class SqlImporterFocusReportItemTests
         Assert.False(focused);
     }
 }
+
+

@@ -1,8 +1,8 @@
-using Avalonia;
+﻿using Avalonia;
 using VisualSqlArchitect.Core;
 using VisualSqlArchitect.Nodes;
 using VisualSqlArchitect.UI.ViewModels;
-using VisualSqlArchitect.UI.ViewModels.QueryPreview.Services;
+using VisualSqlArchitect.UI.Services.QueryPreview;
 using Xunit;
 
 namespace VisualSqlArchitect.Tests.Unit.Performance;
@@ -34,3 +34,4 @@ public class QueryGraphBuilderBenchmarkSmokeTests
             $"Large-graph SQL build exceeded baseline budget: {sw.ElapsedMilliseconds}ms");
     }
 }
+

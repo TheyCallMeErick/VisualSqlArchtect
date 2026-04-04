@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using VisualSqlArchitect.UI.Services.Explain;
+using VisualSqlArchitect.UI.ViewModels.Canvas;
 
 namespace VisualSqlArchitect.UI.ViewModels;
 
@@ -19,7 +21,11 @@ public sealed class QueryTabManagerViewModel : ViewModelBase
 
     public bool IsRestoringTab { get; set; }
 
-    public void Initialize(string firstSnapshotJson, string? currentFilePath, bool isDirty)
+    public void Initialize(
+        string firstSnapshotJson,
+        string? currentFilePath,
+        bool isDirty,
+        IReadOnlyList<ExplainHistoryState>? explainHistory = null)
     {
         Tabs.Clear();
         Tabs.Add(new QueryTabState
@@ -28,12 +34,17 @@ public sealed class QueryTabManagerViewModel : ViewModelBase
             SnapshotJson = firstSnapshotJson,
             CurrentFilePath = currentFilePath,
             IsDirty = isDirty,
+            ExplainHistory = explainHistory?.ToList() ?? [],
         });
 
         ActiveTabIndex = 0;
     }
 
-    public void CaptureActive(string snapshotJson, string? currentFilePath, bool isDirty)
+    public void CaptureActive(
+        string snapshotJson,
+        string? currentFilePath,
+        bool isDirty,
+        IReadOnlyList<ExplainHistoryState>? explainHistory = null)
     {
         if (!TryGetActive(out QueryTabState active))
             return;
@@ -41,6 +52,7 @@ public sealed class QueryTabManagerViewModel : ViewModelBase
         active.SnapshotJson = snapshotJson;
         active.CurrentFilePath = currentFilePath;
         active.IsDirty = isDirty;
+        active.ExplainHistory = explainHistory?.ToList() ?? [];
     }
 
     public void SyncActiveMetadata(string? currentFilePath, bool isDirty)
@@ -79,7 +91,7 @@ public sealed class QueryTabManagerViewModel : ViewModelBase
         active.IsDirty = false;
     }
 
-    public void AddNewTab(string snapshotJson)
+    public void AddNewTab(string snapshotJson, IReadOnlyList<ExplainHistoryState>? explainHistory = null)
     {
         int tabNumber = Tabs.Count + 1;
         Tabs.Add(new QueryTabState
@@ -88,9 +100,31 @@ public sealed class QueryTabManagerViewModel : ViewModelBase
             SnapshotJson = snapshotJson,
             CurrentFilePath = null,
             IsDirty = false,
+            ExplainHistory = explainHistory?.ToList() ?? [],
         });
 
         ActiveTabIndex = Tabs.Count - 1;
+    }
+
+    /// <summary>
+    /// Removes the tab at <paramref name="tabIndex"/> and returns the new active index.
+    /// Does nothing and returns the current active index if only one tab remains.
+    /// </summary>
+    public int CloseTab(int tabIndex)
+    {
+        if (tabIndex < 0 || tabIndex >= Tabs.Count || Tabs.Count <= 1)
+            return ActiveTabIndex;
+
+        Tabs.RemoveAt(tabIndex);
+
+        int newActive = ActiveTabIndex;
+        if (tabIndex < ActiveTabIndex)
+            newActive = ActiveTabIndex - 1;
+        else if (tabIndex == ActiveTabIndex)
+            newActive = Math.Min(tabIndex, Tabs.Count - 1);
+
+        ActiveTabIndex = newActive;
+        return newActive;
     }
 
     private bool TryGetActive(out QueryTabState tab)

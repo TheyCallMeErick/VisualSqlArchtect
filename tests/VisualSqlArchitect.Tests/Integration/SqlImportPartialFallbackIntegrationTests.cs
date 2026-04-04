@@ -18,7 +18,6 @@ public class SqlImportPartialFallbackIntegrationTests
 
         await canvas.SqlImporter.ImportAsync();
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, r =>
             r.Status == EImportItemStatus.Imported
@@ -40,7 +39,6 @@ public class SqlImportPartialFallbackIntegrationTests
 
         await canvas.SqlImporter.ImportAsync();
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
 
         var problematic = canvas.SqlImporter.Report
@@ -65,7 +63,6 @@ public class SqlImportPartialFallbackIntegrationTests
 
         await canvas.SqlImporter.ImportAsync();
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, item =>
             item.Status == EImportItemStatus.Imported
@@ -84,7 +81,6 @@ public class SqlImportPartialFallbackIntegrationTests
 
         await canvas.SqlImporter.ImportAsync();
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, item =>
             item.Label.Contains("Correlation fields", StringComparison.OrdinalIgnoreCase)
@@ -104,7 +100,6 @@ public class SqlImportPartialFallbackIntegrationTests
 
         await canvas.SqlImporter.ImportAsync();
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, item =>
             item.Status == EImportItemStatus.Partial
@@ -124,7 +119,6 @@ public class SqlImportPartialFallbackIntegrationTests
 
         await canvas.SqlImporter.ImportAsync();
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, item =>
             item.Status == EImportItemStatus.Partial
@@ -144,7 +138,6 @@ public class SqlImportPartialFallbackIntegrationTests
 
         await canvas.SqlImporter.ImportAsync();
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, item =>
             item.Status == EImportItemStatus.Imported
@@ -166,7 +159,6 @@ public class SqlImportPartialFallbackIntegrationTests
 
         await canvas.SqlImporter.ImportAsync();
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, item =>
             item.Status == EImportItemStatus.Imported

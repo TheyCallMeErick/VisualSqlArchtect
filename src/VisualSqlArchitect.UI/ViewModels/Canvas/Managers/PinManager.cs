@@ -29,6 +29,32 @@ public sealed class PinManager(
         if (!dest.CanAccept(src))
             return;
 
+        bool shouldPruneSameTableProjectionWires = IsWildcardProjectionToColumnList(src, dest);
+        UndoRedoStack.UndoRedoTransaction? transaction = null;
+
+        if (shouldPruneSameTableProjectionWires && !_undoRedo.InTransaction)
+            transaction = _undoRedo.BeginTransaction("Connect wildcard projection");
+
+        try
+        {
+            ConnectionViewModel created = AddConnection(src, dest);
+            if (shouldPruneSameTableProjectionWires)
+            {
+                foreach (ConnectionViewModel redundant in FindRedundantProjectionConnections(created))
+                    _undoRedo.Execute(new DeleteConnectionCommand(redundant));
+            }
+
+            ApplyComparisonConcretization(src, dest);
+            transaction?.Commit();
+        }
+        finally
+        {
+            transaction?.Dispose();
+        }
+    }
+
+    private ConnectionViewModel AddConnection(PinViewModel src, PinViewModel dest)
+    {
         ConnectionViewModel? displaced = dest.AllowMultiple
             ? null
             : _connections.FirstOrDefault(c => c.ToPin == dest);
@@ -37,8 +63,7 @@ public sealed class PinManager(
             ToPin = dest,
         };
         _undoRedo.Execute(new AddConnectionCommand(conn, displaced));
-
-        ApplyComparisonConcretization(src, dest);
+        return conn;
     }
 
     /// <summary>
@@ -135,33 +160,43 @@ public sealed class PinManager(
             or NodeType.IsNull
             or NodeType.IsNotNull;
 
-    private Dictionary<PinViewModel, HashSet<PinDataType>> BuildConcreteTypesByPin()
+    private static bool IsWildcardProjectionToColumnList(PinViewModel sourcePin, PinViewModel destinationPin)
     {
-        var map = new Dictionary<PinViewModel, HashSet<PinDataType>>();
-
-        foreach (ConnectionViewModel conn in _connections)
+        if (sourcePin.Owner.Type != NodeType.TableSource
+            || sourcePin.EffectiveDataType != PinDataType.ColumnSet
+            || !sourcePin.Name.Equals("*", StringComparison.OrdinalIgnoreCase))
         {
-            if (conn.ToPin is null)
-                continue;
-
-            AddConcreteType(map, conn.FromPin, conn.ToPin.DataType);
-            AddConcreteType(map, conn.ToPin, conn.FromPin.DataType);
+            return false;
         }
 
-        return map;
+        if (destinationPin.Owner.Type != NodeType.ColumnList)
+            return false;
+
+        return destinationPin.Name.Equals("columns", StringComparison.OrdinalIgnoreCase)
+            || destinationPin.Name.Equals("metadata", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static void AddConcreteType(
-        Dictionary<PinViewModel, HashSet<PinDataType>> map,
-        PinViewModel pin,
-        PinDataType otherType)
+    private IEnumerable<ConnectionViewModel> FindRedundantProjectionConnections(ConnectionViewModel wildcardConnection)
     {
-        if (!map.TryGetValue(pin, out HashSet<PinDataType>? set))
-        {
-            set = [];
-            map[pin] = set;
-        }
+        if (wildcardConnection.ToPin is null)
+            return [];
 
-        set.Add(otherType);
+        PinViewModel destinationPin = wildcardConnection.ToPin;
+        if (!IsWildcardProjectionToColumnList(wildcardConnection.FromPin, destinationPin))
+            return [];
+
+        NodeViewModel projectionNode = destinationPin.Owner;
+        NodeViewModel sourceTable = wildcardConnection.FromPin.Owner;
+
+        return _connections
+            .Where(c =>
+                c != wildcardConnection
+                && c.ToPin is not null
+                && c.ToPin.Owner == projectionNode
+                && (c.ToPin.Name.Equals("columns", StringComparison.OrdinalIgnoreCase)
+                    || c.ToPin.Name.Equals("metadata", StringComparison.OrdinalIgnoreCase))
+                && c.FromPin.Owner == sourceTable)
+            .ToList();
     }
+
 }

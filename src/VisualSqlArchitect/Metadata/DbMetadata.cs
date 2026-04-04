@@ -24,7 +24,8 @@ public record ColumnMetadata(
     string? DefaultValue = null,
     int? MaxLength = null,
     int? Precision = null,
-    int? Scale = null
+    int? Scale = null,
+    string? Comment = null
 )
 {
     /// <summary>Semantic category inferred from type name — used for TreeView icons.</summary>
@@ -194,7 +195,8 @@ public record TableMetadata(
     /// <summary>FK constraints where THIS table is the child (owns the FK column).</summary>
     IReadOnlyList<ForeignKeyRelation> OutboundForeignKeys,
     /// <summary>FK constraints where THIS table is the parent (is referenced).</summary>
-    IReadOnlyList<ForeignKeyRelation> InboundForeignKeys
+    IReadOnlyList<ForeignKeyRelation> InboundForeignKeys,
+    string? Comment = null
 )
 {
     public string FullName => string.IsNullOrEmpty(Schema) ? Name : $"{Schema}.{Name}";
@@ -219,6 +221,24 @@ public enum TableKind
     Table,
     View,
     MaterializedView,
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SEQUENCE METADATA
+// ═════════════════════════════════════════════════════════════════════════════
+
+public record SequenceMetadata(
+    string Schema,
+    string Name,
+    long? StartValue,
+    long? Increment,
+    long? MinValue,
+    long? MaxValue,
+    bool? Cycle,
+    int? Cache
+)
+{
+    public string FullName => string.IsNullOrEmpty(Schema) ? Name : $"{Schema}.{Name}";
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -247,7 +267,8 @@ public record DbMetadata(
     string ServerVersion,
     DateTimeOffset CapturedAt,
     IReadOnlyList<SchemaMetadata> Schemas,
-    IReadOnlyList<ForeignKeyRelation> AllForeignKeys
+    IReadOnlyList<ForeignKeyRelation> AllForeignKeys,
+    IReadOnlyList<SequenceMetadata>? Sequences = null
 )
 {
     // ── Flat accessors (useful for the canvas and auto-join engine) ────────────
@@ -258,6 +279,8 @@ public record DbMetadata(
         AllTables.FirstOrDefault(t =>
             t.FullName.Equals(fullName, StringComparison.OrdinalIgnoreCase)
         );
+
+    public IEnumerable<SequenceMetadata> AllSequences => Sequences ?? [];
 
     public TableMetadata? FindTable(string schema, string name) =>
         AllTables.FirstOrDefault(t =>

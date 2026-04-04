@@ -11,7 +11,6 @@ public sealed class SidebarViewModel : ViewModelBase
     public RelayCommand SelectNodesCommand { get; }
     public RelayCommand SelectConnectionCommand { get; }
     public RelayCommand SelectSchemaCommand { get; }
-    public RelayCommand SelectDiagnosticsCommand { get; }
     public RelayCommand AddNodeCommand { get; }
     public RelayCommand AddConnectionCommand { get; }
     public RelayCommand TogglePreviewCommand { get; }
@@ -33,7 +32,6 @@ public sealed class SidebarViewModel : ViewModelBase
                 RaisePropertyChanged(nameof(ShowNodes));
                 RaisePropertyChanged(nameof(ShowConnection));
                 RaisePropertyChanged(nameof(ShowSchema));
-                RaisePropertyChanged(nameof(ShowDiagnostics));
             }
         }
     }
@@ -52,11 +50,6 @@ public sealed class SidebarViewModel : ViewModelBase
     /// Returns true when Schema tab is active.
     /// </summary>
     public bool ShowSchema => ActiveTab == ESidebarTab.Schema;
-
-    /// <summary>
-    /// Returns true when Diagnostics tab is active.
-    /// </summary>
-    public bool ShowDiagnostics => ActiveTab == ESidebarTab.Diagnostics;
 
     /// <summary>
     /// ViewModel for the Nodes list tab.
@@ -92,11 +85,6 @@ public sealed class SidebarViewModel : ViewModelBase
         SelectNodesCommand = new RelayCommand(() => ActiveTab = ESidebarTab.Nodes);
         SelectConnectionCommand = new RelayCommand(() => ActiveTab = ESidebarTab.Connection);
         SelectSchemaCommand = new RelayCommand(() => ActiveTab = ESidebarTab.Schema);
-        SelectDiagnosticsCommand = new RelayCommand(() =>
-        {
-            ActiveTab = ESidebarTab.Diagnostics;
-            Diagnostics.RunChecksCommand.Execute(null);
-        });
         AddNodeCommand = new RelayCommand(RequestAddNode);
         AddConnectionCommand = new RelayCommand(RequestAddConnection);
         TogglePreviewCommand = new RelayCommand(() => TogglePreviewRequested?.Invoke());

@@ -1,3 +1,5 @@
+﻿using VisualSqlArchitect.UI.Services.Canvas.AutoJoin;
+using VisualSqlArchitect.UI.Services.Explain;
 using System.Reflection;
 using VisualSqlArchitect.UI.ViewModels;
 using Xunit;
@@ -16,3 +18,5 @@ public class ValidationManagerSafeExecutionTests
         Assert.NotNull(validationType.GetMethod("RunValidationSafely", BindingFlags.Instance | BindingFlags.NonPublic));
     }
 }
+
+

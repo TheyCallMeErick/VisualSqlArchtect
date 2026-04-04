@@ -37,6 +37,7 @@ public class EmitContextTests
     [InlineData(DatabaseProvider.Postgres, "\"my_col\"")]
     [InlineData(DatabaseProvider.MySql, "`my_col`")]
     [InlineData(DatabaseProvider.SqlServer, "[my_col]")]
+    [InlineData(DatabaseProvider.SQLite, "\"my_col\"")]
     public void QuoteIdentifier_ProducesCorrectDialect(DatabaseProvider p, string expected)
     {
         EmitContext ctx = NodeFixtures.Ctx(p);
@@ -1320,6 +1321,82 @@ public class QueryGeneratorServiceTests
         Assert.Contains("HAVING", result.Sql.ToUpperInvariant());
         Assert.Contains(">", result.Sql);
         Assert.Contains("100", result.Sql);
+    }
+
+    [Fact]
+    public void Generate_ComparisonWithTextLiteral_QuotesLiteralInSql()
+    {
+        var tbl = new NodeInstance(
+            "tbl",
+            NodeType.TableSource,
+            new Dictionary<string, string>(),
+            new Dictionary<string, string>(),
+            TableFullName: "orders"
+        );
+
+        var eq = new NodeInstance(
+            "eq",
+            NodeType.Equals,
+            new Dictionary<string, string> { ["right"] = "COMPLETED" },
+            new Dictionary<string, string>()
+        );
+
+        var graph = new NodeGraph
+        {
+            Nodes = [tbl, eq],
+            Connections = [new Connection("tbl", "status", "eq", "left")],
+            SelectOutputs = [new SelectBinding("tbl", "id")],
+            WhereConditions = [new WhereBinding("eq", "result")],
+        };
+
+        var svc = QueryGeneratorService.Create(DatabaseProvider.Postgres);
+        GeneratedQuery result = svc.Generate("orders", graph);
+
+        Assert.Contains("'COMPLETED'", result.Sql, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Generate_AggregatesWithoutExplicitGroupBy_InferGroupByFromNonAggregateSelects()
+    {
+        var tbl = new NodeInstance(
+            "tbl",
+            NodeType.TableSource,
+            new Dictionary<string, string>(),
+            new Dictionary<string, string>(),
+            TableFullName: "orders"
+        );
+
+        var count = new NodeInstance(
+            "count",
+            NodeType.CountStar,
+            new Dictionary<string, string>(),
+            new Dictionary<string, string>()
+        );
+
+        var sum = new NodeInstance(
+            "sum",
+            NodeType.Sum,
+            new Dictionary<string, string>(),
+            new Dictionary<string, string>()
+        );
+
+        var graph = new NodeGraph
+        {
+            Nodes = [tbl, count, sum],
+            Connections = [new Connection("tbl", "total", "sum", "value")],
+            SelectOutputs =
+            [
+                new SelectBinding("tbl", "status"),
+                new SelectBinding("count", "count", "order_count"),
+                new SelectBinding("sum", "total", "total_revenue"),
+            ],
+        };
+
+        var svc = QueryGeneratorService.Create(DatabaseProvider.Postgres);
+        GeneratedQuery result = svc.Generate("orders", graph);
+
+        Assert.Contains("GROUP BY", result.Sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("status", result.Sql, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

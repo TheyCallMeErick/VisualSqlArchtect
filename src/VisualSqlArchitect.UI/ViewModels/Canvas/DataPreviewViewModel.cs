@@ -1,5 +1,8 @@
 using System.Data;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using VisualSqlArchitect.UI.Services;
+using VisualSqlArchitect.UI.Services.Localization;
 
 namespace VisualSqlArchitect.UI.ViewModels.Canvas;
 
@@ -10,6 +13,7 @@ namespace VisualSqlArchitect.UI.ViewModels.Canvas;
 /// </summary>
 public sealed class DataPreviewViewModel : ViewModelBase
 {
+    private readonly ILogger<DataPreviewViewModel> _logger;
     public event Action<string, string?>? ErrorNotified;
 
     private bool _isVisible;
@@ -23,6 +27,12 @@ public sealed class DataPreviewViewModel : ViewModelBase
     private EPreviewExecutionState _state = EPreviewExecutionState.Idle;
     private long _elapsedMs;
     private EPreviewTab _activeTab = EPreviewTab.DataPreview;
+    private int? _executionTimeoutSeconds;
+
+    public DataPreviewViewModel(ILogger<DataPreviewViewModel>? logger = null)
+    {
+        _logger = logger ?? NullLogger<DataPreviewViewModel>.Instance;
+    }
 
     // ── Visibility ────────────────────────────────────────────────────────────
 
@@ -60,6 +70,7 @@ public sealed class DataPreviewViewModel : ViewModelBase
             RaisePropertyChanged(nameof(IsCancelled));
             RaisePropertyChanged(nameof(StatusText));
             RaisePropertyChanged(nameof(StatusColor));
+            RaisePropertyChanged(nameof(IsNearTimeout));
         }
     }
 
@@ -78,7 +89,10 @@ public sealed class DataPreviewViewModel : ViewModelBase
         {
             Set(ref _elapsedMs, value);
             if (_state == EPreviewExecutionState.Running)
+            {
                 RaisePropertyChanged(nameof(StatusText));
+                RaisePropertyChanged(nameof(IsNearTimeout));
+            }
         }
     }
 
@@ -109,18 +123,16 @@ public sealed class DataPreviewViewModel : ViewModelBase
         get => _data;
         set
         {
-            System.Console.WriteLine($"[ResultData Property] Setting: old={_data?.Rows.Count ?? 0} rows, new={value?.Rows.Count ?? 0} rows");
+            _logger.LogDebug(
+                "ResultData set requested: old={OldRows} rows, new={NewRows} rows",
+                _data?.Rows.Count ?? 0,
+                value?.Rows.Count ?? 0
+            );
             if (Set(ref _data, value))
             {
-                System.Console.WriteLine($"[ResultData Property] Changed=true, raising PropertyChanged");
                 RaisePropertyChanged(nameof(ResultView));
                 RaisePropertyChanged(nameof(HasData));
                 RaisePropertyChanged(nameof(StatusText));
-                System.Console.WriteLine($"[ResultData Property] After raising: HasData={HasData}");
-            }
-            else
-            {
-                System.Console.WriteLine($"[ResultData Property] Changed=false (same reference)");
             }
         }
     }
@@ -149,12 +161,9 @@ public sealed class DataPreviewViewModel : ViewModelBase
         get
         {
             if (_data is null)
-            {
-                System.Console.WriteLine("[ResultView] _data is null, returning null");
                 return null;
-            }
+
             var view = _data.DefaultView;
-            System.Console.WriteLine($"[ResultView] Returning DataView with {view.Count} rows from DataTable with {_data.Rows.Count} rows");
             return view;
         }
     }
@@ -163,9 +172,7 @@ public sealed class DataPreviewViewModel : ViewModelBase
     {
         get
         {
-            bool result = _data is { Rows.Count: > 0 };
-            System.Console.WriteLine($"[HasData Getter] value={result}, _data={_data?.Rows.Count ?? 0} rows");
-            return result;
+            return _data is { Rows.Count: > 0 };
         }
     }
 
@@ -173,11 +180,11 @@ public sealed class DataPreviewViewModel : ViewModelBase
 
     public string StatusText => _state switch
     {
-        EPreviewExecutionState.Running   => $"Running… {_elapsedMs}ms",
-        EPreviewExecutionState.Cancelled => "Cancelled",
-        EPreviewExecutionState.Failed    => "Error",
+        EPreviewExecutionState.Running   => BuildRunningStatusText(),
+        EPreviewExecutionState.Cancelled => L("preview.status.cancelled", "Cancelled"),
+        EPreviewExecutionState.Failed    => L("preview.status.error", "Error"),
         EPreviewExecutionState.Done      => $"{_rows} rows · {_ms}ms",
-        _                               => "Ready",
+        _                               => L("preview.status.ready", "Ready"),
     };
 
     public string StatusColor => _state switch
@@ -208,7 +215,7 @@ public sealed class DataPreviewViewModel : ViewModelBase
 
     public bool HasDiagnostic => _diagnostic is not null;
     public string DiagnosticIcon => _diagnostic?.CategoryIcon ?? "⚠️";
-    public string DiagnosticLabel => _diagnostic?.CategoryLabel ?? "Error";
+    public string DiagnosticLabel => _diagnostic?.CategoryLabel ?? L("diagnostics.error", "Error");
     public string DiagnosticSuggestion => _diagnostic?.Suggestion ?? string.Empty;
     public string? DiagnosticTechnical => _diagnostic?.TechnicalDetail;
     public bool HasTechnicalDetail => !string.IsNullOrWhiteSpace(_diagnostic?.TechnicalDetail);
@@ -218,47 +225,43 @@ public sealed class DataPreviewViewModel : ViewModelBase
     public void Toggle() => IsVisible = !IsVisible;
 
     /// <summary>Transitions to Running state; resets previous results.</summary>
-    public void ShowLoading(string sql)
+    public void ShowLoading(string sql, int? timeoutSeconds = null)
     {
-        System.Diagnostics.Debug.WriteLine($"[DataPreviewViewModel] ShowLoading called, panel will be visible");
+        _logger.LogDebug("ShowLoading called");
         QueryText = sql;
+        _executionTimeoutSeconds = timeoutSeconds;
+        RaisePropertyChanged(nameof(IsNearTimeout));
         CurrentState = EPreviewExecutionState.Running;
         ErrorMessage = null;
         ResultData = null;
         Diagnostic = null;
         ElapsedMs = 0;
         IsVisible = true;
-        System.Diagnostics.Debug.WriteLine($"[DataPreviewViewModel] IsVisible={IsVisible}");
+        _logger.LogDebug("Preview panel visible={IsVisible}", IsVisible);
     }
 
     /// <summary>Updates the live elapsed time counter shown in the status chip.</summary>
-    public void UpdateElapsed(long ms) => ElapsedMs = ms;
+    public void UpdateElapsed(long ms)
+    {
+        ElapsedMs = ms;
+    }
 
     /// <summary>Transitions to Done state and displays the result grid.</summary>
     public void ShowResults(DataTable dt, long ms)
     {
-        System.Console.WriteLine($"[ShowResults] START - Input: {dt?.Rows.Count ?? 0} rows, {ms}ms");
-        System.Diagnostics.Debug.WriteLine($"[DataPreviewViewModel] ShowResults called with {dt?.Rows.Count ?? 0} rows, {ms}ms");
+        _logger.LogDebug("ShowResults called with {Rows} rows in {ElapsedMs}ms", dt.Rows.Count, ms);
 
-        System.Console.WriteLine($"[ShowResults] Before ResultData assignment: _data={_data?.Rows.Count ?? 0}, HasData={HasData}");
         ResultData = dt;
-        System.Console.WriteLine($"[ShowResults] After ResultData assignment: _data={_data?.Rows.Count ?? 0}, HasData={HasData}");
-        System.Diagnostics.Debug.WriteLine($"[DataPreviewViewModel] ResultData set to DataTable, HasData={HasData}, Rows={dt?.Rows.Count}");
 
         RowCount = dt?.Rows.Count ?? 0;
-        System.Console.WriteLine($"[ShowResults] RowCount set to {RowCount}");
 
         ExecutionMs = ms;
         ElapsedMs = ms;
         ErrorMessage = null;
         Diagnostic = null;
 
-        System.Console.WriteLine($"[ShowResults] Before CurrentState=Done: StatusText={StatusText}");
         CurrentState = EPreviewExecutionState.Done;
-        System.Console.WriteLine($"[ShowResults] After CurrentState=Done: StatusText={StatusText}, HasData={HasData}, IsVisible={IsVisible}");
-
-        System.Diagnostics.Debug.WriteLine($"[DataPreviewViewModel] ✓ ShowResults completed: State=Done, HasData={HasData}, IsVisible={IsVisible}");
-        System.Console.WriteLine($"[ShowResults] DONE\n");
+        _logger.LogInformation("ShowResults completed: state={State}, rows={Rows}, elapsedMs={ElapsedMs}", CurrentState, RowCount, ms);
     }
 
     /// <summary>Transitions to Failed state with structured diagnostic.</summary>
@@ -276,5 +279,49 @@ public sealed class DataPreviewViewModel : ViewModelBase
         ErrorMessage = null;
         Diagnostic = null;
         CurrentState = EPreviewExecutionState.Cancelled;
+    }
+
+    public bool IsNearTimeout
+    {
+        get
+        {
+            if (_state != EPreviewExecutionState.Running || !_executionTimeoutSeconds.HasValue || _executionTimeoutSeconds <= 0)
+                return false;
+
+            long timeoutMs = _executionTimeoutSeconds.Value * 1000L;
+            return _elapsedMs >= (long)(timeoutMs * 0.8);
+        }
+    }
+
+    private string BuildRunningStatusText()
+    {
+        if (!_executionTimeoutSeconds.HasValue || _executionTimeoutSeconds <= 0)
+            return string.Format(L("preview.runningWithMs", "Running… {0}ms"), _elapsedMs);
+
+        long timeoutMs = _executionTimeoutSeconds.Value * 1000L;
+        if (!IsNearTimeout)
+            return string.Format(
+                L("preview.runningWithTimeout", "Running… {0}ms (timeout: {1}s)"),
+                _elapsedMs,
+                _executionTimeoutSeconds.Value
+            );
+
+        long remainingMs = Math.Max(0, timeoutMs - _elapsedMs);
+        long remainingSec = (long)Math.Ceiling(remainingMs / 1000d);
+        return string.Format(
+            L(
+                "preview.runningSlowWithTimeout",
+                "Running… {0}ms (timeout: {1}s) · Slow query, timeout in {2}s"
+            ),
+            _elapsedMs,
+            _executionTimeoutSeconds.Value,
+            remainingSec
+        );
+    }
+
+    private static string L(string key, string fallback)
+    {
+        string value = LocalizationService.Instance[key];
+        return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
     }
 }

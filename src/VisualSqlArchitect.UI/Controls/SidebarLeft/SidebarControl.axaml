@@ -79,11 +79,6 @@
                 Classes.active="{Binding ShowSchema}"
           Content="{Binding [sidebar.tab.schema], Source={x:Static loc:LocalizationService.Instance}}"/>
 
-        <!-- Diagnostics Tab -->
-        <Button x:Name="DiagnosticsTabButton"
-          Classes="tab-button"
-          Classes.active="{Binding ShowDiagnostics}"
-          Content="Diagnostics"/>
       </StackPanel>
     </Border>
 
@@ -104,10 +99,6 @@
         <ctrl:SchemaControl x:Name="SchemaControl"/>
       </Grid>
 
-      <!-- Diagnostics Tab -->
-      <Grid IsVisible="{Binding ShowDiagnostics}" Grid.Column="0">
-        <ctrl:SidebarDiagnosticsControl x:Name="DiagnosticsControl"/>
-      </Grid>
     </Grid>
 
     <!-- Footer (Add Node + New Connection buttons) -->

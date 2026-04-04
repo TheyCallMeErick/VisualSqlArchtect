@@ -9,42 +9,77 @@ namespace VisualSqlArchitect.UI.Services;
 /// <summary>
 /// Centralizes keyboard input handling.
 /// Routes 15+ keyboard shortcuts to appropriate commands and overlays.
+/// Resolves the target canvas via <see cref="IActiveCanvasProvider"/> so that
+/// shortcuts work for both the Query and DDL canvases.
 /// </summary>
 public class KeyboardInputHandler
 {
     private readonly Window? _window;
-    private readonly CanvasViewModel _vm;
+    private readonly IActiveCanvasProvider _canvasProvider;
     private readonly FileOperationsService? _fileOps;
     private readonly Action? _onCreateNewCanvas;
-    private readonly Action? _showShortcutsAction = null;
-    private readonly Action? _openSearchAction = null;
+    private readonly Action? _showShortcutsAction;
+    private readonly Action? _openSearchAction;
+    private readonly CommandPaletteViewModel? _commandPalette;
 
+    private CanvasViewModel Vm => _canvasProvider.GetActive();
+
+    /// <summary>
+    /// Primary constructor used by the application shell.
+    /// Accepts an <see cref="IActiveCanvasProvider"/> so shortcuts always route
+    /// to whichever canvas (Query or DDL) is active at the time of the key press.
+    /// </summary>
     public KeyboardInputHandler(
         Window window,
-        CanvasViewModel vm,
+        IActiveCanvasProvider canvasProvider,
         FileOperationsService fileOps,
+        CommandPaletteViewModel? commandPalette = null,
         Action? onCreateNewCanvas = null
     )
     {
         _window = window;
-        _vm = vm;
+        _canvasProvider = canvasProvider;
         _fileOps = fileOps;
+        _commandPalette = commandPalette;
         _onCreateNewCanvas = onCreateNewCanvas;
+        _showShortcutsAction = null;
+        _openSearchAction = null;
     }
 
+    /// <summary>
+    /// Test-friendly constructor that pins the handler to a fixed canvas.
+    /// Internally wraps the canvas in a trivial <see cref="ActiveCanvasProvider"/>.
+    /// </summary>
     public KeyboardInputHandler(
         CanvasViewModel vm,
+        CommandPaletteViewModel? commandPalette = null,
         Action? onCreateNewCanvas = null,
         Action? showShortcutsAction = null,
         Action? openSearchAction = null
     )
     {
-        _vm = vm;
+        _canvasProvider = new ActiveCanvasProvider(() => vm);
+        _commandPalette = commandPalette;
         _onCreateNewCanvas = onCreateNewCanvas;
         _showShortcutsAction = showShortcutsAction;
         _openSearchAction = openSearchAction;
         _window = null;
         _fileOps = null;
+    }
+
+    /// <summary>
+    /// Constructor that accepts an <see cref="IActiveCanvasProvider"/> without a <c>Window</c>.
+    /// Used in tests and in headless scenarios where no window reference is available.
+    /// </summary>
+    public KeyboardInputHandler(IActiveCanvasProvider canvasProvider)
+    {
+        _canvasProvider = canvasProvider;
+        _window = null;
+        _fileOps = null;
+        _commandPalette = null;
+        _onCreateNewCanvas = null;
+        _showShortcutsAction = null;
+        _openSearchAction = null;
     }
 
     public void Wire()
@@ -67,69 +102,69 @@ public class KeyboardInputHandler
         // Handle overlay escape keys
         if (key == Key.Escape)
         {
-            if (_vm.CommandPalette.IsVisible)
+            if (_commandPalette?.IsVisible == true)
             {
-                _vm.CommandPalette.Close();
+                _commandPalette.Close();
                 return true;
             }
-            if (_vm.SearchMenu.IsVisible)
+            if (Vm.SearchMenu.IsVisible)
             {
-                _vm.SearchMenu.Close();
+                Vm.SearchMenu.Close();
                 return true;
             }
-            if (_vm.AutoJoin.IsVisible)
+            if (Vm.AutoJoin.IsVisible)
             {
-                _vm.AutoJoin.Dismiss();
+                Vm.AutoJoin.Dismiss();
                 return true;
             }
-            if (_vm.DataPreview.IsVisible)
+            if (Vm.DataPreview.IsVisible)
             {
-                _vm.DataPreview.IsVisible = false;
+                Vm.DataPreview.IsVisible = false;
                 return true;
             }
-            if (_vm.ConnectionManager.IsVisible)
+            if (Vm.ConnectionManager.IsVisible)
             {
-                _vm.ConnectionManager.IsVisible = false;
+                Vm.ConnectionManager.IsVisible = false;
                 return true;
             }
-            if (_vm.Benchmark.IsVisible)
+            if (Vm.Benchmark.IsVisible)
             {
-                _vm.Benchmark.IsVisible = false;
+                Vm.Benchmark.IsVisible = false;
                 return true;
             }
-            if (_vm.ExplainPlan.IsVisible)
+            if (Vm.ExplainPlan.IsVisible)
             {
-                _vm.ExplainPlan.Close();
+                Vm.ExplainPlan.Close();
                 return true;
             }
-            if (_vm.SqlImporter.IsVisible)
+            if (Vm.SqlImporter.IsVisible)
             {
-                _vm.SqlImporter.Close();
+                Vm.SqlImporter.Close();
                 return true;
             }
-            if (_vm.FlowVersions.IsVisible)
+            if (Vm.FlowVersions.IsVisible)
             {
-                _vm.FlowVersions.Close();
+                Vm.FlowVersions.Close();
                 return true;
             }
-            if (_vm.FileHistory.IsVisible)
+            if (Vm.FileHistory.IsVisible)
             {
-                _vm.FileHistory.Close();
+                Vm.FileHistory.Close();
                 return true;
             }
-            if (_vm.IsInCteEditor)
+            if (Vm.IsInCteEditor)
             {
-                _vm.ExitCteEditorCommand.Execute(null);
+                Vm.ExitCteEditorCommand.Execute(null);
                 return true;
             }
         }
 
         if (key == Key.Enter && modifiers.HasFlag(KeyModifiers.Control) && modifiers.HasFlag(KeyModifiers.Alt))
         {
-            if (_vm.IsInCteEditor)
-                _vm.ExitCteEditorCommand.Execute(null);
+            if (Vm.IsInCteEditor)
+                Vm.ExitCteEditorCommand.Execute(null);
             else
-                _vm.EnterCteEditorCommand.Execute(null);
+                Vm.EnterCteEditorCommand.Execute(null);
 
             return true;
         }
@@ -138,7 +173,7 @@ public class KeyboardInputHandler
         if (
             key == Key.A
             && modifiers.HasFlag(KeyModifiers.Shift)
-            && !_vm.SearchMenu.IsVisible
+            && !Vm.SearchMenu.IsVisible
         )
         {
             OpenSearch();
@@ -147,7 +182,7 @@ public class KeyboardInputHandler
         if (
             key == Key.F
             && modifiers.HasFlag(KeyModifiers.Control)
-            && !_vm.SearchMenu.IsVisible
+            && !Vm.SearchMenu.IsVisible
         )
         {
             OpenSearch();
@@ -174,12 +209,12 @@ public class KeyboardInputHandler
         // Undo/Redo
         if (key == Key.Z && modifiers.HasFlag(KeyModifiers.Control))
         {
-            _vm.UndoRedo.Undo();
+            Vm.UndoRedo.Undo();
             return true;
         }
         if (key == Key.Y && modifiers.HasFlag(KeyModifiers.Control))
         {
-            _vm.UndoRedo.Redo();
+            Vm.UndoRedo.Redo();
             return true;
         }
 
@@ -187,24 +222,27 @@ public class KeyboardInputHandler
         if (key == Key.PageUp && modifiers.HasFlag(KeyModifiers.Control))
         {
             if (modifiers.HasFlag(KeyModifiers.Shift))
-                _vm.BringSelectionToFrontCommand.Execute(null);
+                Vm.BringSelectionToFrontCommand.Execute(null);
             else
-                _vm.BringSelectionForwardCommand.Execute(null);
+                Vm.BringSelectionForwardCommand.Execute(null);
             return true;
         }
         if (key == Key.PageDown && modifiers.HasFlag(KeyModifiers.Control))
         {
             if (modifiers.HasFlag(KeyModifiers.Shift))
-                _vm.SendSelectionToBackCommand.Execute(null);
+                Vm.SendSelectionToBackCommand.Execute(null);
             else
-                _vm.SendSelectionBackwardCommand.Execute(null);
+                Vm.SendSelectionBackwardCommand.Execute(null);
             return true;
         }
 
         // Command palette
         if (key == Key.K && modifiers.HasFlag(KeyModifiers.Control))
         {
-            _vm.CommandPalette.Open();
+            if (_commandPalette is null)
+                return false;
+
+            _commandPalette.Open();
             return true;
         }
 
@@ -225,7 +263,7 @@ public class KeyboardInputHandler
             && modifiers.HasFlag(KeyModifiers.Shift)
         )
         {
-            _vm.FlowVersions.Open();
+            Vm.FlowVersions.Open();
             return true;
         }
 
@@ -236,7 +274,7 @@ public class KeyboardInputHandler
             && modifiers.HasFlag(KeyModifiers.Alt)
         )
         {
-            _vm.FileHistory.Open();
+            Vm.FileHistory.Open();
             return true;
         }
 
@@ -247,34 +285,34 @@ public class KeyboardInputHandler
             && modifiers.HasFlag(KeyModifiers.Shift)
         )
         {
-            _vm.ConnectionManager.Open();
+            Vm.ConnectionManager.Open();
             return true;
         }
 
         // Canvas operations
         if (key == Key.L && modifiers.HasFlag(KeyModifiers.Control))
         {
-            _vm.RunAutoLayout();
+            Vm.RunAutoLayout();
             _window?.FindControl<InfiniteCanvas>("TheCanvas")?.InvalidateWires();
             return true;
         }
         if (key == Key.G && modifiers.HasFlag(KeyModifiers.Control))
         {
-            _vm.ToggleSnapCommand.Execute(null);
+            Vm.ToggleSnapCommand.Execute(null);
             return true;
         }
 
         // Explain Plan
         if (key == Key.F4)
         {
-            _vm.ExplainPlan.Open();
+            Vm.ExplainPlan.Open();
             return true;
         }
 
         // Preview
         if (key == Key.F3)
         {
-            _vm.DataPreview.Toggle();
+            Vm.DataPreview.Toggle();
             return true;
         }
         if (key == Key.F5)
@@ -285,7 +323,7 @@ public class KeyboardInputHandler
         // Delete selected nodes
         if ((key == Key.Delete || key == Key.Back) && modifiers == KeyModifiers.None)
         {
-            _vm.DeleteSelected();
+            Vm.DeleteSelected();
             return true;
         }
 
@@ -295,7 +333,7 @@ public class KeyboardInputHandler
             && modifiers.HasFlag(KeyModifiers.Control)
         )
         {
-            _vm.ZoomInCommand.Execute(null);
+            Vm.ZoomInCommand.Execute(null);
             return true;
         }
         if (
@@ -303,7 +341,7 @@ public class KeyboardInputHandler
             && modifiers.HasFlag(KeyModifiers.Control)
         )
         {
-            _vm.ZoomOutCommand.Execute(null);
+            Vm.ZoomOutCommand.Execute(null);
             return true;
         }
         if (
@@ -311,7 +349,7 @@ public class KeyboardInputHandler
             && modifiers.HasFlag(KeyModifiers.Control)
         )
         {
-            _vm.ResetZoomCommand.Execute(null);
+            Vm.ResetZoomCommand.Execute(null);
             return true;
         }
 
@@ -333,6 +371,6 @@ public class KeyboardInputHandler
         Point ctr = canvas is not null
             ? new Point(canvas.Bounds.Width / 2, canvas.Bounds.Height / 2)
             : new Point(400, 300);
-        _vm.SearchMenu.Open(ctr);
+        Vm.SearchMenu.Open(ctr);
     }
 }

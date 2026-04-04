@@ -12,8 +12,7 @@ public sealed class NodeCompilerFactory
     private readonly INodeCompiler[] _compilers;
 
     public NodeCompilerFactory()
-    {
-        _compilers =
+        : this(
         [
             new DataSourceCompiler(),
             new StringTransformCompiler(),
@@ -25,7 +24,14 @@ public sealed class NodeCompilerFactory
             new LogicGateCompiler(),
             new LiteralCompiler(),
             new OutputCompiler(),
-        ];
+        ])
+    {
+    }
+
+    public NodeCompilerFactory(IEnumerable<INodeCompiler> compilers)
+    {
+        ArgumentNullException.ThrowIfNull(compilers);
+        _compilers = compilers.ToArray();
     }
 
     /// <summary>

@@ -39,7 +39,7 @@ public sealed class SqlServerInspector(ConnectionConfig config) : BaseInspector(
     // ── Tables + Views ────────────────────────────────────────────────────────
 
     protected override async Task<
-        IReadOnlyList<(string, string, TableKind, long?)>
+        IReadOnlyList<(string, string, TableKind, long?, string?)>
     > FetchAllTablesAsync(DbConnection conn, CancellationToken ct)
     {
         // sys.dm_db_partition_stats gives fast row-count estimates without locking
@@ -48,28 +48,37 @@ public sealed class SqlServerInspector(ConnectionConfig config) : BaseInspector(
                 s.name                                        AS [schema],
                 o.name                                        AS [table],
                 o.type_desc                                   AS [type],
-                SUM(p.row_count)                              AS [est_rows]
+                                SUM(p.row_count)                              AS [est_rows],
+                                table_desc.comment                            AS [table_comment]
             FROM sys.objects o
             JOIN sys.schemas s ON s.schema_id = o.schema_id
             LEFT JOIN sys.dm_db_partition_stats p
                   ON p.object_id = o.object_id
                  AND p.index_id  IN (0, 1)   -- heap or clustered
+                        OUTER APPLY (
+                                SELECT TOP(1) CAST(ep.value AS nvarchar(max)) AS comment
+                                FROM sys.extended_properties ep
+                                WHERE ep.major_id = o.object_id
+                                    AND ep.minor_id = 0
+                                    AND ep.name = N'MS_Description'
+                        ) AS table_desc
             WHERE o.type IN ('U', 'V')        -- U = user table, V = view
               AND o.is_ms_shipped = 0
-            GROUP BY s.name, o.name, o.type_desc
+                        GROUP BY s.name, o.name, o.type_desc, table_desc.comment
             ORDER BY s.name, o.name
             """;
 
         await using DbCommand cmd = conn.CreateCommand();
         cmd.CommandText = sql;
 
-        var result = new List<(string, string, TableKind, long?)>();
+        var result = new List<(string, string, TableKind, long?, string?)>();
         await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
         {
             TableKind kind = reader.GetString(2) == "VIEW" ? TableKind.View : TableKind.Table;
             long? rows = reader.IsDBNull(3) ? (long?)null : reader.GetInt64(3);
-            result.Add((reader.GetString(0), reader.GetString(1), kind, rows));
+            string? comment = reader.IsDBNull(4) ? null : reader.GetString(4);
+            result.Add((reader.GetString(0), reader.GetString(1), kind, rows, comment));
         }
 
         return result;
@@ -102,12 +111,16 @@ public sealed class SqlServerInspector(ConnectionConfig config) : BaseInspector(
                 CASE WHEN uq.column_id IS NOT NULL THEN 1 ELSE 0 END AS is_unique,
                 -- Any index?
                 CASE WHEN ix.column_id IS NOT NULL THEN 1 ELSE 0 END AS is_indexed
+                ,CAST(col_desc.value AS nvarchar(max))               AS col_comment
             FROM sys.columns c
             JOIN sys.objects  o  ON o.object_id  = c.object_id
             JOIN sys.schemas  s  ON s.schema_id  = o.schema_id
             JOIN sys.types    tp ON tp.user_type_id = c.user_type_id
             LEFT JOIN sys.default_constraints dc ON dc.parent_object_id = c.object_id
                                                  AND dc.parent_column_id = c.column_id
+            LEFT JOIN sys.extended_properties col_desc ON col_desc.major_id = c.object_id
+                                                      AND col_desc.minor_id = c.column_id
+                                                      AND col_desc.name = N'MS_Description'
             -- PK detection
             LEFT JOIN (
                 SELECT ic.object_id, ic.column_id
@@ -168,7 +181,8 @@ public sealed class SqlServerInspector(ConnectionConfig config) : BaseInspector(
                     IsForeignKey: reader.GetInt32(9) == 1,
                     IsUnique: reader.GetInt32(10) == 1,
                     IsIndexed: reader.GetInt32(11) == 1,
-                    OrdinalPosition: reader.GetInt32(0)
+                    OrdinalPosition: reader.GetInt32(0),
+                    Comment: reader.IsDBNull(12) ? null : reader.GetString(12)
                 )
             );
         }
@@ -291,6 +305,50 @@ public sealed class SqlServerInspector(ConnectionConfig config) : BaseInspector(
         }
 
         return relations;
+    }
+
+    protected override async Task<IReadOnlyList<SequenceMetadata>> FetchSequencesAsync(
+        DbConnection conn,
+        CancellationToken ct
+    )
+    {
+        const string sql = """
+            SELECT
+                s.name AS schema_name,
+                seq.name AS sequence_name,
+                CAST(seq.start_value AS bigint) AS start_value,
+                CAST(seq.increment AS bigint) AS increment_value,
+                CAST(seq.minimum_value AS bigint) AS min_value,
+                CAST(seq.maximum_value AS bigint) AS max_value,
+                CAST(seq.is_cycling AS bit) AS is_cycling,
+                CAST(seq.cache_size AS int) AS cache_size
+            FROM sys.sequences seq
+            JOIN sys.schemas s ON s.schema_id = seq.schema_id
+            ORDER BY s.name, seq.name
+            """;
+
+        await using DbCommand cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
+
+        var sequences = new List<SequenceMetadata>();
+        await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            sequences.Add(
+                new SequenceMetadata(
+                    Schema: reader.GetString(0),
+                    Name: reader.GetString(1),
+                    StartValue: reader.IsDBNull(2) ? null : reader.GetInt64(2),
+                    Increment: reader.IsDBNull(3) ? null : reader.GetInt64(3),
+                    MinValue: reader.IsDBNull(4) ? null : reader.GetInt64(4),
+                    MaxValue: reader.IsDBNull(5) ? null : reader.GetInt64(5),
+                    Cycle: reader.IsDBNull(6) ? null : reader.GetBoolean(6),
+                    Cache: reader.IsDBNull(7) ? null : reader.GetInt32(7)
+                )
+            );
+        }
+
+        return sequences;
     }
 
     // ── Type normalisation ────────────────────────────────────────────────────

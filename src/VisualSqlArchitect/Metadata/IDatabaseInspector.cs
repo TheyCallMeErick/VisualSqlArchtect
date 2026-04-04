@@ -50,9 +50,10 @@ public abstract class BaseInspector(ConnectionConfig config) : IDatabaseInspecto
         await using DbConnection conn = await OpenAsync(ct);
 
         string version = await GetServerVersionAsync(conn, ct);
-        IReadOnlyList<(string Schema, string Name, TableKind Kind, long? RowCount)> rawTables =
+        IReadOnlyList<(string Schema, string Name, TableKind Kind, long? RowCount, string? Comment)> rawTables =
             await FetchAllTablesAsync(conn, ct);
         IReadOnlyList<ForeignKeyRelation> allFks = await FetchForeignKeysAsync(conn, ct);
+        IReadOnlyList<SequenceMetadata> sequences = await FetchSequencesAsync(conn, ct);
 
         // Index FKs by table for O(1) lookup during table assembly
         ILookup<string, ForeignKeyRelation> fksByChild = allFks.ToLookup(
@@ -66,7 +67,7 @@ public abstract class BaseInspector(ConnectionConfig config) : IDatabaseInspecto
 
         var tableMetaList = new List<TableMetadata>();
 
-        foreach ((string schema, string name, TableKind kind, long? rowCount) in rawTables)
+        foreach ((string schema, string name, TableKind kind, long? rowCount, string? tableComment) in rawTables)
         {
             ct.ThrowIfCancellationRequested();
 
@@ -83,7 +84,8 @@ public abstract class BaseInspector(ConnectionConfig config) : IDatabaseInspecto
                     Columns: columns,
                     Indexes: indexes,
                     OutboundForeignKeys: fksByChild[fullName].ToList(),
-                    InboundForeignKeys: fksByParent[fullName].ToList()
+                    InboundForeignKeys: fksByParent[fullName].ToList(),
+                    Comment: tableComment
                 )
             );
         }
@@ -100,7 +102,8 @@ public abstract class BaseInspector(ConnectionConfig config) : IDatabaseInspecto
             ServerVersion: version,
             CapturedAt: DateTimeOffset.UtcNow,
             Schemas: schemas,
-            AllForeignKeys: allFks
+            AllForeignKeys: allFks,
+            Sequences: sequences
         );
     }
 
@@ -128,7 +131,8 @@ public abstract class BaseInspector(ConnectionConfig config) : IDatabaseInspecto
                 .ToList(),
             InboundForeignKeys: allFks
                 .Where(r => r.ParentFullTable.Equals(fullName, StringComparison.OrdinalIgnoreCase))
-                .ToList()
+                .ToList(),
+            Comment: null
         );
     }
 
@@ -148,7 +152,7 @@ public abstract class BaseInspector(ConnectionConfig config) : IDatabaseInspecto
 
     /// <summary>Returns (schema, table, kind, estimatedRows) tuples.</summary>
     protected abstract Task<
-        IReadOnlyList<(string Schema, string Name, TableKind Kind, long? RowCount)>
+        IReadOnlyList<(string Schema, string Name, TableKind Kind, long? RowCount, string? Comment)>
     > FetchAllTablesAsync(DbConnection conn, CancellationToken ct);
 
     protected abstract Task<IReadOnlyList<ColumnMetadata>> FetchColumnsAsync(
@@ -166,6 +170,11 @@ public abstract class BaseInspector(ConnectionConfig config) : IDatabaseInspecto
     );
 
     protected abstract Task<IReadOnlyList<ForeignKeyRelation>> FetchForeignKeysAsync(
+        DbConnection conn,
+        CancellationToken ct
+    );
+
+    protected abstract Task<IReadOnlyList<SequenceMetadata>> FetchSequencesAsync(
         DbConnection conn,
         CancellationToken ct
     );

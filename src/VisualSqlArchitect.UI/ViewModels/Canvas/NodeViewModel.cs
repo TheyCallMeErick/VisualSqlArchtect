@@ -4,7 +4,9 @@ using Avalonia;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Material.Icons;
+using VisualSqlArchitect.CanvasKit;
 using VisualSqlArchitect.Nodes;
+using VisualSqlArchitect.UI.Services.Localization;
 
 namespace VisualSqlArchitect.UI.ViewModels;
 
@@ -12,7 +14,7 @@ namespace VisualSqlArchitect.UI.ViewModels;
 /// Represents a Node in the visual query builder canvas.
 /// Nodes are the fundamental building blocks that transform, filter, and compose queries.
 /// </summary>
-public sealed class NodeViewModel : ViewModelBase
+public sealed class NodeViewModel : ViewModelBase, ICanvasTableNode, ICanvasLayerNode
 {
     private static readonly IReadOnlyList<string> JoinTypeOptionValues = [
         "INNER",
@@ -30,16 +32,19 @@ public sealed class NodeViewModel : ViewModelBase
     private static readonly SolidColorBrush ErrorBorderBrush = new(Color.Parse("#EF4444"));
     private static readonly SolidColorBrush WarningBorderBrush = new(Color.Parse("#FBBF24"));
     private static readonly SolidColorBrush OrphanBorderBrush = new(Color.Parse("#6B7280"));
+    private static readonly SolidColorBrush HighlightBorderBrush = new(Color.Parse("#14B8A6"));
     private static readonly SolidColorBrush DefaultBorderBrush = new(Color.Parse("#252C3F"));
 
     private static readonly BoxShadows SelectedShadow = BoxShadows.Parse("0 0 0 2 #3B82F6, 0 8 32 0 #603B82F6");
     private static readonly BoxShadows ErrorShadow = BoxShadows.Parse("0 0 0 2 #EF4444, 0 4 16 0 #40EF4444");
     private static readonly BoxShadows WarningShadow = BoxShadows.Parse("0 0 0 1 #FBBF24, 0 4 12 0 #30FBBF24");
     private static readonly BoxShadows OrphanShadow = BoxShadows.Parse("0 2 8 0 #206B7280");
+    private static readonly BoxShadows HighlightShadow = BoxShadows.Parse("0 0 0 2 #14B8A6, 0 0 22 0 #6014B8A6");
     private static readonly BoxShadows DefaultShadow = BoxShadows.Parse("0 4 24 0 #40000000, 0 1 4 0 #50000000");
 
     private Point _position;
     private bool _isSelected,
+        _isHighlighted,
         _isHovered,
         _isOrphan;
     private string? _alias;
@@ -61,6 +66,9 @@ public sealed class NodeViewModel : ViewModelBase
 
     /// <summary>Longer description/subtitle for context.</summary>
     public string Subtitle { get; }
+
+    string? ICanvasTableNode.FullName => Subtitle;
+    string? ICanvasTableNode.Title => Title;
 
     /// <summary>Dictionary of configurable parameters specific to this node type.</summary>
     public Dictionary<string, string> Parameters { get; } = [];
@@ -87,6 +95,14 @@ public sealed class NodeViewModel : ViewModelBase
 
     /// <summary>True if this node is a ColumnList (multiple column selector).</summary>
     public bool IsColumnList => Type == NodeType.ColumnList;
+
+    /// <summary>True when this node presents the table-definition structured layout.</summary>
+    public bool UsesTableDefinitionLayout =>
+        InputPins.Any(p => p.Name == "column") && InputPins.Any(p => p.Name == "constraint");
+
+    /// <summary>True when this node can open the view subcanvas editor.</summary>
+    public bool CanOpenViewSubcanvas =>
+        Parameters.ContainsKey("ViewName") && InputPins.Any(p => p.Name == "query");
 
     /// <summary>True if this is a logic gate (AND or OR).</summary>
     public bool IsLogicGate => Type is NodeType.And or NodeType.Or;
@@ -142,8 +158,38 @@ public sealed class NodeViewModel : ViewModelBase
                 or NodeType.CurrentDate
                 or NodeType.CurrentTime;
 
+    /// <summary>True if this is a ScalarTypeDefinition node.</summary>
+    public bool IsScalarTypeDefinition => Type == NodeType.ScalarTypeDefinition;
+
+    /// <summary>
+    /// Inline type label for the ScalarTypeDefinition node card,
+    /// e.g. "VARCHAR(255)", "DECIMAL(18,2)", "TEXT".
+    /// </summary>
+    public string ScalarTypeInlineLabel
+    {
+        get
+        {
+            string typeKind = Parameters.TryGetValue("TypeKind", out string? k) && !string.IsNullOrWhiteSpace(k)
+                ? k.Trim().ToUpperInvariant()
+                : "VARCHAR";
+
+            return typeKind switch
+            {
+                "VARCHAR" => Parameters.TryGetValue("Length", out string? l) && int.TryParse(l, out int len)
+                    ? $"VARCHAR({Math.Max(1, len)})"
+                    : "VARCHAR(255)",
+                "DECIMAL" => Parameters.TryGetValue("Precision", out string? p) && int.TryParse(p, out int prec)
+                    && Parameters.TryGetValue("Scale", out string? s) && int.TryParse(s, out int scale)
+                    ? $"DECIMAL({Math.Max(1, prec)},{Math.Max(0, scale)})"
+                    : "DECIMAL(18,2)",
+                _ => typeKind,
+            };
+        }
+    }
+
     /// <summary>True when the standard left/right pin columns should be shown.</summary>
-    public bool ShowStandardPins => !IsValueNode && !IsColumnList && !IsResultOutput;
+    public bool ShowStandardPins =>
+        !IsValueNode && !IsColumnList && !IsResultOutput && !UsesTableDefinitionLayout;
 
     /// <summary>
     /// True when the standard input band should be rendered.
@@ -155,6 +201,24 @@ public sealed class NodeViewModel : ViewModelBase
     public bool IsValueString => Type == NodeType.ValueString;
     public bool IsValueDateTime => Type == NodeType.ValueDateTime;
     public bool IsValueBoolean => Type == NodeType.ValueBoolean;
+
+    /// <summary>Computed table projection rows for the table-definition visual template.</summary>
+    public ObservableCollection<DdlTableColumnRowViewModel> TableDefinitionColumns { get; } = [];
+
+    public bool HasTableDefinitionColumns => TableDefinitionColumns.Count > 0;
+
+    public string TableDefinitionDisplayName
+    {
+        get
+        {
+            Parameters.TryGetValue("SchemaName", out string? schemaName);
+            Parameters.TryGetValue("TableName", out string? tableName);
+
+            string schema = string.IsNullOrWhiteSpace(schemaName) ? "public" : schemaName.Trim();
+            string table = string.IsNullOrWhiteSpace(tableName) ? "<table>" : tableName.Trim();
+            return $"{schema}.{table}";
+        }
+    }
 
     /// <summary>True if the "No inputs" placeholder should be displayed.</summary>
     public bool ShouldShowNoInputsPlaceholder =>
@@ -190,6 +254,18 @@ public sealed class NodeViewModel : ViewModelBase
         set
         {
             Set(ref _isSelected, value);
+            RaisePropertyChanged(nameof(NodeBorderBrush));
+            RaisePropertyChanged(nameof(NodeShadow));
+        }
+    }
+
+    /// <summary>True when this node is highlighted by explain-plan table focus.</summary>
+    public bool IsHighlighted
+    {
+        get => _isHighlighted;
+        set
+        {
+            Set(ref _isHighlighted, value);
             RaisePropertyChanged(nameof(NodeBorderBrush));
             RaisePropertyChanged(nameof(NodeShadow));
         }
@@ -369,7 +445,8 @@ public sealed class NodeViewModel : ViewModelBase
 
     /// <summary>Border brush color based on selection/validation state.</summary>
     public SolidColorBrush NodeBorderBrush =>
-        IsSelected ? SelectedBorderBrush
+        IsHighlighted ? HighlightBorderBrush
+        : IsSelected ? SelectedBorderBrush
         : HasError ? ErrorBorderBrush
         : HasWarning ? WarningBorderBrush
         : IsOrphan ? OrphanBorderBrush
@@ -377,7 +454,8 @@ public sealed class NodeViewModel : ViewModelBase
 
     /// <summary>Shadow effects based on state.</summary>
     public BoxShadows NodeShadow =>
-        IsSelected ? SelectedShadow
+        IsHighlighted ? HighlightShadow
+        : IsSelected ? SelectedShadow
         : HasError ? ErrorShadow
         : HasWarning ? WarningShadow
         : IsOrphan ? OrphanShadow
@@ -475,7 +553,7 @@ public sealed class NodeViewModel : ViewModelBase
 
             if (entry is null)
             {
-                InlinePreviewError = "No catalog available";
+                InlinePreviewError = L("node.preview.noCatalog", "No catalog available");
                 IsPreviewLoading = false;
                 return;
             }
@@ -509,6 +587,12 @@ public sealed class NodeViewModel : ViewModelBase
     // ── Static inline catalog (Northwind sample data) ────────────────────────
 
     private sealed record ColDef(string Name, Func<int, Random, object> Generator);
+
+    private static string L(string key, string fallback)
+    {
+        string value = LocalizationService.Instance[key];
+        return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
+    }
     private sealed record TableDef(string TableName, ColDef[] Columns);
 
     private static readonly string[] _statuses = ["ACTIVE", "SHIPPED", "PENDING", "CANCELLED"];
@@ -589,6 +673,7 @@ public sealed class NodeViewModel : ViewModelBase
         [NodeCategory.Json] = Color.Parse("#6D28D9"),
         [NodeCategory.Aggregate] = Color.Parse("#15803D"),
         [NodeCategory.Conditional] = Color.Parse("#0E7490"),
+        [NodeCategory.Ddl] = Color.Parse("#1D4ED8"),
     };
 
     private static Dictionary<NodeCategory, Color> BuildHeaderLightColors() => new()
@@ -602,6 +687,7 @@ public sealed class NodeViewModel : ViewModelBase
         [NodeCategory.Json] = Color.Parse("#A78BFA"),
         [NodeCategory.Aggregate] = Color.Parse("#4ADE80"),
         [NodeCategory.Conditional] = Color.Parse("#22D3EE"),
+        [NodeCategory.Ddl] = Color.Parse("#60A5FA"),
     };
 
     /// <summary>Material icon kind for category visualization.</summary>
@@ -660,6 +746,8 @@ public sealed class NodeViewModel : ViewModelBase
         {
             RaisePropertyChanged(nameof(ShowStandardInputBand));
             RaisePropertyChanged(nameof(ShouldShowNoInputsPlaceholder));
+            RaisePropertyChanged(nameof(UsesTableDefinitionLayout));
+            RaisePropertyChanged(nameof(CanOpenViewSubcanvas));
         };
     }
 
@@ -715,6 +803,8 @@ public sealed class NodeViewModel : ViewModelBase
         {
             RaisePropertyChanged(nameof(ShowStandardInputBand));
             RaisePropertyChanged(nameof(ShouldShowNoInputsPlaceholder));
+            RaisePropertyChanged(nameof(UsesTableDefinitionLayout));
+            RaisePropertyChanged(nameof(CanOpenViewSubcanvas));
         };
     }
 
@@ -729,10 +819,25 @@ public sealed class NodeViewModel : ViewModelBase
     {
         RaisePropertyChanged($"Param_{p}");
 
+        if (string.Equals(p, "ViewName", StringComparison.OrdinalIgnoreCase))
+            RaisePropertyChanged(nameof(CanOpenViewSubcanvas));
+
+        if (string.Equals(p, "SchemaName", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(p, "TableName", StringComparison.OrdinalIgnoreCase))
+        {
+            RaisePropertyChanged(nameof(TableDefinitionDisplayName));
+        }
+
         if (Type == NodeType.Join
             && p.Equals("join_type", StringComparison.OrdinalIgnoreCase))
         {
             RaisePropertyChanged(nameof(JoinTypeSelection));
+        }
+
+        if (Type == NodeType.ScalarTypeDefinition
+            && p is "TypeKind" or "Length" or "Precision" or "Scale")
+        {
+            RaisePropertyChanged(nameof(ScalarTypeInlineLabel));
         }
     }
 
@@ -763,6 +868,15 @@ public sealed class NodeViewModel : ViewModelBase
                 )
             );
         }
+    }
+
+    internal void ReplaceTableDefinitionColumns(IEnumerable<DdlTableColumnRowViewModel> rows)
+    {
+        TableDefinitionColumns.Clear();
+        foreach (DdlTableColumnRowViewModel row in rows)
+            TableDefinitionColumns.Add(row);
+
+        RaisePropertyChanged(nameof(HasTableDefinitionColumns));
     }
 
     /// <summary>

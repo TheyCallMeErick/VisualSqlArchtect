@@ -1,7 +1,13 @@
 using System.Collections.ObjectModel;
-using System.Text.RegularExpressions;
+using System.ComponentModel;
+using System.Globalization;
+using System.Windows.Input;
 using Avalonia.Threading;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using VisualSqlArchitect.Core;
+using VisualSqlArchitect.UI.Services.Explain;
+using VisualSqlArchitect.UI.Services.Localization;
 
 namespace VisualSqlArchitect.UI.ViewModels.Canvas;
 
@@ -15,14 +21,80 @@ namespace VisualSqlArchitect.UI.ViewModels.Canvas;
 public sealed class ExplainPlanViewModel : ViewModelBase
 {
     private readonly CanvasViewModel _canvas;
+    private readonly ILogger<ExplainPlanViewModel> _logger;
+    private readonly IExplainExecutor _explainExecutor;
+    private readonly IExplainNodeToStepMapper _nodeToStepMapper;
+    private readonly IExplainCostDistributionCalculator _costDistributionCalculator;
+    private readonly IExplainExecutionModeEvaluator _executionModeEvaluator;
+    private readonly IExplainSimulationLatencyOptions _simulationLatencyOptions;
+    private readonly IExplainSqlSafetyEvaluator _sqlSafetyEvaluator;
+    private readonly IExplainSqlPreviewTextResolver _sqlPreviewTextResolver;
+    private readonly IExplainHighlightedTableResolver _highlightedTableResolver;
+    private readonly IExplainPlanExportFormatter _exportFormatter;
+    private readonly IExplainDaliboUrlBuilder _daliboUrlBuilder;
+    private readonly IExplainPlanComparisonBuilder _comparisonBuilder;
+    private readonly IExplainIndexSuggestionEngine _indexSuggestionEngine;
+    private readonly IExplainTreeLayoutBuilder _treeLayoutBuilder;
+    private readonly PropertyChangedEventHandler _canvasPropertyChangedHandler;
 
     private bool _isVisible;
     private bool _isLoading;
+    private bool _isSimulated = true;
+    private bool _includeAnalyze;
+    private bool _includeBuffers;
+    private ExplainStep? _selectedStep;
+    private string? _highlightedTableName;
+    private string _rawOutput = "";
+    private double? _planningTimeMs;
+    private double? _executionTimeMs;
+    private ExplainSnapshot? _selectedSnapshotA;
+    private ExplainSnapshot? _selectedSnapshotB;
+    private string? _selectedSuggestionSql;
+    private bool _isTreeMode;
+    private int _snapshotSequence;
     private string _sql = "";
     private DatabaseProvider _provider = DatabaseProvider.Postgres;
     private string? _errorMessage;
 
-    public ExplainPlanViewModel(CanvasViewModel canvas) => _canvas = canvas;
+    public ExplainPlanViewModel(
+        CanvasViewModel canvas,
+        ILogger<ExplainPlanViewModel>? logger = null,
+        IExplainExecutor? explainExecutor = null,
+        IExplainNodeToStepMapper? nodeToStepMapper = null,
+        IExplainCostDistributionCalculator? costDistributionCalculator = null,
+        IExplainExecutionModeEvaluator? executionModeEvaluator = null,
+        IExplainSimulationLatencyOptions? simulationLatencyOptions = null,
+        IExplainSqlSafetyEvaluator? sqlSafetyEvaluator = null,
+        IExplainSqlPreviewTextResolver? sqlPreviewTextResolver = null,
+        IExplainHighlightedTableResolver? highlightedTableResolver = null,
+        IExplainPlanExportFormatter? exportFormatter = null,
+        IExplainDaliboUrlBuilder? daliboUrlBuilder = null,
+        IExplainPlanComparisonBuilder? comparisonBuilder = null,
+        IExplainIndexSuggestionEngine? indexSuggestionEngine = null,
+        IExplainTreeLayoutBuilder? treeLayoutBuilder = null
+    )
+    {
+        _canvas = canvas;
+        _logger = logger ?? NullLogger<ExplainPlanViewModel>.Instance;
+        _explainExecutor = explainExecutor ?? new ExplainExecutor();
+        _nodeToStepMapper = nodeToStepMapper ?? new ExplainNodeToStepMapper();
+        _costDistributionCalculator = costDistributionCalculator ?? new ExplainCostDistributionCalculator();
+        _executionModeEvaluator = executionModeEvaluator ?? new ExplainExecutionModeEvaluator();
+        _simulationLatencyOptions = simulationLatencyOptions ?? new ExplainSimulationLatencyOptions();
+        _sqlSafetyEvaluator = sqlSafetyEvaluator ?? new ExplainSqlSafetyEvaluator();
+        _sqlPreviewTextResolver = sqlPreviewTextResolver ?? new ExplainSqlPreviewTextResolver();
+        _highlightedTableResolver = highlightedTableResolver ?? new ExplainHighlightedTableResolver();
+        _exportFormatter = exportFormatter ?? new ExplainPlanExportFormatter();
+        _daliboUrlBuilder = daliboUrlBuilder ?? new ExplainDaliboUrlBuilder();
+        _comparisonBuilder = comparisonBuilder ?? new ExplainPlanComparisonBuilder();
+        _indexSuggestionEngine = indexSuggestionEngine ?? new ExplainIndexSuggestionEngine();
+        _treeLayoutBuilder = treeLayoutBuilder ?? new ExplainTreeLayoutBuilder();
+        SelectStepCommand = new RelayCommand<ExplainStep>(SelectStep);
+        CaptureSnapshotCommand = new RelayCommand(CaptureSnapshot, () => Steps.Count > 0);
+        _canvasPropertyChangedHandler = OnCanvasPropertyChanged;
+        _canvas.PropertyChanged += _canvasPropertyChangedHandler;
+        UpdateSimulationFlag();
+    }
 
     // ── Visibility ────────────────────────────────────────────────────────────
 
@@ -61,7 +133,14 @@ public sealed class ExplainPlanViewModel : ViewModelBase
     public string Sql
     {
         get => _sql;
-        private set => Set(ref _sql, value);
+        private set
+        {
+            if (!Set(ref _sql, value))
+                return;
+
+            RaisePropertyChanged(nameof(SqlTooltipText));
+            RaisePropertyChanged(nameof(HasAnalyzeDmlWarning));
+        }
     }
 
     public DatabaseProvider Provider
@@ -70,8 +149,16 @@ public sealed class ExplainPlanViewModel : ViewModelBase
         private set
         {
             Set(ref _provider, value);
+            if (!CanUseBuffersOption && _includeBuffers)
+                _includeBuffers = false;
             RaisePropertyChanged(nameof(ProviderLabel));
             RaisePropertyChanged(nameof(ExplainHeader));
+            RaisePropertyChanged(nameof(CanUseAnalyzeOptions));
+            RaisePropertyChanged(nameof(CanUseBuffersOption));
+            RaisePropertyChanged(nameof(IncludeBuffers));
+            RaisePropertyChanged(nameof(HasAnalyzeDmlWarning));
+            RaisePropertyChanged(nameof(CanOpenDalibo));
+            UpdateSimulationFlag();
         }
     }
 
@@ -93,14 +180,170 @@ public sealed class ExplainPlanViewModel : ViewModelBase
         _                          => "EXPLAIN",
     };
 
+    public bool IncludeAnalyze
+    {
+        get => _includeAnalyze;
+        set
+        {
+            if (!Set(ref _includeAnalyze, value))
+                return;
+
+            if (!value && IncludeBuffers)
+                IncludeBuffers = false;
+
+            RaisePropertyChanged(nameof(HasAnalyzeDmlWarning));
+        }
+    }
+
+    public bool IncludeBuffers
+    {
+        get => _includeBuffers;
+        set => Set(ref _includeBuffers, value && IncludeAnalyze && CanUseBuffersOption);
+    }
+
+    public bool CanUseAnalyzeOptions =>
+        Provider is DatabaseProvider.Postgres or DatabaseProvider.MySql or DatabaseProvider.SqlServer;
+    public bool CanUseBuffersOption => Provider == DatabaseProvider.Postgres;
+    public bool HasAnalyzeDmlWarning =>
+        IncludeAnalyze && CanUseAnalyzeOptions && _sqlSafetyEvaluator.LooksMutating(Sql);
+    public string AnalyzeDmlWarningText => L(
+        "explain.analyzeDmlWarning",
+        "Analyze executes the query. This SQL appears to be data-mutating (INSERT/UPDATE/DELETE/ALTER/DROP/TRUNCATE)."
+    );
+
+    public bool IsSimulated
+    {
+        get => _isSimulated;
+        private set => Set(ref _isSimulated, value);
+    }
+    public string SqlTooltipText => _sqlPreviewTextResolver.Resolve(_sql);
+    public string? HighlightedTableName
+    {
+        get => _highlightedTableName;
+        private set => Set(ref _highlightedTableName, value);
+    }
+    public string RawOutput
+    {
+        get => _rawOutput;
+        private set
+        {
+            if (!Set(ref _rawOutput, value))
+                return;
+
+            RaisePropertyChanged(nameof(HasRawOutput));
+            RaisePropertyChanged(nameof(CanOpenDalibo));
+        }
+    }
+    public bool HasRawOutput => !string.IsNullOrWhiteSpace(_rawOutput);
+    public bool CanOpenDalibo => Provider == DatabaseProvider.Postgres && !string.IsNullOrWhiteSpace(BuildDaliboUrl());
+
     // ── Results ───────────────────────────────────────────────────────────────
 
     public ObservableCollection<ExplainStep> Steps { get; } = [];
+    public ObservableCollection<ExplainSnapshot> Snapshots { get; } = [];
+    public ObservableCollection<ExplainComparisonRow> ComparisonRows { get; } = [];
+    public ObservableCollection<ExplainIndexSuggestion> IndexSuggestions { get; } = [];
+    public ObservableCollection<ExplainHistoryItem> History { get; } = [];
+    public ObservableCollection<ExplainTreeVisualNode> TreeNodes { get; } = [];
+    public ObservableCollection<ExplainTreeVisualEdge> TreeEdges { get; } = [];
 
     public bool HasData => Steps.Count > 0 && !_isLoading;
+    public ExplainStep? SelectedStep
+    {
+        get => _selectedStep;
+        private set
+        {
+            if (!Set(ref _selectedStep, value))
+                return;
+
+            RaisePropertyChanged(nameof(HasSelectedStep));
+            RaisePropertyChanged(nameof(SelectedStepTitle));
+            RaisePropertyChanged(nameof(SelectedStepDetailText));
+            RaisePropertyChanged(nameof(SelectedStepEstimatedRowsText));
+            RaisePropertyChanged(nameof(SelectedStepActualRowsText));
+            RaisePropertyChanged(nameof(SelectedStepRowsErrorText));
+            RaisePropertyChanged(nameof(SelectedStepActualTimeText));
+            RaisePropertyChanged(nameof(SelectedStepLoopsText));
+            RaisePropertyChanged(nameof(SelectedStepSuggestionText));
+        }
+    }
+    public bool HasSelectedStep => SelectedStep is not null;
+    public string SelectedStepTitle => SelectedStep?.Operation ?? string.Empty;
+    public string SelectedStepDetailText => SelectedStep?.Detail ?? "No details available.";
+    public string SelectedStepEstimatedRowsText =>
+        SelectedStep?.EstimatedRows.HasValue == true
+            ? SelectedStep.EstimatedRows.Value.ToString("N0", CultureInfo.InvariantCulture)
+            : "–";
+    public string SelectedStepActualRowsText =>
+        SelectedStep?.ActualRows.HasValue == true
+            ? SelectedStep.ActualRows.Value.ToString("N0", CultureInfo.InvariantCulture)
+            : "–";
+    public string SelectedStepRowsErrorText => SelectedStep?.RowsErrorText ?? "–";
+    public string SelectedStepActualTimeText => SelectedStep?.ActualTimeText ?? "–";
+    public string SelectedStepLoopsText => SelectedStep?.ActualLoopsText ?? "–";
+    public string SelectedStepSuggestionText =>
+        SelectedStep?.IsStaleStats == true
+            ? "High estimate mismatch detected. Refresh table statistics (ANALYZE/UPDATE STATISTICS)."
+            : "No optimization hint for this step.";
+    public string PlanningTimeText => _planningTimeMs.HasValue
+        ? _planningTimeMs.Value.ToString("0.###", CultureInfo.InvariantCulture) + " ms"
+        : "–";
+    public string ExecutionTimeText => _executionTimeMs.HasValue ? $"{_executionTimeMs.Value:0.###} ms" : "–";
+    public bool HasTimingData => _planningTimeMs.HasValue || _executionTimeMs.HasValue;
 
     public int AlertCount => Steps.Count(s => s.IsExpensive);
     public bool HasAlerts => AlertCount > 0;
+    public ICommand SelectStepCommand { get; }
+    public RelayCommand CaptureSnapshotCommand { get; }
+    public ExplainSnapshot? SelectedSnapshotA
+    {
+        get => _selectedSnapshotA;
+        set
+        {
+            if (!Set(ref _selectedSnapshotA, value))
+                return;
+
+            RebuildComparisonRows();
+        }
+    }
+    public ExplainSnapshot? SelectedSnapshotB
+    {
+        get => _selectedSnapshotB;
+        set
+        {
+            if (!Set(ref _selectedSnapshotB, value))
+                return;
+
+            RebuildComparisonRows();
+        }
+    }
+    public bool CanCompareSnapshots => Snapshots.Count >= 2;
+    public bool HasComparisonRows => ComparisonRows.Count > 0;
+    public bool HasIndexSuggestions => IndexSuggestions.Count > 0;
+    public bool HasHistory => History.Count > 0;
+    public bool IsTreeMode
+    {
+        get => _isTreeMode;
+        set
+        {
+            if (!Set(ref _isTreeMode, value))
+                return;
+
+            RaisePropertyChanged(nameof(IsListMode));
+            RaisePropertyChanged(nameof(ShowListView));
+            RaisePropertyChanged(nameof(ShowTreeView));
+        }
+    }
+    public bool IsListMode => !IsTreeMode;
+    public bool ShowListView => HasData && !IsTreeMode;
+    public bool ShowTreeView => HasData && IsTreeMode;
+    public double TreeCanvasWidth { get; private set; }
+    public double TreeCanvasHeight { get; private set; }
+    public string? SelectedSuggestionSql
+    {
+        get => _selectedSuggestionSql;
+        private set => Set(ref _selectedSuggestionSql, value);
+    }
 
     // ── Public API ────────────────────────────────────────────────────────────
 
@@ -109,6 +352,7 @@ public sealed class ExplainPlanViewModel : ViewModelBase
         Sql      = _canvas.LiveSql.RawSql;
         Provider = _canvas.LiveSql.Provider;
         IsVisible = true;
+        UpdateSimulationFlag();
 
         // Auto-run on open with explicit exception handling
         _ = RunExplainAsyncSafe();
@@ -124,13 +368,36 @@ public sealed class ExplainPlanViewModel : ViewModelBase
         {
             // Log or handle exception in fire-and-forget context
             // Prevents unhandled exceptions from crashing the app
-            ErrorMessage = $"Explain plan error: {ex.Message}";
+            ErrorMessage = string.Format(
+                L("explain.errorWithReason", "Explain plan error: {0}"),
+                ex.Message
+            );
             IsLoading = false;
-            System.Diagnostics.Debug.WriteLine($"[ExplainPlan] Unhandled exception in fire-and-forget: {ex}");
+            _logger.LogError(ex, "Unhandled exception in fire-and-forget explain plan run");
         }
     }
 
-    public void Close() => IsVisible = false;
+    public void Close()
+    {
+        IsVisible = false;
+        SelectedStep = null;
+        HighlightedTableName = null;
+        SelectedSnapshotA = null;
+        SelectedSnapshotB = null;
+        IndexSuggestions.Clear();
+        SelectedSuggestionSql = null;
+        _planningTimeMs = null;
+        _executionTimeMs = null;
+        History.Clear();
+        TreeNodes.Clear();
+        TreeEdges.Clear();
+        TreeCanvasWidth = 0;
+        TreeCanvasHeight = 0;
+        RaisePropertyChanged(nameof(HasHistory));
+        RaisePropertyChanged(nameof(PlanningTimeText));
+        RaisePropertyChanged(nameof(ExecutionTimeText));
+        RaisePropertyChanged(nameof(HasTimingData));
+    }
 
     // ── Run ───────────────────────────────────────────────────────────────────
 
@@ -138,16 +405,38 @@ public sealed class ExplainPlanViewModel : ViewModelBase
     {
         if (string.IsNullOrWhiteSpace(_sql))
         {
-            ErrorMessage = "No SQL to explain. Build a query on the canvas first.";
+            ErrorMessage = L("explain.noSql", "No SQL to explain. Build a query on the canvas first.");
             return;
         }
 
         IsLoading = true;
         ErrorMessage = null;
         Steps.Clear();
+        SelectedStep = null;
+        HighlightedTableName = null;
+        RawOutput = string.Empty;
+        _planningTimeMs = null;
+        _executionTimeMs = null;
+        IndexSuggestions.Clear();
+        SelectedSuggestionSql = null;
+        History.Clear();
+        TreeNodes.Clear();
+        TreeEdges.Clear();
+        TreeCanvasWidth = 0;
+        TreeCanvasHeight = 0;
         RaisePropertyChanged(nameof(HasData));
         RaisePropertyChanged(nameof(AlertCount));
         RaisePropertyChanged(nameof(HasAlerts));
+        RaisePropertyChanged(nameof(HasIndexSuggestions));
+        RaisePropertyChanged(nameof(HasHistory));
+        RaisePropertyChanged(nameof(PlanningTimeText));
+        RaisePropertyChanged(nameof(ExecutionTimeText));
+        RaisePropertyChanged(nameof(HasTimingData));
+        RaisePropertyChanged(nameof(ShowListView));
+        RaisePropertyChanged(nameof(ShowTreeView));
+        RaisePropertyChanged(nameof(TreeCanvasWidth));
+        RaisePropertyChanged(nameof(TreeCanvasHeight));
+        CaptureSnapshotCommand.NotifyCanExecuteChanged();
 
         // Refresh in case SQL changed since Open()
         Sql      = _canvas.LiveSql.RawSql;
@@ -155,29 +444,54 @@ public sealed class ExplainPlanViewModel : ViewModelBase
 
         try
         {
-            // Simulate network/DB round-trip
-            await Task.Delay(AppConstants.ExplainPlanRefreshMs);
+            int simulatedDelayMs = _simulationLatencyOptions.ResolveDelayMs();
+            if (simulatedDelayMs > 0)
+                await Task.Delay(simulatedDelayMs);
 
-            var steps = _provider switch
-            {
-                DatabaseProvider.Postgres  => SimulatePostgres(_sql),
-                DatabaseProvider.MySql     => SimulateMySql(_sql),
-                DatabaseProvider.SqlServer => SimulateSqlServer(_sql),
-                _                          => SimulatePostgres(_sql),
-            };
+            ExplainResult result = await _explainExecutor.RunAsync(
+                _sql,
+                _provider,
+                _canvas.ActiveConnectionConfig,
+                new ExplainOptions(
+                    IncludeAnalyze: IncludeAnalyze,
+                    IncludeBuffers: IncludeBuffers,
+                    Format: ExplainFormat.Json
+                ),
+                CancellationToken.None
+            );
+            IsSimulated = result.IsSimulated;
+            RawOutput = result.RawOutput;
+            _planningTimeMs = result.PlanningTimeMs;
+            _executionTimeMs = result.ExecutionTimeMs;
+            RaisePropertyChanged(nameof(PlanningTimeText));
+            RaisePropertyChanged(nameof(ExecutionTimeText));
+            RaisePropertyChanged(nameof(HasTimingData));
+            IReadOnlyList<ExplainStep> steps = _nodeToStepMapper.Map(result.Nodes);
+            _costDistributionCalculator.Apply(steps);
+            IReadOnlyList<ExplainIndexSuggestion> suggestions = _indexSuggestionEngine.Build(steps, _provider);
 
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
-                foreach (var s in steps)
+                foreach (ExplainStep s in steps)
                     Steps.Add(s);
+                IndexSuggestions.Clear();
+                foreach (ExplainIndexSuggestion suggestion in suggestions)
+                    IndexSuggestions.Add(suggestion);
 
                 RaisePropertyChanged(nameof(HasData));
                 RaisePropertyChanged(nameof(AlertCount));
                 RaisePropertyChanged(nameof(HasAlerts));
+                RaisePropertyChanged(nameof(HasIndexSuggestions));
+                CaptureSnapshotCommand.NotifyCanExecuteChanged();
+                AppendHistoryEntry(steps);
+                RefreshTreeLayout(steps);
+                RaisePropertyChanged(nameof(ShowListView));
+                RaisePropertyChanged(nameof(ShowTreeView));
             });
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Failed to generate explain plan");
             ErrorMessage = ex.Message;
         }
         finally
@@ -186,323 +500,186 @@ public sealed class ExplainPlanViewModel : ViewModelBase
         }
     }
 
-    // ── Simulation helpers ────────────────────────────────────────────────────
-
-    private record SqlContext(
-        List<string> Tables,
-        bool HasWhere,
-        bool HasOrderBy,
-        bool HasLimit,
-        bool HasJoin,
-        int JoinCount
-    );
-
-    private static SqlContext ParseSql(string sql)
+    private static string L(string key, string fallback)
     {
-        string up = sql.ToUpperInvariant();
+        string value = LocalizationService.Instance[key];
+        return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
+    }
 
-        // Extract table names after FROM / JOIN
-        var tableMatches = Regex.Matches(sql,
-            @"(?:FROM|JOIN)\s+([a-zA-Z_][a-zA-Z0-9_]*)",
-            RegexOptions.IgnoreCase);
-        var tables = tableMatches
-            .Select(m => m.Groups[1].Value.ToLowerInvariant())
-            .Distinct()
-            .ToList();
+    private void OnCanvasPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(CanvasViewModel.ActiveConnectionConfig))
+            UpdateSimulationFlag();
+    }
 
-        if (tables.Count == 0)
-            tables.Add("table1");
+    private void UpdateSimulationFlag()
+    {
+        DatabaseProvider provider = _canvas.ActiveConnectionConfig?.Provider ?? _canvas.LiveSql.Provider;
+        IsSimulated = _executionModeEvaluator.IsSimulated(provider, _canvas.ActiveConnectionConfig);
+    }
 
-        int joinCount = Regex.Matches(up, @"\bJOIN\b").Count;
+    private void SelectStep(ExplainStep? step)
+    {
+        if (step is null)
+            return;
 
-        return new SqlContext(
-            Tables: tables,
-            HasWhere:   up.Contains("WHERE"),
-            HasOrderBy: up.Contains("ORDER BY"),
-            HasLimit:   up.Contains("LIMIT") || up.Contains("TOP"),
-            HasJoin:    joinCount > 0,
-            JoinCount:  joinCount
+        SelectedStep = step;
+        HighlightedTableName = _highlightedTableResolver.Resolve(step);
+    }
+
+    public string BuildExportText()
+    {
+        return _exportFormatter.Format(
+            new ExplainPlanExportData(
+                ProviderLabel: ProviderLabel,
+                Sql: Sql,
+                Steps: Steps.ToList(),
+                PlanningTimeMs: _planningTimeMs,
+                ExecutionTimeMs: _executionTimeMs,
+                GeneratedAtUtc: DateTimeOffset.UtcNow
+            )
         );
     }
 
-    // ── PostgreSQL simulation ─────────────────────────────────────────────────
+    public string? BuildDaliboUrl() => _daliboUrlBuilder.Build(_rawOutput);
 
-    private static List<ExplainStep> SimulatePostgres(string sql)
+    public void SelectIndexSuggestion(ExplainIndexSuggestion? suggestion)
     {
-        var ctx   = ParseSql(sql);
-        var steps = new List<ExplainStep>();
-        var rng   = new Random(sql.Length ^ 0x1A2B3C);
-        int stepNo = 1;
+        if (suggestion is null)
+            return;
 
-        double baseCost  = rng.Next(200, 600);
-        double scanCost1 = rng.Next(100, 400);
-        long   scanRows1 = rng.Next(1000, 50000);
-        double totalCost = baseCost + scanCost1;
-
-        // Top-level node
-        if (ctx.HasLimit)
-        {
-            steps.Add(new ExplainStep
-            {
-                StepNumber    = stepNo++,
-                Operation     = "Limit",
-                Detail        = $"cost=0.00..{totalCost:F2}  rows=100  width=64",
-                EstimatedCost = totalCost,
-                EstimatedRows = 100,
-                IndentLevel   = 0,
-            });
-        }
-
-        int topIndent = ctx.HasLimit ? 1 : 0;
-
-        if (ctx.HasJoin)
-        {
-            string joinType = ctx.JoinCount > 1 ? "Hash Join" : "Hash Join";
-            steps.Add(new ExplainStep
-            {
-                StepNumber    = stepNo++,
-                Operation     = joinType,
-                Detail        = $"cost={baseCost:F2}..{totalCost:F2}  rows={scanRows1 / 10}  width=64",
-                EstimatedCost = totalCost,
-                EstimatedRows = scanRows1 / 10,
-                IndentLevel   = topIndent,
-                IsExpensive   = false,
-                AlertLabel    = "HASH",
-            });
-
-            if (ctx.Tables.Count >= 2)
-            {
-                steps.Add(new ExplainStep
-                {
-                    StepNumber    = stepNo++,
-                    Operation     = $"Hash Cond: ({ctx.Tables[0]}.id = {ctx.Tables[1]}.id)",
-                    EstimatedCost = null,
-                    EstimatedRows = null,
-                    IndentLevel   = topIndent + 1,
-                });
-            }
-
-            // First table scan
-            bool useIndex1 = rng.Next(2) == 0;
-            steps.Add(new ExplainStep
-            {
-                StepNumber    = stepNo++,
-                Operation     = useIndex1 ? $"Index Scan on {ctx.Tables[0]}" : $"Seq Scan on {ctx.Tables[0]}",
-                Detail        = $"cost=0.00..{scanCost1:F2}  rows={scanRows1}  width=32",
-                EstimatedCost = scanCost1,
-                EstimatedRows = scanRows1,
-                IndentLevel   = topIndent + 1,
-                IsExpensive   = !useIndex1,
-                AlertLabel    = useIndex1 ? "" : "SEQ SCAN",
-            });
-
-            if (ctx.HasWhere)
-            {
-                steps.Add(new ExplainStep
-                {
-                    StepNumber  = stepNo++,
-                    Operation   = "Filter: (condition)",
-                    IndentLevel = topIndent + 2,
-                });
-            }
-
-            // Second table hash + scan
-            double scanCost2 = rng.Next(50, 200);
-            long   scanRows2 = rng.Next(500, 10000);
-            steps.Add(new ExplainStep
-            {
-                StepNumber    = stepNo++,
-                Operation     = "Hash",
-                Detail        = $"cost={scanCost2:F2}..{scanCost2:F2}  rows={scanRows2}  width=32",
-                EstimatedCost = scanCost2,
-                EstimatedRows = scanRows2,
-                IndentLevel   = topIndent + 1,
-            });
-
-            string tbl2 = ctx.Tables.Count >= 2 ? ctx.Tables[1] : ctx.Tables[0];
-            bool useIndex2 = rng.Next(2) == 0;
-            steps.Add(new ExplainStep
-            {
-                StepNumber    = stepNo++,
-                Operation     = useIndex2 ? $"Index Scan on {tbl2}" : $"Seq Scan on {tbl2}",
-                Detail        = $"cost=0.00..{scanCost2:F2}  rows={scanRows2}  width=32",
-                EstimatedCost = scanCost2,
-                EstimatedRows = scanRows2,
-                IndentLevel   = topIndent + 2,
-                IsExpensive   = !useIndex2,
-                AlertLabel    = useIndex2 ? "" : "SEQ SCAN",
-            });
-        }
-        else
-        {
-            // Single table scan
-            bool useIndex = rng.Next(3) != 0;
-            steps.Add(new ExplainStep
-            {
-                StepNumber    = stepNo++,
-                Operation     = useIndex ? $"Index Scan on {ctx.Tables[0]}" : $"Seq Scan on {ctx.Tables[0]}",
-                Detail        = $"cost=0.00..{scanCost1:F2}  rows={scanRows1}  width=64",
-                EstimatedCost = scanCost1,
-                EstimatedRows = scanRows1,
-                IndentLevel   = topIndent,
-                IsExpensive   = !useIndex,
-                AlertLabel    = useIndex ? "" : "SEQ SCAN",
-            });
-
-            if (ctx.HasWhere)
-            {
-                steps.Add(new ExplainStep
-                {
-                    StepNumber  = stepNo++,
-                    Operation   = "Filter: (condition)",
-                    IndentLevel = topIndent + 1,
-                });
-            }
-        }
-
-        if (ctx.HasOrderBy)
-        {
-            steps.Insert(ctx.HasLimit ? 1 : 0, new ExplainStep
-            {
-                StepNumber    = stepNo++,
-                Operation     = "Sort",
-                Detail        = $"cost={baseCost / 2:F2}..{baseCost:F2}  rows={scanRows1 / 5}  width=64",
-                EstimatedCost = baseCost,
-                EstimatedRows = scanRows1 / 5,
-                IndentLevel   = topIndent,
-                IsExpensive   = true,
-                AlertLabel    = "SORT",
-            });
-        }
-
-        return steps;
+        SelectedSuggestionSql = suggestion.Sql;
     }
 
-    // ── MySQL simulation ──────────────────────────────────────────────────────
+    public void SetListMode() => IsTreeMode = false;
 
-    private static List<ExplainStep> SimulateMySql(string sql)
+    public void SetTreeMode() => IsTreeMode = true;
+
+    public IReadOnlyList<ExplainHistoryState> ExportHistoryState() =>
+        History.Select(h => h.ToState()).ToList();
+
+    public void ImportHistoryState(IReadOnlyList<ExplainHistoryState>? states)
     {
-        var ctx   = ParseSql(sql);
-        var steps = new List<ExplainStep>();
-        var rng   = new Random(sql.Length ^ 0x2C3D4E);
-        int id    = 1;
-
-        foreach (string table in ctx.Tables)
+        History.Clear();
+        if (states is not null)
         {
-            bool useIndex = rng.Next(3) != 0;
-            long rows     = rng.Next(100, 50000);
-            bool hasExtra = ctx.HasWhere && table == ctx.Tables[0];
-
-            string type   = useIndex ? "ref"  : "ALL";
-            string key    = useIndex ? "idx_" + table : "NULL";
-            string extra  = hasExtra ? "Using where" : (ctx.HasOrderBy ? "Using filesort" : "");
-
-            bool isFilesort = extra.Contains("filesort");
-
-            steps.Add(new ExplainStep
-            {
-                StepNumber    = id,
-                Operation     = table,
-                Detail        = $"select_type=SIMPLE  type={type}  key={key}  Extra={extra}",
-                EstimatedRows = rows,
-                IndentLevel   = 0,
-                IsExpensive   = !useIndex || isFilesort,
-                AlertLabel    = !useIndex ? "SEQ SCAN" : (isFilesort ? "SORT" : ""),
-            });
-
-            id++;
+            foreach (ExplainHistoryState state in states.TakeLast(10))
+                History.Add(ExplainHistoryItem.FromState(state));
         }
 
-        return steps;
+        RaisePropertyChanged(nameof(HasHistory));
     }
 
-    // ── SQL Server simulation ─────────────────────────────────────────────────
-
-    private static List<ExplainStep> SimulateSqlServer(string sql)
+    public void CaptureSnapshot()
     {
-        var ctx   = ParseSql(sql);
-        var steps = new List<ExplainStep>();
-        var rng   = new Random(sql.Length ^ 0x3E4F5A);
-        int stepNo = 1;
+        if (Steps.Count == 0)
+            return;
 
-        if (ctx.HasLimit)
-        {
-            steps.Add(new ExplainStep
-            {
-                StepNumber    = stepNo++,
-                Operation     = "Top",
-                Detail        = "TOP EXPRESSION: (100)",
-                EstimatedCost = 0.01,
-                EstimatedRows = 100,
-                IndentLevel   = 0,
-            });
-        }
-
-        int topIndent = ctx.HasLimit ? 1 : 0;
-
-        if (ctx.HasJoin)
-        {
-            steps.Add(new ExplainStep
-            {
-                StepNumber    = stepNo++,
-                Operation     = "Nested Loops",
-                Detail        = "Inner Join",
-                EstimatedCost = rng.Next(100, 500),
-                EstimatedRows = rng.Next(500, 5000),
-                IndentLevel   = topIndent,
-                IsExpensive   = false,
-                AlertLabel    = "LOOP",
-            });
-
-            foreach (string table in ctx.Tables.Take(2))
-            {
-                bool useIndex = rng.Next(3) != 0;
-                long rows     = rng.Next(500, 30000);
-                steps.Add(new ExplainStep
+        var clonedSteps = Steps
+            .Select(s =>
+                new ExplainStep
                 {
-                    StepNumber    = stepNo++,
-                    Operation     = useIndex ? $"Index Seek ({table})" : $"Table Scan ({table})",
-                    Detail        = ctx.HasWhere && table == ctx.Tables[0] ? "Predicate: condition" : null,
-                    EstimatedCost = rng.Next(10, 300),
-                    EstimatedRows = rows,
-                    IndentLevel   = topIndent + 1,
-                    IsExpensive   = !useIndex,
-                    AlertLabel    = useIndex ? "" : "SEQ SCAN",
-                });
+                    NodeId = s.NodeId,
+                    ParentNodeId = s.ParentNodeId,
+                    StepNumber = s.StepNumber,
+                    Operation = s.Operation,
+                    Detail = s.Detail,
+                    RelationName = s.RelationName,
+                    IndexName = s.IndexName,
+                    Predicate = s.Predicate,
+                    StartupCost = s.StartupCost,
+                    EstimatedCost = s.EstimatedCost,
+                    EstimatedRows = s.EstimatedRows,
+                    ActualStartupTimeMs = s.ActualStartupTimeMs,
+                    ActualTotalTimeMs = s.ActualTotalTimeMs,
+                    ActualLoops = s.ActualLoops,
+                    ActualRows = s.ActualRows,
+                    IndentLevel = s.IndentLevel,
+                    IsExpensive = s.IsExpensive,
+                    AlertLabel = s.AlertLabel,
+                    CostFraction = s.CostFraction,
+                }
+            )
+            .ToList();
+
+        _snapshotSequence++;
+        var snapshot = new ExplainSnapshot(
+            Label: $"Snapshot {_snapshotSequence}",
+            CreatedAtUtc: DateTimeOffset.UtcNow,
+            Steps: clonedSteps
+        );
+
+        Snapshots.Add(snapshot);
+        while (Snapshots.Count > 5)
+            Snapshots.RemoveAt(0);
+
+        SelectedSnapshotB = Snapshots.LastOrDefault();
+        if (SelectedSnapshotA is null || ReferenceEquals(SelectedSnapshotA, SelectedSnapshotB))
+            SelectedSnapshotA = Snapshots.Count >= 2 ? Snapshots[^2] : null;
+
+        RaisePropertyChanged(nameof(CanCompareSnapshots));
+        RebuildComparisonRows();
+    }
+
+    private void RebuildComparisonRows()
+    {
+        ComparisonRows.Clear();
+        if (SelectedSnapshotA is null || SelectedSnapshotB is null)
+        {
+            RaisePropertyChanged(nameof(HasComparisonRows));
+            return;
+        }
+
+        IReadOnlyList<ExplainComparisonRow> rows = _comparisonBuilder.Build(SelectedSnapshotA, SelectedSnapshotB);
+        foreach (ExplainComparisonRow row in rows)
+            ComparisonRows.Add(row);
+
+        RaisePropertyChanged(nameof(HasComparisonRows));
+    }
+
+    private void AppendHistoryEntry(IReadOnlyList<ExplainStep> steps)
+    {
+        string topOperation = steps.FirstOrDefault()?.Operation ?? "Plan";
+        double? topCost = steps.FirstOrDefault()?.EstimatedCost;
+        int alerts = steps.Count(s => s.IsExpensive);
+
+        History.Insert(
+            0,
+            new ExplainHistoryItem
+            {
+                TimestampUtc = DateTimeOffset.UtcNow,
+                TopOperation = topOperation,
+                TopCost = topCost,
+                AlertCount = alerts,
             }
-        }
-        else
-        {
-            bool useIndex = rng.Next(3) != 0;
-            long rows     = rng.Next(1000, 50000);
-            steps.Add(new ExplainStep
-            {
-                StepNumber    = stepNo++,
-                Operation     = useIndex ? $"Index Seek ({ctx.Tables[0]})" : $"Table Scan ({ctx.Tables[0]})",
-                Detail        = ctx.HasWhere ? "Predicate: condition" : null,
-                EstimatedCost = rng.Next(50, 400),
-                EstimatedRows = rows,
-                IndentLevel   = topIndent,
-                IsExpensive   = !useIndex,
-                AlertLabel    = useIndex ? "" : "SEQ SCAN",
-            });
-        }
+        );
 
-        if (ctx.HasOrderBy)
-        {
-            steps.Insert(ctx.HasLimit ? 1 : 0, new ExplainStep
-            {
-                StepNumber    = stepNo++,
-                Operation     = "Sort",
-                Detail        = "ORDER BY",
-                EstimatedCost = rng.Next(100, 800),
-                EstimatedRows = rng.Next(500, 5000),
-                IndentLevel   = topIndent,
-                IsExpensive   = true,
-                AlertLabel    = "SORT",
-            });
-        }
+        while (History.Count > 10)
+            History.RemoveAt(History.Count - 1);
 
-        return steps;
+        RaisePropertyChanged(nameof(HasHistory));
+    }
+
+    public void RefreshTreeLayout()
+    {
+        RefreshTreeLayout(Steps.ToList());
+    }
+
+    private void RefreshTreeLayout(IReadOnlyList<ExplainStep> steps)
+    {
+        ExplainTreeLayoutResult layout = _treeLayoutBuilder.Build(steps);
+
+        TreeNodes.Clear();
+        foreach (ExplainTreeVisualNode node in layout.Nodes)
+            TreeNodes.Add(node);
+
+        TreeEdges.Clear();
+        foreach (ExplainTreeVisualEdge edge in layout.Edges)
+            TreeEdges.Add(edge);
+
+        TreeCanvasWidth = layout.CanvasWidth;
+        TreeCanvasHeight = layout.CanvasHeight;
+        RaisePropertyChanged(nameof(TreeCanvasWidth));
+        RaisePropertyChanged(nameof(TreeCanvasHeight));
     }
 }

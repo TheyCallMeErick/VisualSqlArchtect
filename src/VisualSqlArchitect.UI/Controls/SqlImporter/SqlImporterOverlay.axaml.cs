@@ -58,4 +58,10 @@ public sealed partial class SqlImporterOverlay : UserControl
 
         vm.FocusReportItem(item);
     }
+
+    private void OnCloseClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is SqlImporterViewModel vm)
+            vm.Close();
+    }
 }

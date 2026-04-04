@@ -5,6 +5,9 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.LogicalTree;
 using Avalonia.Media;
+using CanvasControl = Avalonia.Controls.Canvas;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using VisualSqlArchitect.UI.ViewModels;
 using VisualSqlArchitect.UI.ViewModels.UndoRedo.Commands;
 
@@ -12,10 +15,11 @@ namespace VisualSqlArchitect.UI.Controls;
 
 public sealed partial class InfiniteCanvas : Panel
 {
+    private static readonly ILogger<InfiniteCanvas> _logger = NullLogger<InfiniteCanvas>.Instance;
+
     private static void Log(string message)
     {
-        var timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
-        Console.WriteLine($"[{timestamp}] [InfiniteCanvas] {message}");
+        _logger.LogDebug("{Message}", message);
     }
 
     public static readonly StyledProperty<CanvasViewModel?> ViewModelProperty =
@@ -34,7 +38,7 @@ public sealed partial class InfiniteCanvas : Panel
     }
 
     private readonly DotGridBackground _grid = new() { IsHitTestVisible = false };
-    private readonly Canvas _scene = new();
+    private readonly CanvasControl _scene = new();
     private readonly BezierWireLayer _wires = new();
 
     private PinDragInteraction? _pinDrag;
@@ -83,6 +87,10 @@ public sealed partial class InfiniteCanvas : Panel
     private int _wireSyncRetryCount;
     private PinViewModel? _hoveredPin;
     private ConnectionViewModel? _hoveredWire;
+    private bool _isWireInsertModifierPressed;
+    private PinViewModel? _wireInsertPreviewInputPin;
+    private PinViewModel? _wireInsertPreviewOutputPin;
+    private ConnectionViewModel? _wireInsertPreviewInvalidWire;
 
     public InfiniteCanvas()
     {
@@ -265,6 +273,11 @@ public sealed partial class InfiniteCanvas : Panel
                 Log($"    !!! ViewModel.PanOffset changed, calling SyncTransform");
                 SyncTransform();
             }
+            else if (e.PropertyName == nameof(CanvasViewModel.WireCurveMode))
+            {
+                _wires.WireCurveMode = ViewModel.WireCurveMode;
+                _wires.InvalidateVisual();
+            }
         };
         // Initialize from ViewModel (load from persistence) - only on first load
         // After first initialization, preserve _panOffset even if Rebuild is called again
@@ -361,8 +374,7 @@ public sealed partial class InfiniteCanvas : Panel
                 }
                 catch (Exception ex)
                 {
-                    Log($"!!! ERROR in NodePosition PropertyChanged handler: {ex.GetType().Name}: {ex.Message}");
-                    Log($"    StackTrace: {ex.StackTrace}");
+                    _logger.LogError(ex, "Unhandled exception in node position property-changed handler");
                     // Don't rethrow - this could prevent the whole app from continuing
                 }
             };
@@ -469,8 +481,10 @@ public sealed partial class InfiniteCanvas : Panel
             if (c.ToPin is not null)
                 c.ToPoint = c.ToPin.AbsolutePosition;
         }
+        _wires.WireCurveMode = ViewModel.WireCurveMode;
         _wires.Connections = ViewModel.Connections;
         _wires.PendingConnection = _pinDrag?.IsDragging == true ? _pinDrag.LiveWire : null;
+        _wires.InvalidPreviewConnection = _wireInsertPreviewInvalidWire;
         _wires.InvalidateVisual();
         Log($"    SyncWires: {ViewModel.Connections.Count} connections synced");
     }

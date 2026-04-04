@@ -12,6 +12,7 @@ public class CanvasHoverHighlighterTests
     public void ResolveHoverTarget_PrefersConnectedPin_WhenPointerOnConnectedPin()
     {
         var vm = new CanvasViewModel();
+        vm.InitializeDemoNodes();
         AssignDistinctPinPositions(vm);
         var pinDrag = new PinDragInteraction(vm, new Canvas());
 
@@ -35,6 +36,7 @@ public class CanvasHoverHighlighterTests
     public void ApplyHover_WithWire_HighlightsWireAndEndpointPins()
     {
         var vm = new CanvasViewModel();
+        vm.InitializeDemoNodes();
         AssignDistinctPinPositions(vm);
 
         ConnectionViewModel conn = vm.Connections.First(c => c.ToPin is not null);
@@ -50,6 +52,7 @@ public class CanvasHoverHighlighterTests
     public void ClearHover_ResetsAllPinAndWireHighlights()
     {
         var vm = new CanvasViewModel();
+        vm.InitializeDemoNodes();
 
         foreach (PinViewModel p in vm.Nodes.SelectMany(n => n.AllPins))
             p.IsHovered = true;

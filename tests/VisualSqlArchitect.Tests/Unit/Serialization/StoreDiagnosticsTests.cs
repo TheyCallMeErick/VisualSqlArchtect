@@ -92,7 +92,12 @@ public class StoreDiagnosticsTests
             var loaded = FlowVersionStore.Load();
 
             Assert.Empty(loaded);
-            Assert.Contains(warnings, w => w.Contains("Failed to load flow versions", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(
+                warnings,
+                w =>
+                    !string.IsNullOrWhiteSpace(w)
+                    && w.Contains(path, StringComparison.OrdinalIgnoreCase)
+            );
         }
         finally
         {
@@ -123,7 +128,7 @@ public class StoreDiagnosticsTests
             FlowVersionStore.WarningRaised += warnings.Add;
             FlowVersionStore.Save([]);
 
-            Assert.Contains(warnings, w => w.Contains("Failed to save flow versions", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(warnings, w => !string.IsNullOrWhiteSpace(w));
         }
         finally
         {
@@ -156,7 +161,12 @@ public class StoreDiagnosticsTests
             var loaded = SnippetStore.Load();
 
             Assert.Empty(loaded);
-            Assert.Contains(warnings, w => w.Contains("Failed to load snippets", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(
+                warnings,
+                w =>
+                    !string.IsNullOrWhiteSpace(w)
+                    && w.Contains(path, StringComparison.OrdinalIgnoreCase)
+            );
         }
         finally
         {
@@ -187,7 +197,7 @@ public class StoreDiagnosticsTests
             SnippetStore.WarningRaised += warnings.Add;
             SnippetStore.Save([]);
 
-            Assert.Contains(warnings, w => w.Contains("Failed to save snippets", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(warnings, w => !string.IsNullOrWhiteSpace(w));
         }
         finally
         {

@@ -38,7 +38,7 @@ public sealed class PostgresInspector(ConnectionConfig config) : BaseInspector(c
     // ── Tables + Views ────────────────────────────────────────────────────────
 
     protected override async Task<
-        IReadOnlyList<(string, string, TableKind, long?)>
+        IReadOnlyList<(string, string, TableKind, long?, string?)>
     > FetchAllTablesAsync(DbConnection conn, CancellationToken ct)
     {
         // pg_class.relkind: r = ordinary table, v = view, m = materialized view
@@ -50,6 +50,7 @@ public sealed class PostgresInspector(ConnectionConfig config) : BaseInspector(c
                 c.relkind                                                   AS kind,
                 CASE WHEN c.reltuples < 0 THEN NULL
                      ELSE c.reltuples::bigint END                           AS est_rows
+                 ,pg_catalog.obj_description(c.oid, 'pg_class')             AS table_comment
             FROM pg_catalog.pg_class     c
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
             WHERE c.relkind IN ('r', 'v', 'm')
@@ -61,7 +62,7 @@ public sealed class PostgresInspector(ConnectionConfig config) : BaseInspector(c
         await using DbCommand cmd = conn.CreateCommand();
         cmd.CommandText = sql;
 
-        var result = new List<(string, string, TableKind, long?)>();
+        var result = new List<(string, string, TableKind, long?, string?)>();
         await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
         {
@@ -72,7 +73,8 @@ public sealed class PostgresInspector(ConnectionConfig config) : BaseInspector(c
                 _ => TableKind.Table,
             };
             long? rows = reader.IsDBNull(3) ? (long?)null : reader.GetInt64(3);
-            result.Add((reader.GetString(0), reader.GetString(1), kind, rows));
+            string? comment = reader.IsDBNull(4) ? null : reader.GetString(4);
+            result.Add((reader.GetString(0), reader.GetString(1), kind, rows, comment));
         }
 
         return result;
@@ -129,7 +131,8 @@ public sealed class PostgresInspector(ConnectionConfig config) : BaseInspector(c
                     SELECT 1 FROM pg_index i
                     WHERE  i.indrelid = a.attrelid
                       AND  a.attnum   = ANY(i.indkey)
-                )                                                            AS is_indexed
+                                )                                                            AS is_indexed,
+                                pg_catalog.col_description(a.attrelid, a.attnum)            AS col_comment
             FROM pg_catalog.pg_attribute  a
             JOIN pg_catalog.pg_class      cl ON cl.oid = a.attrelid
             JOIN pg_catalog.pg_namespace  n  ON n.oid  = cl.relnamespace
@@ -165,7 +168,8 @@ public sealed class PostgresInspector(ConnectionConfig config) : BaseInspector(c
                     IsPrimaryKey: reader.GetBoolean(9),
                     IsForeignKey: reader.GetBoolean(10),
                     IsUnique: reader.GetBoolean(11),
-                    IsIndexed: reader.GetBoolean(12)
+                    IsIndexed: reader.GetBoolean(12),
+                    Comment: reader.IsDBNull(13) ? null : reader.GetString(13)
                 )
             );
         }
@@ -288,5 +292,49 @@ public sealed class PostgresInspector(ConnectionConfig config) : BaseInspector(c
         }
 
         return relations;
+    }
+
+    protected override async Task<IReadOnlyList<SequenceMetadata>> FetchSequencesAsync(
+        DbConnection conn,
+        CancellationToken ct
+    )
+    {
+        const string sql = """
+            SELECT
+                schemaname,
+                sequencename,
+                start_value,
+                increment_by,
+                min_value,
+                max_value,
+                cycle,
+                cache_size
+            FROM pg_sequences
+            WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+            ORDER BY schemaname, sequencename
+            """;
+
+        await using DbCommand cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
+
+        var sequences = new List<SequenceMetadata>();
+        await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+        {
+            sequences.Add(
+                new SequenceMetadata(
+                    Schema: reader.GetString(0),
+                    Name: reader.GetString(1),
+                    StartValue: reader.IsDBNull(2) ? null : reader.GetInt64(2),
+                    Increment: reader.IsDBNull(3) ? null : reader.GetInt64(3),
+                    MinValue: reader.IsDBNull(4) ? null : reader.GetInt64(4),
+                    MaxValue: reader.IsDBNull(5) ? null : reader.GetInt64(5),
+                    Cycle: reader.IsDBNull(6) ? null : reader.GetBoolean(6),
+                    Cache: reader.IsDBNull(7) ? null : reader.GetInt64(7) > int.MaxValue ? int.MaxValue : (int)reader.GetInt64(7)
+                )
+            );
+        }
+
+        return sequences;
     }
 }

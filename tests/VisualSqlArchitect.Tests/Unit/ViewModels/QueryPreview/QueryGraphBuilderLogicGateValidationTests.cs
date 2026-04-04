@@ -1,11 +1,12 @@
+﻿
 using Avalonia;
 using VisualSqlArchitect.Core;
 using VisualSqlArchitect.Nodes;
 using VisualSqlArchitect.UI.ViewModels;
-using VisualSqlArchitect.UI.ViewModels.QueryPreview.Services;
+using VisualSqlArchitect.UI.Services.QueryPreview;
+using static VisualSqlArchitect.Tests.Unit.ViewModels.QueryPreview.QueryPreviewTestNodeFactory;
 
 namespace VisualSqlArchitect.Tests.Unit.ViewModels.QueryPreview;
-
 public class QueryGraphBuilderLogicGateValidationTests
 {
     [Fact]
@@ -133,26 +134,8 @@ public class QueryGraphBuilderLogicGateValidationTests
         Assert.DoesNotContain("WHERE NULL", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("FETCH NEXT 4 ROWS ONLY", sql, StringComparison.OrdinalIgnoreCase);
     }
-
-    private static NodeViewModel Node(NodeType type) =>
-        new(NodeDefinitionRegistry.Get(type), new Point(0, 0));
-
-    private static NodeViewModel Table(string tableName, params string[] columns) =>
-        new(tableName, columns.Select(c => (c, PinDataType.Number)), new Point(0, 0));
-
-    private static void Connect(
-        CanvasViewModel canvas,
-        NodeViewModel fromNode,
-        string fromPin,
-        NodeViewModel toNode,
-        string toPin)
-    {
-        PinViewModel from = fromNode.OutputPins.First(p => p.Name == fromPin);
-        PinViewModel to = toNode.InputPins.First(p => p.Name == toPin);
-
-        canvas.Connections.Add(new ConnectionViewModel(from, from.AbsolutePosition, to.AbsolutePosition)
-        {
-            ToPin = to,
-        });
-    }
 }
+
+
+
+

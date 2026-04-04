@@ -41,6 +41,17 @@
   <Color x:Key="AccentGlow">#6044B3FF</Color>
   <Color x:Key="Border">#252C3F</Color>
   <Color x:Key="BorderActive">#3B82F6</Color>
+  <Color x:Key="BorderSoft">#1E2335</Color>
+  <Color x:Key="PanelElevated">#1A1E2C</Color>
+  <Color x:Key="PanelMuted">#0E1018</Color>
+  <Color x:Key="InputBg">#131720</Color>
+  <Color x:Key="InputSelection">#1E3A60</Color>
+
+  <!-- Semantic statuses -->
+  <Color x:Key="StatusOk">#4ADE80</Color>
+  <Color x:Key="StatusWarning">#FBBF24</Color>
+  <Color x:Key="StatusError">#EF4444</Color>
+  <Color x:Key="StatusInfo">#60A5FA</Color>
 
      <!-- Semantic button palette -->
      <Color x:Key="BtnPrimaryBg">#2563EB</Color>
@@ -114,11 +125,20 @@
   <SolidColorBrush x:Key="Surface3Brush"       Color="{StaticResource Surface3}"/>
   <SolidColorBrush x:Key="BorderBrush"         Color="{StaticResource Border}"/>
   <SolidColorBrush x:Key="BorderActiveBrush"   Color="{StaticResource BorderActive}"/>
+  <SolidColorBrush x:Key="BorderSoftBrush"     Color="{StaticResource BorderSoft}"/>
   <SolidColorBrush x:Key="TextPrimaryBrush"    Color="{StaticResource TextPrimary}"/>
   <SolidColorBrush x:Key="TextSecondaryBrush"  Color="{StaticResource TextSecondary}"/>
   <SolidColorBrush x:Key="TextMutedBrush"      Color="{StaticResource TextMuted}"/>
   <SolidColorBrush x:Key="AccentBlueBrush"     Color="{StaticResource AccentBlue}"/>
   <SolidColorBrush x:Key="AccentGlowBrush"     Color="{StaticResource AccentGlow}"/>
+  <SolidColorBrush x:Key="PanelElevatedBrush"  Color="{StaticResource PanelElevated}"/>
+  <SolidColorBrush x:Key="PanelMutedBrush"     Color="{StaticResource PanelMuted}"/>
+  <SolidColorBrush x:Key="InputBgBrush"        Color="{StaticResource InputBg}"/>
+  <SolidColorBrush x:Key="InputSelectionBrush" Color="{StaticResource InputSelection}"/>
+  <SolidColorBrush x:Key="StatusOkBrush"       Color="{StaticResource StatusOk}"/>
+  <SolidColorBrush x:Key="StatusWarningBrush"  Color="{StaticResource StatusWarning}"/>
+  <SolidColorBrush x:Key="StatusErrorBrush"    Color="{StaticResource StatusError}"/>
+  <SolidColorBrush x:Key="StatusInfoBrush"     Color="{StaticResource StatusInfo}"/>
      <SolidColorBrush x:Key="MacroBg0Brush"       Color="{StaticResource MacroBg0}"/>
      <SolidColorBrush x:Key="MacroBg1Brush"       Color="{StaticResource MacroBg1}"/>
      <SolidColorBrush x:Key="MacroBg2Brush"       Color="{StaticResource MacroBg2}"/>
@@ -164,8 +184,8 @@
   <!-- ══════════════════════════════════════════════════════════════════════════
        TYPOGRAPHY
   ═══════════════════════════════════════════════════════════════════════════ -->
-  <FontFamily x:Key="MonoFont">JetBrains Mono,Cascadia Code,Consolas,monospace</FontFamily>
-  <FontFamily x:Key="UIFont">Inter,Segoe UI,system-ui,sans-serif</FontFamily>
+  <FontFamily x:Key="MonoFont">JetBrains Mono,IBM Plex Mono,Cascadia Code,Consolas,monospace</FontFamily>
+  <FontFamily x:Key="UIFont">Sora,Manrope,Plus Jakarta Sans,Segoe UI,Arial,sans-serif</FontFamily>
 
   <x:Double x:Key="FontSizeXS">10</x:Double>
   <x:Double x:Key="FontSizeSM">11</x:Double>
@@ -242,9 +262,9 @@
      <CornerRadius x:Key="StartRadiusButton">10</CornerRadius>
      <CornerRadius x:Key="StartRadiusPill">999</CornerRadius>
 
-  <!-- BoxShadow tokens (Avalonia BoxShadow syntax) -->
-  <x:String x:Key="NodeShadow">0 4 24 0 #40000000, 0 1 4 0 #50000000</x:String>
-  <x:String x:Key="NodeShadowSelected">0 0 0 2 #3B82F6, 0 8 32 0 #603B82F6</x:String>
-  <x:String x:Key="PanelShadow">0 8 40 0 #60000000, 0 2 8 0 #40000000</x:String>
+  <!-- BoxShadow tokens (strongly typed for Setters/Templates) -->
+  <BoxShadows x:Key="NodeShadow">0 4 24 0 #40000000, 0 1 4 0 #50000000</BoxShadows>
+  <BoxShadows x:Key="NodeShadowSelected">0 0 0 2 #3B82F6, 0 8 32 0 #603B82F6</BoxShadows>
+  <BoxShadows x:Key="PanelShadow">0 8 40 0 #60000000</BoxShadows>
 
 </ResourceDictionary>

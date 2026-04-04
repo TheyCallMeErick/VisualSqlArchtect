@@ -1,6 +1,6 @@
 using System.Globalization;
 using Avalonia.Data.Converters;
-using VisualSqlArchitect.UI.ViewModels;
+using VisualSqlArchitect.UI.Services.LiveSqlBar;
 
 namespace VisualSqlArchitect.UI.Converters;
 

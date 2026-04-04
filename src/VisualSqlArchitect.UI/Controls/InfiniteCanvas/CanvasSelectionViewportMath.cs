@@ -1,4 +1,5 @@
 using Avalonia;
+using VisualSqlArchitect.CanvasKit;
 using VisualSqlArchitect.UI.ViewModels;
 
 namespace VisualSqlArchitect.UI.Controls;
@@ -22,48 +23,37 @@ public static class CanvasSelectionViewportMath
         out SelectionBounds bounds
     )
     {
-        bounds = default;
-        List<NodeViewModel> nodes = selected.ToList();
-        if (nodes.Count == 0)
-            return false;
+        IEnumerable<CanvasViewportNodeFrame> frames = selected.Select(n =>
+            new CanvasViewportNodeFrame(
+                n.Position.X,
+                n.Position.Y,
+                n.Width > 0 ? n.Width : 230,
+                defaultNodeHeight
+            ));
 
-        double minX = double.MaxValue;
-        double minY = double.MaxValue;
-        double maxX = double.MinValue;
-        double maxY = double.MinValue;
-
-        foreach (NodeViewModel n in nodes)
+        if (!CanvasViewportMath.TryGetSelectionBounds(frames, out CanvasSelectionBounds coreBounds))
         {
-            double w = n.Width > 0 ? n.Width : 230;
-            minX = Math.Min(minX, n.Position.X);
-            minY = Math.Min(minY, n.Position.Y);
-            maxX = Math.Max(maxX, n.Position.X + w);
-            maxY = Math.Max(maxY, n.Position.Y + defaultNodeHeight);
+            bounds = default;
+            return false;
         }
 
-        bounds = new SelectionBounds(minX, minY, maxX, maxY);
+        bounds = new SelectionBounds(coreBounds.MinX, coreBounds.MinY, coreBounds.MaxX, coreBounds.MaxY);
         return true;
     }
 
     public static Point ComputeCenterPan(SelectionBounds bounds, Size viewport, double zoom)
     {
-        Point center = bounds.Center;
-        return new Point(
-            viewport.Width / 2.0 - center.X * zoom,
-            viewport.Height / 2.0 - center.Y * zoom
-        );
+        var coreBounds = new CanvasSelectionBounds(bounds.MinX, bounds.MinY, bounds.MaxX, bounds.MaxY);
+        var coreViewport = new CanvasViewportSize(viewport.Width, viewport.Height);
+        CanvasViewportPoint pan = CanvasViewportMath.ComputeCenterPan(coreBounds, coreViewport, zoom);
+        return new Point(pan.X, pan.Y);
     }
 
     public static (double Zoom, Point Pan) ComputeFit(SelectionBounds bounds, Size viewport, double padding, double minZoom = 0.15, double maxZoom = 4.0)
     {
-        double contentW = Math.Max(1, bounds.Width + padding * 2);
-        double contentH = Math.Max(1, bounds.Height + padding * 2);
-
-        double zoomX = viewport.Width / contentW;
-        double zoomY = viewport.Height / contentH;
-        double zoom = Math.Clamp(Math.Min(zoomX, zoomY), minZoom, maxZoom);
-
-        Point pan = ComputeCenterPan(bounds, viewport, zoom);
-        return (zoom, pan);
+        var coreBounds = new CanvasSelectionBounds(bounds.MinX, bounds.MinY, bounds.MaxX, bounds.MaxY);
+        var coreViewport = new CanvasViewportSize(viewport.Width, viewport.Height);
+        (double zoom, CanvasViewportPoint pan) = CanvasViewportMath.ComputeFit(coreBounds, coreViewport, padding, minZoom, maxZoom);
+        return (zoom, new Point(pan.X, pan.Y));
     }
 }

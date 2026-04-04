@@ -1,10 +1,10 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using VisualSqlArchitect.Core;
 using VisualSqlArchitect.Nodes;
 using VisualSqlArchitect.QueryEngine;
 using VisualSqlArchitect.Registry;
 using VisualSqlArchitect.UI.ViewModels;
-using VisualSqlArchitect.UI.ViewModels.QueryPreview.Services;
+using VisualSqlArchitect.UI.Services.QueryPreview;
 using Xunit;
 
 namespace VisualSqlArchitect.Tests.Integration;
@@ -101,3 +101,4 @@ public class TemplateThreeTableJoinEndToEndIntegrationTests
         };
     }
 }
+

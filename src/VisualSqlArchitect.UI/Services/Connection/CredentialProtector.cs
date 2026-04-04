@@ -1,7 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
-using System.Diagnostics;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using VisualSqlArchitect.UI.Services.Localization;
 
 namespace VisualSqlArchitect.UI.Services;
 
@@ -17,6 +19,7 @@ namespace VisualSqlArchitect.UI.Services;
 /// </summary>
 public static class CredentialProtector
 {
+    private static readonly ILogger _logger = NullLogger.Instance;
     private const string Prefix = "enc:";
     private const string DpapiPrefix = "dpapi:";
 
@@ -99,7 +102,9 @@ public static class CredentialProtector
     private static byte[] AesDecrypt(byte[] blob)
     {
         if (blob.Length < NonceLength + TagLength)
-            throw new CryptographicException("Ciphertext blob is too short.");
+            throw new CryptographicException(
+                L("credential.error.ciphertextTooShort", "Ciphertext blob is too short.")
+            );
 
         byte[] key        = DeriveKey();
         byte[] nonce      = blob[..NonceLength];
@@ -165,7 +170,7 @@ public static class CredentialProtector
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[CredentialProtector] Failed to persist installation secret: {ex.Message}. Encrypted credentials will not survive restarts.");
+            _logger.LogWarning(ex, "[CredentialProtector] Failed to persist installation secret. Encrypted credentials will not survive restarts.");
             return RandomNumberGenerator.GetBytes(InstallationSecretLength);
         }
     }
@@ -187,7 +192,9 @@ public static class CredentialProtector
         private static byte[] ProtectBytes(byte[] plaintextBytes)
         {
             if (!OperatingSystem.IsWindows())
-                throw new PlatformNotSupportedException("DPAPI is only available on Windows.");
+                throw new PlatformNotSupportedException(
+                    L("credential.error.dpapiWindowsOnly", "DPAPI is only available on Windows.")
+                );
 
             return ProtectedData.Protect(plaintextBytes, optionalEntropy: null, DataProtectionScope.CurrentUser);
         }
@@ -195,7 +202,9 @@ public static class CredentialProtector
         public static string UnprotectBytes(byte[] protectedBytes)
         {
             if (!OperatingSystem.IsWindows())
-                throw new PlatformNotSupportedException("DPAPI is only available on Windows.");
+                throw new PlatformNotSupportedException(
+                    L("credential.error.dpapiWindowsOnly", "DPAPI is only available on Windows.")
+                );
 
             byte[] plaintext = ProtectedData.Unprotect(protectedBytes, optionalEntropy: null, DataProtectionScope.CurrentUser);
             return Encoding.UTF8.GetString(plaintext);
@@ -210,6 +219,12 @@ public static class CredentialProtector
             return Prefix + Convert.ToBase64String(cipherBlob);
         }
     }
+
+    private static string L(string key, string fallback)
+    {
+        string value = LocalizationService.Instance[key];
+        return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
+    }
 }
 
 /// <summary>
@@ -220,6 +235,7 @@ public static class CredentialProtector
 public sealed class CredentialVaultStore
 {
     private readonly string _vaultPath;
+    private static readonly ILogger _logger = NullLogger.Instance;
     public static event Action<string>? WarningRaised;
 
     public CredentialVaultStore(string? appDataRoot = null)
@@ -287,7 +303,14 @@ public sealed class CredentialVaultStore
         }
         catch (Exception ex)
         {
-            WarningRaised?.Invoke($"Failed to load credential vault '{_vaultPath}': {ex.Message}");
+            _logger.LogWarning(ex, "Failed to load credential vault from {VaultPath}", _vaultPath);
+            WarningRaised?.Invoke(
+                string.Format(
+                    L("credential.warning.loadVaultFailed", "Failed to load credential vault '{0}': {1}"),
+                    _vaultPath,
+                    ex.Message
+                )
+            );
             return new Dictionary<string, string>(StringComparer.Ordinal);
         }
     }
@@ -302,7 +325,20 @@ public sealed class CredentialVaultStore
         }
         catch (Exception ex)
         {
-            WarningRaised?.Invoke($"Failed to persist credential vault '{_vaultPath}': {ex.Message}");
+            _logger.LogWarning(ex, "Failed to persist credential vault to {VaultPath}", _vaultPath);
+            WarningRaised?.Invoke(
+                string.Format(
+                    L("credential.warning.persistVaultFailed", "Failed to persist credential vault '{0}': {1}"),
+                    _vaultPath,
+                    ex.Message
+                )
+            );
         }
+    }
+
+    private static string L(string key, string fallback)
+    {
+        string value = LocalizationService.Instance[key];
+        return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
     }
 }

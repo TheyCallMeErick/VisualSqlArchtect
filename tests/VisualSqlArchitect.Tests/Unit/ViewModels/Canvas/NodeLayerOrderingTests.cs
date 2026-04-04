@@ -1,3 +1,5 @@
+﻿using VisualSqlArchitect.UI.Services.Canvas.AutoJoin;
+using VisualSqlArchitect.UI.Services.Explain;
 using Avalonia;
 using VisualSqlArchitect.UI.ViewModels;
 using VisualSqlArchitect.UI.ViewModels.Canvas;
@@ -115,3 +117,5 @@ public class NodeLayerOrderingTests
         Assert.Equal([0, 1, 2], z);
     }
 }
+
+

@@ -9,15 +9,21 @@ using Avalonia.Styling;
 using Microsoft.Extensions.DependencyInjection;
 using Material.Icons;
 using System.ComponentModel;
+using VisualSqlArchitect.Core;
+using VisualSqlArchitect.Metadata;
 using VisualSqlArchitect.UI.Serialization;
 using VisualSqlArchitect.UI.Controls;
+using VisualSqlArchitect.UI.Controls.Ddl;
 using VisualSqlArchitect.UI.Controls.Shell;
+using VisualSqlArchitect.UI.Services.Ddl;
 using VisualSqlArchitect.UI.Services;
 using VisualSqlArchitect.UI.Services.Connection;
 using VisualSqlArchitect.UI.Services.Localization;
 using VisualSqlArchitect.UI.Services.Settings;
 using VisualSqlArchitect.UI.Services.Theming;
 using VisualSqlArchitect.UI.ViewModels;
+using VisualSqlArchitect.UI.ViewModels.Validation.Conventions;
+using VisualSqlArchitect.UI.ViewModels.Validation.Conventions.Implementations;
 
 namespace VisualSqlArchitect.UI;
 
@@ -26,10 +32,14 @@ public partial class MainWindow : Window
     private readonly IServiceProvider _services;
 
     private ShellViewModel CurrentShell => DataContext as ShellViewModel
-        ?? throw new InvalidOperationException("MainWindow DataContext must be a ShellViewModel.");
+        ?? throw new InvalidOperationException(
+            L("error.mainWindow.invalidDataContext", "MainWindow DataContext must be a ShellViewModel.")
+        );
 
     private CanvasViewModel CurrentVm => CurrentShell.Canvas
-        ?? throw new InvalidOperationException("CanvasViewModel was not initialized.");
+        ?? throw new InvalidOperationException(
+            L("error.mainWindow.canvasNotInitialized", "CanvasViewModel was not initialized.")
+        );
 
     private bool _canvasInitialized;
     private ContextMenu? _titleMenu;
@@ -37,9 +47,9 @@ public partial class MainWindow : Window
     private bool _connectionActivationWired;
     private ConnectionWorkspaceModule? _connectionModule;
     private SettingsWorkspaceModule? _settingsModule;
-    private GridLength _lastLeftSidebarWidth = new(320);
-    private GridLength _lastRightSidebarWidth = new(320);
-    private static readonly GridLength CollapsedRailWidth = new(34);
+    private GridLength _lastLeftSidebarWidth = new(280);
+    private GridLength _lastRightSidebarWidth = new(280);
+    private static readonly GridLength CollapsedRailWidth = new(24);
 
     private QueryTabManagerViewModel QueryTabs => CurrentShell.QueryTabs;
 
@@ -51,12 +61,21 @@ public partial class MainWindow : Window
     private ExportService? _export;
     private PreviewService? _preview;
     private CommandPaletteFactory? _commandFactory;
+    private ICommandPaletteService? _commandPaletteService;
     private PropertyChangedEventHandler? _windowTitleChangedHandler;
+    private PropertyChangedEventHandler? _shellPropertyChangedHandler;
     private readonly ThemeJsonSettingsService _themeJsonSettings;
 
     public MainWindow()
         : this(
-            new ServiceCollection().AddVisualSqlArchitect().BuildServiceProvider(),
+            new ServiceCollection()
+                .AddVisualSqlArchitect()
+                .AddSingleton<IAliasConvention, SnakeCaseConvention>()
+                .AddSingleton<IAliasConvention, CamelCaseConvention>()
+                .AddSingleton<IAliasConvention, PascalCaseConvention>()
+                .AddSingleton<IAliasConvention, ScreamingSnakeCaseConvention>()
+                .AddSingleton<IAliasConventionRegistry, AliasConventionRegistry>()
+                .BuildServiceProvider(),
             new ShellViewModel(),
             new ThemeJsonSettingsService())
     {
@@ -76,7 +95,55 @@ public partial class MainWindow : Window
         WireHeaderMenus();
         WireMenuButtons();
         WireStartMenu();
+        WireModeToggle();
         Title = AppConstants.AppDisplayName;
+    }
+
+    private void WireModeToggle()
+    {
+        _shellPropertyChangedHandler = (_, e) =>
+        {
+            if (e.PropertyName is nameof(ShellViewModel.ActiveMode) or nameof(ShellViewModel.IsQueryModeActive) or nameof(ShellViewModel.IsDdlModeActive) or nameof(ShellViewModel.ActiveCanvasContext))
+            {
+                SyncModeToggleState();
+                SyncCanvasContext();
+            }
+        };
+
+        CurrentShell.PropertyChanged += _shellPropertyChangedHandler;
+        SyncModeToggleState();
+    }
+
+    private void SyncModeToggleState()
+    {
+        Button? queryModeBtn = this.FindControl<Button>("QueryModeBtn");
+        Button? ddlModeBtn = this.FindControl<Button>("DdlModeBtn");
+
+        if (queryModeBtn is not null)
+        {
+            queryModeBtn.IsEnabled = true;
+            queryModeBtn.Classes.Set("active", CurrentShell.IsQueryModeActive);
+        }
+
+        if (ddlModeBtn is not null)
+        {
+            ddlModeBtn.IsEnabled = true;
+            ddlModeBtn.Classes.Set("active", CurrentShell.IsDdlModeActive);
+        }
+    }
+
+    private void QueryModeBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        CurrentShell.SetActiveMode(ShellViewModel.AppMode.Query);
+        SyncModeToggleState();
+        e.Handled = true;
+    }
+
+    private void DdlModeBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        CurrentShell.SetActiveMode(ShellViewModel.AppMode.Ddl);
+        SyncModeToggleState();
+        e.Handled = true;
     }
 
     private void WireHeaderMenus()
@@ -135,35 +202,47 @@ public partial class MainWindow : Window
             Classes = { "app-title-menu" },
             ItemsSource = new object[]
             {
-                NewItem("Novo diagrama", MaterialIconKind.FileOutline, () =>
+                NewItem(L("menu.newDiagram", "Novo diagrama"), MaterialIconKind.FileOutline, () =>
                 {
                     EnterCanvasMode();
                     ResetCurrentCanvas();
                 }),
-                NewItem("Abrir arquivo", MaterialIconKind.FolderOpenOutline, () =>
+                NewItem(L("menu.openFile", "Abrir arquivo"), MaterialIconKind.FolderOpenOutline, () =>
                 {
                     EnterCanvasMode();
                     _ = _fileOps?.OpenAsync();
                 }),
-                NewItem("Salvar", MaterialIconKind.ContentSave, () =>
+                NewItem(L("menu.save", "Salvar"), MaterialIconKind.ContentSave, () =>
                 {
                     EnterCanvasMode();
                     _ = _fileOps?.SaveAsync();
                 }),
-                NewItem("Histórico de arquivos", MaterialIconKind.History, () =>
+                NewItem(L("menu.fileHistory", "Histórico de arquivos"), MaterialIconKind.History, () =>
                 {
                     EnterCanvasMode();
                     CurrentVm.FileHistory.Open();
                 }),
                 NewSeparator(),
-                NewItem("Atalhos de teclado", MaterialIconKind.Keyboard, () => new KeyboardShortcutsWindow().Show(this)),
-                NewItem("Configurações", MaterialIconKind.CogOutline, () =>
+                NewItem(L("menu.shortcuts", "Atalhos de teclado"), MaterialIconKind.Keyboard, () => new KeyboardShortcutsWindow().Show(this)),
+                NewItem(L("menu.settings", "Configurações"), MaterialIconKind.CogOutline, () =>
                 {
                     PopulateSettingsThemeJsonEditor();
                     OpenSettings(keepStartVisible: false);
                 }),
+                NewItem(L("menu.importDdlSchema", "Importar Schema DDL"), MaterialIconKind.DatabaseImportOutline, () =>
+                {
+                    _ = ImportDdlSchemaSafeAsync();
+                }),
+                NewItem(L("menu.viewDdlSql", "Ver SQL DDL"), MaterialIconKind.CodeBraces, () =>
+                {
+                    _ = ViewDdlSqlSafeAsync();
+                }),
+                NewItem(L("menu.executeDdl", "Executar DDL"), MaterialIconKind.PlayCircleOutline, () =>
+                {
+                    _ = ExecuteDdlSafeAsync();
+                }),
                 NewSeparator(),
-                NewItem("Voltar para início", MaterialIconKind.Home, () =>
+                NewItem(L("menu.backToStart", "Voltar para início"), MaterialIconKind.Home, () =>
                 {
                     if (!_canvasInitialized)
                         return;
@@ -179,12 +258,220 @@ public partial class MainWindow : Window
         };
     }
 
+    private async Task ExecuteDdlSafeAsync()
+    {
+        try
+        {
+            await ExecuteDdlAsync();
+        }
+        catch (Exception ex)
+        {
+            CurrentShell.Toasts.ShowError(L("toast.ddlExecuteFailed", "Falha ao executar DDL."), ex.Message);
+        }
+    }
+
+    private async Task ViewDdlSqlSafeAsync()
+    {
+        try
+        {
+            await ViewDdlSqlAsync();
+        }
+        catch (Exception ex)
+        {
+            CurrentShell.Toasts.ShowError(L("toast.ddlOpenFailed", "Falha ao abrir SQL DDL."), ex.Message);
+        }
+    }
+
+    private async Task ImportDdlSchemaSafeAsync()
+    {
+        try
+        {
+            await ImportDdlSchemaAsync();
+        }
+        catch (Exception ex)
+        {
+            CurrentShell.Toasts.ShowError(L("toast.ddlImportFailed", "Falha ao importar schema para DDL."), ex.Message);
+        }
+    }
+
+    private Task ImportDdlSchemaAsync()
+    {
+        DbMetadata? metadata = CurrentVm.DatabaseMetadata;
+        if (metadata is null)
+        {
+            CurrentShell.Toasts.ShowWarning(L("toast.ddlConnectToImportSchema", "Conecte-se a um banco para importar schema no canvas DDL."));
+            return Task.CompletedTask;
+        }
+
+        CanvasViewModel ddlCanvas = CurrentShell.EnsureDdlCanvas();
+        var importer = new DdlSchemaImporter();
+        DdlImportResult result = importer.Import(metadata, ddlCanvas);
+
+        CurrentShell.SetActiveMode(ShellViewModel.AppMode.Ddl);
+        SyncModeToggleState();
+
+        if (result.TableCount == 0)
+        {
+            CurrentShell.Toasts.ShowWarning(L("toast.ddlNoTablesFound", "Nenhuma tabela encontrada para importar no modo DDL."));
+            return Task.CompletedTask;
+        }
+
+        CurrentShell.Toasts.ShowSuccess(
+            L("toast.ddlSchemaImported", "Schema importado para o canvas DDL."),
+            BuildDdlImportSummary(result)
+        );
+
+        return Task.CompletedTask;
+    }
+
+    private static string BuildDdlImportSummary(DdlImportResult result)
+    {
+        string summary = LF(
+            "toast.ddlImportSummary",
+            "{0} tabela(s), {1} coluna(s), {2} FK(s), {3} indice(s) unicos.",
+            result.TableCount,
+            result.ColumnCount,
+            result.ForeignKeyCount,
+            result.IndexCount);
+
+        if (result.Warnings is null || result.Warnings.Count == 0)
+            return summary;
+
+        return summary + "\n" + string.Join("\n", result.Warnings);
+    }
+
+    private void ImportSingleTableToDdl(TableMetadata table, Point position)
+    {
+        DbMetadata? metadata = CurrentVm.DatabaseMetadata;
+        if (metadata is null)
+        {
+            CurrentShell.Toasts.ShowWarning(L("toast.ddlConnectToImportTable", "Conecte-se a um banco para importar tabelas no canvas DDL."));
+            return;
+        }
+
+        CanvasViewModel ddlCanvas = CurrentShell.EnsureDdlCanvas();
+        var importer = new DdlSchemaImporter();
+        DdlPartialImportResult result = importer.ImportTable(metadata, table.FullName, ddlCanvas, position);
+
+        CurrentShell.SetActiveMode(ShellViewModel.AppMode.Ddl);
+        SyncModeToggleState();
+
+        if (!result.TableAdded)
+        {
+            CurrentShell.Toasts.ShowWarning(LF("toast.ddlTableAlreadyExists", "A tabela '{0}' ja existe no canvas DDL.", table.FullName));
+            return;
+        }
+
+        CurrentShell.Toasts.ShowSuccess(
+            L("toast.ddlTableImported", "Tabela importada para o canvas DDL."),
+            LF("toast.ddlTableImportSummary", "Nos: +{0}, conexoes: +{1}, FKs: +{2}.", result.AddedNodeCount, result.AddedConnectionCount, result.AddedForeignKeys)
+        );
+    }
+
+    private async Task ExecuteDdlAsync()
+    {
+        ConnectionConfig? config = CurrentVm.ActiveConnectionConfig;
+        if (config is null)
+        {
+            CurrentShell.Toasts.ShowWarning(L("toast.ddlNoActiveConnection", "Nenhuma conexão ativa para executar DDL."));
+            return;
+        }
+
+        if (!TryBuildDdlSql(out string sql, out CanvasViewModel ddlCanvas))
+            return;
+
+        var dialogVm = new DdlExecuteDialogViewModel(sql);
+        var dialog = new DdlExecuteDialogWindow(
+            dialogVm,
+            async (stopOnError, ct) =>
+            {
+                IDbOrchestratorFactory orchestratorFactory =
+                    _services.GetRequiredService<IDbOrchestratorFactory>();
+                await using IDbOrchestrator orchestrator = orchestratorFactory.Create(config);
+                return await orchestrator.ExecuteDdlAsync(sql, stopOnError, ct);
+            }
+        );
+
+        await dialog.ShowDialog(this);
+
+        if (!dialogVm.HasResult)
+            return;
+
+        if (dialogVm.IsSuccess)
+            CurrentShell.Toasts.ShowSuccess(L("toast.ddlExecutedSuccess", "DDL executado com sucesso."), dialogVm.ResultSummary);
+        else
+            CurrentShell.Toasts.ShowWarning(L("toast.ddlExecutedWithIssues", "DDL executado com falhas."), dialogVm.ResultDetails);
+    }
+
+    private async Task ViewDdlSqlAsync()
+    {
+        CanvasViewModel ddlCanvas = PrepareDdlPreviewCanvas();
+        LiveDdlBarViewModel liveDdl = ddlCanvas.LiveDdl
+            ?? throw new InvalidOperationException(
+                L("error.mainWindow.ddlPreviewUnavailable", "DDL preview is unavailable for the current canvas.")
+            );
+        CurrentShell.OutputPreview.OpenForDdl(ddlCanvas, liveDdl, ddlCanvas.Provider.ToString());
+        await Task.CompletedTask;
+    }
+
+    private CanvasViewModel PrepareDdlPreviewCanvas()
+    {
+        CanvasViewModel ddlCanvas = CurrentShell.EnsureDdlCanvas();
+        DatabaseProvider provider = CurrentVm.ActiveConnectionConfig?.Provider ?? ddlCanvas.Provider;
+        ddlCanvas.Provider = provider;
+        LiveDdlBarViewModel liveDdl = ddlCanvas.LiveDdl
+            ?? throw new InvalidOperationException(
+                L("error.mainWindow.ddlPreviewUnavailable", "DDL preview is unavailable for the current canvas.")
+            );
+        liveDdl.Recompile();
+        return ddlCanvas;
+    }
+
+    private bool TryBuildDdlSql(out string sql, out CanvasViewModel ddlCanvas)
+    {
+        sql = string.Empty;
+        ddlCanvas = CurrentShell.EnsureDdlCanvas();
+
+        if (!CurrentShell.IsDdlModeActive)
+        {
+            CurrentShell.Toasts.ShowWarning(L("toast.switchToDdl", "Alterne para o modo DDL para gerar SQL."));
+            return false;
+        }
+
+        DatabaseProvider provider = CurrentVm.ActiveConnectionConfig?.Provider ?? ddlCanvas.Provider;
+        ddlCanvas.Provider = provider;
+        LiveDdlBarViewModel liveDdl = ddlCanvas.LiveDdl
+            ?? throw new InvalidOperationException(
+                L("error.mainWindow.ddlPreviewUnavailable", "DDL preview is unavailable for the current canvas.")
+            );
+        liveDdl.Recompile();
+
+        if (!liveDdl.IsValid)
+        {
+            string details = liveDdl.CompileError ?? string.Join("\n", liveDdl.ErrorHints);
+            CurrentShell.Toasts.ShowError(L("toast.ddlInvalid", "DDL inválido. Corrija os erros antes de continuar."), details);
+            return false;
+        }
+
+        sql = liveDdl.RawSql;
+        if (string.IsNullOrWhiteSpace(sql))
+        {
+            CurrentShell.Toasts.ShowWarning(L("toast.ddlNoStatements", "Nenhum statement DDL foi gerado no canvas."));
+            return false;
+        }
+
+        return true;
+    }
+
     private void EnsureCanvasInitialized()
     {
         if (_canvasInitialized)
             return;
 
-        CanvasViewModel vm = CurrentShell.EnsureCanvas();
+        CanvasViewModel vm = CurrentShell.EnsureCanvas(
+            isDdlModeActiveResolver: () => CurrentShell.IsDdlModeActive,
+            importDdlTableAction: (table, position) => ImportSingleTableToDdl(table, position));
+        vm.SetCanvasContext(CurrentShell.ActiveCanvasContext);
         vm.ConnectionManager.IsVisible = false;
 
         InitializeServices(vm);
@@ -194,10 +481,27 @@ public partial class MainWindow : Window
         WireSearchMenu();
         InitializeQueryTabs();
 
-        PreviewPanel.LiveSqlViewModel = vm.LiveSql;
         CurrentShell.StartMenu.RefreshData(vm.ConnectionManager.Profiles);
         Title = vm.WindowTitle;
         _canvasInitialized = true;
+    }
+
+    private void SyncCanvasContext()
+    {
+        if (!_canvasInitialized)
+            return;
+
+        if (CurrentShell.Canvas is not null)
+            CurrentShell.Canvas.SetCanvasContext(CanvasContext.Query);
+
+        if (CurrentShell.DdlCanvas is not null)
+        {
+            CanvasContext ddlContext = CurrentShell.ActiveCanvasContext == CanvasContext.ViewSubcanvas
+                ? CanvasContext.ViewSubcanvas
+                : CanvasContext.Ddl;
+
+            CurrentShell.DdlCanvas.SetCanvasContext(ddlContext);
+        }
     }
 
     private void WireSidebarActions(SidebarViewModel sidebar)
@@ -216,7 +520,7 @@ public partial class MainWindow : Window
         sidebar.TogglePreviewRequested += () =>
         {
             EnterCanvasMode();
-            CurrentVm.TogglePreviewCommand.Execute(null);
+            _ = OpenOutputPreviewForActiveModeSafeAsync();
         };
 
         _sidebarActionsWired = true;
@@ -279,6 +583,7 @@ public partial class MainWindow : Window
     private void OpenSettings(bool keepStartVisible)
     {
         GetSettingsModule().OpenSettings(keepStartVisible);
+        SyncLanguageComboSelection();
     }
 
     private void SettingsNavBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -301,7 +606,7 @@ public partial class MainWindow : Window
             Application.Current.RequestedThemeVariant = ThemeVariant.Dark;
 
         AppSettingsStore.SaveThemeVariant("Dark");
-        SetSettingsStatus("Tema escuro aplicado.", isError: false);
+        SetSettingsStatus(L("settings.status.darkApplied", "Tema escuro aplicado."), isError: false);
 
         e.Handled = true;
     }
@@ -312,7 +617,7 @@ public partial class MainWindow : Window
             Application.Current.RequestedThemeVariant = ThemeVariant.Light;
 
         AppSettingsStore.SaveThemeVariant("Light");
-        SetSettingsStatus("Tema claro aplicado.", isError: false);
+        SetSettingsStatus(L("settings.status.lightApplied", "Tema claro aplicado."), isError: false);
 
         e.Handled = true;
     }
@@ -321,15 +626,39 @@ public partial class MainWindow : Window
     {
         EnsureCanvasInitialized();
         CurrentVm.ToggleSnapCommand.Execute(null);
-        SetSettingsStatus($"Snap atualizado: {CurrentVm.SnapToGridLabel}.", isError: false);
+        SetSettingsStatus(LF("settings.status.snapUpdated", "Snap atualizado: {0}.", CurrentVm.SnapToGridLabel), isError: false);
         e.Handled = true;
     }
 
-    private void SettingsToggleLanguageBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    private void SettingsLanguageCombo_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
-        LocalizationService.Instance.ToggleCulture();
-        SetSettingsStatus("Idioma alternado.", isError: false);
+        if (sender is not ComboBox combo || combo.SelectedItem is not ComboBoxItem item || item.Tag is not string culture)
+            return;
+
+        if (LocalizationService.Instance.SetCulture(culture))
+        {
+            _titleMenu = null;
+            SetSettingsStatus(LF("settings.status.languageSelected", "Idioma selecionado: {0}.", culture), isError: false);
+        }
+
         e.Handled = true;
+    }
+
+    private void SyncLanguageComboSelection()
+    {
+        ComboBox? combo = this.FindControl<ComboBox>("SettingsLanguageCombo");
+        if (combo is null)
+            return;
+
+        foreach (object? option in combo.Items)
+        {
+            if (option is ComboBoxItem item && item.Tag is string culture &&
+                string.Equals(culture, LocalizationService.Instance.CurrentCulture, StringComparison.OrdinalIgnoreCase))
+            {
+                combo.SelectedItem = item;
+                break;
+            }
+        }
     }
 
     private void SettingsApplyThemeJsonBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -368,7 +697,7 @@ public partial class MainWindow : Window
             return;
 
         jsonEditor.Text = _themeJsonSettings.GetEditorJsonOrTemplate();
-        SetSettingsStatus("Editor de tema pronto. Aplique para salvar e usar o tema.", isError: false);
+        SetSettingsStatus(L("settings.status.themeEditorReady", "Editor de tema pronto. Aplique para salvar e usar o tema."), isError: false);
     }
 
     private void SetSettingsStatus(string message, bool isError)
@@ -379,8 +708,8 @@ public partial class MainWindow : Window
 
         statusText.Text = message;
         statusText.Foreground = isError
-            ? new SolidColorBrush(Color.Parse("#F87171"))
-            : new SolidColorBrush(Color.Parse("#34D399"));
+            ? ResourceBrush("StatusErrorBrush", "#F87171")
+            : ResourceBrush("StatusOkBrush", "#34D399");
     }
 
     private void OnStartOpenSavedConnectionRequested(StartSavedConnectionItem item)
@@ -481,6 +810,9 @@ public partial class MainWindow : Window
                 SyncActiveTabMetadataFromCanvas();
                 RefreshQueryTabsUi();
             }
+
+            if (e.PropertyName == nameof(CanvasViewModel.IsInViewEditor))
+                CurrentShell.SetViewSubcanvasActive(vm.IsInViewEditor);
         };
 
         vm.PropertyChanged += _windowTitleChangedHandler;
@@ -496,18 +828,33 @@ public partial class MainWindow : Window
 
     private void InitializeServices(CanvasViewModel vm)
     {
+        CanvasViewModel ddlVm = CurrentShell.EnsureDdlCanvas();
+
         _layoutService = ActivatorUtilities.CreateInstance<MainWindowLayoutService>(_services, this, vm);
-        _sessionService = ActivatorUtilities.CreateInstance<SessionManagementService>(_services, this, vm);
-        _fileOps = ActivatorUtilities.CreateInstance<FileOperationsService>(_services, this, vm);
-        _keyboardHandler = ActivatorUtilities.CreateInstance<KeyboardInputHandler>(_services, this, vm, _fileOps, (Action)CreateNewQueryTab);
+        _sessionService = ActivatorUtilities.CreateInstance<SessionManagementService>(_services, this, vm, ddlVm);
+        _fileOps = ActivatorUtilities.CreateInstance<FileOperationsService>(_services, this, vm, ddlVm);
         _export = ActivatorUtilities.CreateInstance<ExportService>(_services, this, vm);
         _preview = ActivatorUtilities.CreateInstance<PreviewService>(_services, this, vm);
         _commandFactory = new CommandPaletteFactory(
             this,
-            vm,
+            () => CurrentShell.ActiveCanvas ?? CurrentVm,
+            () => CurrentShell,
             _fileOps,
             _export,
             _preview,
+            CreateNewQueryTab
+        );
+        _commandPaletteService = new CommandPaletteService(_commandFactory);
+        _commandPaletteService.Refresh();
+        CurrentShell.SetCommandPalette(_commandPaletteService.ViewModel);
+        var canvasProvider = new ActiveCanvasProvider(
+            () => CurrentShell.ActiveCanvas ?? vm
+        );
+        _keyboardHandler = new KeyboardInputHandler(
+            this,
+            canvasProvider,
+            _fileOps,
+            CurrentShell.CommandPalette,
             CreateNewQueryTab
         );
 
@@ -516,7 +863,6 @@ public partial class MainWindow : Window
         _sessionService.CheckForSession();
         _keyboardHandler.Wire();
         _preview.Wire();
-        _commandFactory.RegisterAllCommands();
     }
 
     private static string CreateFreshCanvasSnapshot()
@@ -541,7 +887,8 @@ public partial class MainWindow : Window
         QueryTabs.CaptureActive(
             CanvasSerializer.Serialize(CurrentVm),
             CurrentVm.CurrentFilePath,
-            CurrentVm.IsDirty
+            CurrentVm.IsDirty,
+            CurrentVm.ExplainPlan.ExportHistoryState()
         );
     }
 
@@ -563,12 +910,13 @@ public partial class MainWindow : Window
         CanvasLoadResult result = CanvasSerializer.Deserialize(snapshot, CurrentVm);
         if (!result.Success)
         {
-            CurrentVm.DataPreview.ShowError($"Failed to switch tab: {result.Error}", null);
+            CurrentVm.DataPreview.ShowError(LF("tab.switchFailed", "Falha ao alternar aba: {0}", result.Error ?? string.Empty), null);
             return;
         }
 
         CurrentVm.CurrentFilePath = tab.CurrentFilePath;
         CurrentVm.IsDirty = tab.IsDirty;
+        CurrentVm.ExplainPlan.ImportHistoryState(tab.ExplainHistory);
 
         this.FindControl<InfiniteCanvas>("TheCanvas")?.InvalidateWires();
         Title = CurrentVm.WindowTitle;
@@ -593,6 +941,35 @@ public partial class MainWindow : Window
         finally
         {
             QueryTabs.IsRestoringTab = false;
+        }
+
+        RefreshQueryTabsUi();
+    }
+
+    private void CloseQueryTab(int tabIndex)
+    {
+        if (QueryTabs.Tabs.Count <= 1)
+            return;
+
+        bool closingActive = tabIndex == QueryTabs.ActiveTabIndex;
+
+        if (closingActive)
+            CaptureActiveTabState();
+
+        int newActiveIndex = QueryTabs.CloseTab(tabIndex);
+
+        if (closingActive)
+        {
+            QueryTabs.IsRestoringTab = true;
+            try
+            {
+                RestoreTabState(newActiveIndex);
+                CurrentVm.ConnectionManager.IsVisible = false;
+            }
+            finally
+            {
+                QueryTabs.IsRestoringTab = false;
+            }
         }
 
         RefreshQueryTabsUi();
@@ -664,12 +1041,45 @@ public partial class MainWindow : Window
             var button = new Button
             {
                 Classes = { "tb" },
-                Padding = new Thickness(12, 5),
+                Padding = new Thickness(10, 5, 4, 5),
                 Background = Brushes.Transparent,
                 BorderThickness = new Thickness(0),
                 Content = row,
             };
             button.Click += (_, _) => ActivateQueryTab(tabIndex);
+
+            var closeBtn = new Button
+            {
+                Classes = { "tb" },
+                Width = 18,
+                Height = 18,
+                Padding = new Thickness(0),
+                Margin = new Thickness(0, 0, 4, 0),
+                Background = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                HorizontalContentAlignment = HorizontalAlignment.Center,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                IsVisible = QueryTabs.Tabs.Count > 1,
+                Content = new Material.Icons.Avalonia.MaterialIcon
+                {
+                    Kind = Material.Icons.MaterialIconKind.Close,
+                    Width = 10,
+                    Height = 10,
+                },
+            };
+            closeBtn.Click += (_, e) =>
+            {
+                e.Handled = true;
+                CloseQueryTab(tabIndex);
+            };
+
+            var wrapper = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                VerticalAlignment = VerticalAlignment.Stretch,
+            };
+            wrapper.Children.Add(button);
+            wrapper.Children.Add(closeBtn);
 
             var container = new Border
             {
@@ -677,7 +1087,7 @@ public partial class MainWindow : Window
                 BorderBrush = isActive ? tabActiveBorder : tabInactiveBorder,
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(6),
-                Child = button,
+                Child = wrapper,
             };
 
             host.Children.Add(container);
@@ -692,12 +1102,24 @@ public partial class MainWindow : Window
         return new SolidColorBrush(Color.Parse(fallbackHex));
     }
 
+    private static string L(string key, string fallback)
+    {
+        string value = LocalizationService.Instance[key];
+        return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
+    }
+
+    private static string LF(string key, string fallbackFormat, params object[] args)
+    {
+        return string.Format(L(key, fallbackFormat), args);
+    }
+
     private void InitializeQueryTabs()
     {
         QueryTabs.Initialize(
             CanvasSerializer.Serialize(CurrentVm),
             CurrentVm.CurrentFilePath,
-            CurrentVm.IsDirty
+            CurrentVm.IsDirty,
+            CurrentVm.ExplainPlan.ExportHistoryState()
         );
 
         RefreshQueryTabsUi();
@@ -724,7 +1146,7 @@ public partial class MainWindow : Window
     {
         CaptureActiveTabState();
 
-        QueryTabs.AddNewTab(CreateFreshCanvasSnapshot());
+        QueryTabs.AddNewTab(CreateFreshCanvasSnapshot(), []);
 
         QueryTabs.IsRestoringTab = true;
         try
@@ -741,7 +1163,7 @@ public partial class MainWindow : Window
 
     private void ToastDetailsBackdrop_PointerPressed(object? s, PointerPressedEventArgs e)
     {
-        CurrentVm.Toasts.CloseDetailsCommand.Execute(null);
+        CurrentShell.Toasts.CloseDetailsCommand.Execute(null);
         e.Handled = true;
     }
 
@@ -837,8 +1259,42 @@ public partial class MainWindow : Window
         B("TogglePreviewBtn", () =>
         {
             EnterCanvasMode();
-            CurrentVm.TogglePreviewCommand.Execute(null);
+            _ = OpenOutputPreviewForActiveModeSafeAsync();
         });
+    }
+
+    private async Task OpenOutputPreviewForActiveModeSafeAsync()
+    {
+        try
+        {
+            await OpenOutputPreviewForActiveModeAsync();
+        }
+        catch (Exception ex)
+        {
+            CurrentShell.Toasts.ShowError(L("toast.previewOpenFailed", "Falha ao abrir preview."), ex.Message);
+        }
+    }
+
+    private async Task OpenOutputPreviewForActiveModeAsync()
+    {
+        if (CurrentShell.IsDdlModeActive)
+        {
+            CanvasViewModel ddlCanvas = PrepareDdlPreviewCanvas();
+            LiveDdlBarViewModel liveDdl = ddlCanvas.LiveDdl
+                ?? throw new InvalidOperationException(
+                    L("error.mainWindow.ddlPreviewUnavailable", "DDL preview is unavailable for the current canvas.")
+                );
+            CurrentShell.OutputPreview.OpenForDdl(ddlCanvas, liveDdl, ddlCanvas.Provider.ToString());
+            return;
+        }
+
+        CanvasViewModel queryCanvas = CurrentShell.EnsureCanvas(
+            isDdlModeActiveResolver: () => CurrentShell.IsDdlModeActive,
+            importDdlTableAction: (table, position) => ImportSingleTableToDdl(table, position));
+
+        queryCanvas.DataPreview.IsVisible = true;
+        CurrentShell.OutputPreview.OpenForQuery(queryCanvas);
+        await Task.CompletedTask;
     }
 
     private void WireSearchMenu()
@@ -886,9 +1342,9 @@ public partial class MainWindow : Window
             return true;
         }
 
-        if (CurrentVm.Toasts.IsDetailsOpen)
+        if (CurrentShell.Toasts.IsDetailsOpen)
         {
-            CurrentVm.Toasts.CloseDetailsCommand.Execute(null);
+            CurrentShell.Toasts.CloseDetailsCommand.Execute(null);
             return true;
         }
 
@@ -931,6 +1387,7 @@ public partial class MainWindow : Window
         Border? rail = this.FindControl<Border>("LeftSidebarRail");
         GridSplitter? splitter = this.FindControl<GridSplitter>("LeftSplitter");
         Button? showBtn = this.FindControl<Button>("LeftSidebarShowBtn");
+        Button? hideBtn = this.FindControl<Button>("LeftSidebarHideBtn");
 
         if (sidebarHost is null || splitter is null)
             return;
@@ -950,19 +1407,23 @@ public partial class MainWindow : Window
                 rail.IsVisible = true;
             if (showBtn is not null)
                 showBtn.IsVisible = true;
+            if (hideBtn is not null)
+                hideBtn.IsVisible = false;
             return;
         }
 
-        sidebarColumn.MinWidth = 220;
-        sidebarColumn.MaxWidth = 500;
-        sidebarColumn.Width = _lastLeftSidebarWidth.Value > 1 ? _lastLeftSidebarWidth : new GridLength(320);
-        splitterColumn.Width = new GridLength(8);
+        sidebarColumn.MinWidth = 200;
+        sidebarColumn.MaxWidth = 420;
+        sidebarColumn.Width = _lastLeftSidebarWidth.Value > 1 ? _lastLeftSidebarWidth : new GridLength(280);
+        splitterColumn.Width = new GridLength(4);
         sidebarHost.IsVisible = true;
         splitter.IsVisible = true;
         if (rail is not null)
             rail.IsVisible = false;
         if (showBtn is not null)
             showBtn.IsVisible = false;
+        if (hideBtn is not null)
+            hideBtn.IsVisible = true;
     }
 
     private void SetRightSidebarCollapsed(bool collapsed)
@@ -977,6 +1438,7 @@ public partial class MainWindow : Window
         Border? rail = this.FindControl<Border>("RightSidebarRail");
         GridSplitter? splitter = this.FindControl<GridSplitter>("RightSplitter");
         Button? showBtn = this.FindControl<Button>("RightSidebarShowBtn");
+        Button? hideBtn = this.FindControl<Button>("RightSidebarHideBtn");
 
         if (sidebarHost is null || splitter is null)
             return;
@@ -996,19 +1458,23 @@ public partial class MainWindow : Window
                 rail.IsVisible = true;
             if (showBtn is not null)
                 showBtn.IsVisible = true;
+            if (hideBtn is not null)
+                hideBtn.IsVisible = false;
             return;
         }
 
-        sidebarColumn.MinWidth = 240;
-        sidebarColumn.MaxWidth = 640;
-        sidebarColumn.Width = _lastRightSidebarWidth.Value > 1 ? _lastRightSidebarWidth : new GridLength(320);
-        splitterColumn.Width = new GridLength(8);
+        sidebarColumn.MinWidth = 220;
+        sidebarColumn.MaxWidth = 500;
+        sidebarColumn.Width = _lastRightSidebarWidth.Value > 1 ? _lastRightSidebarWidth : new GridLength(280);
+        splitterColumn.Width = new GridLength(4);
         sidebarHost.IsVisible = true;
         splitter.IsVisible = true;
         if (rail is not null)
             rail.IsVisible = false;
         if (showBtn is not null)
             showBtn.IsVisible = false;
+        if (hideBtn is not null)
+            hideBtn.IsVisible = true;
     }
 
     protected override void OnKeyDown(KeyEventArgs e)

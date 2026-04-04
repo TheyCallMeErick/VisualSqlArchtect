@@ -1,5 +1,6 @@
 using VisualSqlArchitect.UI.ViewModels.UndoRedo;
 using VisualSqlArchitect.UI.ViewModels.UndoRedo.Commands;
+using VisualSqlArchitect.UI.Services.Localization;
 
 namespace VisualSqlArchitect.UI.ViewModels;
 
@@ -14,6 +15,7 @@ public sealed class UndoRedoStack(CanvasViewModel canvas) : ViewModelBase
     private readonly LinkedList<ICanvasCommand> _undoStack = new();
     private readonly LinkedList<ICanvasCommand> _redoStack = new();
     private readonly CanvasViewModel _canvas = canvas;
+    private readonly LocalizationService _loc = LocalizationService.Instance;
     private const int MaxHistory = 200;
     private IReadOnlyList<string> _undoHistoryCache = [];
 
@@ -46,10 +48,16 @@ public sealed class UndoRedoStack(CanvasViewModel canvas) : ViewModelBase
     /// pushed to the undo stack individually.
     /// Call <see cref="CommitTransaction"/> to flush as a single atomic entry.
     /// </summary>
-    public void BeginTransaction(string label)
+    public UndoRedoTransaction BeginTransaction(string label)
     {
+        if (_txBuffer is not null)
+            throw new InvalidOperationException(
+                $"Cannot begin transaction '{label}': transaction '{_txLabel}' is already open."
+            );
+
         _txBuffer = [];
         _txLabel  = label;
+        return new UndoRedoTransaction(this);
     }
 
     /// <summary>
@@ -106,16 +114,44 @@ public sealed class UndoRedoStack(CanvasViewModel canvas) : ViewModelBase
 
         if (revertedCommands > 0)
         {
-            string label = string.IsNullOrWhiteSpace(rollbackLabel) ? "unnamed transaction" : rollbackLabel;
+            string label = string.IsNullOrWhiteSpace(rollbackLabel)
+                ? L("undoRedo.transaction.unnamed", "unnamed transaction")
+                : rollbackLabel;
             _canvas.Diagnostics.AddWarning(
-                area: "Undo/Redo Transaction",
-                message: $"Rollback executed for '{label}' ({revertedCommands} operation(s) reverted).",
-                recommendation: "Review the canvas state and retry the action if needed.",
+                area: L("diagnostics.area.undoRedoTransaction", "Undo/Redo Transaction"),
+                message: string.Format(
+                    L("undoRedo.rollbackExecuted", "Rollback executed for '{0}' ({1} operation(s) reverted)."),
+                    label,
+                    revertedCommands),
+                recommendation: L("undoRedo.rollbackRecommendation", "Review the canvas state and retry the action if needed."),
                 openPanel: true
             );
         }
 
         Notify();
+    }
+
+    public sealed class UndoRedoTransaction(UndoRedoStack stack) : IDisposable
+    {
+        private bool _completed;
+
+        public void Commit()
+        {
+            if (_completed)
+                return;
+
+            _completed = true;
+            stack.CommitTransaction();
+        }
+
+        public void Dispose()
+        {
+            if (_completed)
+                return;
+
+            _completed = true;
+            stack.RollbackTransaction();
+        }
     }
 
     // ── Operations ────────────────────────────────────────────────────────────
@@ -212,4 +248,11 @@ public sealed class UndoRedoStack(CanvasViewModel canvas) : ViewModelBase
         RaisePropertyChanged(nameof(RedoDescription));
         RaisePropertyChanged(nameof(UndoHistory));
     }
+
+    private string L(string key, string fallback)
+    {
+        string value = _loc[key];
+        return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
+    }
+
 }

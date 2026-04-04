@@ -6,11 +6,14 @@ public sealed class ParameterRowViewModel(NodeParameter param, string? currentVa
 {
     private string? _value = currentValue ?? param.DefaultValue;
     private bool _isDirty;
+    private bool _isEditable = true;
+    private bool _suppressDirtyTracking;
 
     public string Name { get; } = param.Name;
     public ParameterKind Kind { get; } = param.Kind;
     public string? Description { get; } = param.Description;
     public IReadOnlyList<string>? EnumValues { get; } = param.EnumValues;
+    public string? DefaultValue { get; } = param.DefaultValue;
 
     public bool IsText => Kind is ParameterKind.Text or ParameterKind.JsonPath;
     public bool IsNumber => Kind == ParameterKind.Number;
@@ -24,9 +27,15 @@ public sealed class ParameterRowViewModel(NodeParameter param, string? currentVa
         get => _value;
         set
         {
-            if (Set(ref _value, value))
+            if (Set(ref _value, value) && !_suppressDirtyTracking)
                 IsDirty = true;
         }
+    }
+
+    public bool IsEditable
+    {
+        get => _isEditable;
+        private set => Set(ref _isEditable, value);
     }
 
     public bool IsDirty
@@ -36,4 +45,22 @@ public sealed class ParameterRowViewModel(NodeParameter param, string? currentVa
     }
 
     public void MarkClean() => IsDirty = false;
+
+    public void SetConnectionOverrideValue(string? value)
+    {
+        _suppressDirtyTracking = true;
+        Value = value;
+        _suppressDirtyTracking = false;
+        IsEditable = false;
+        IsDirty = false;
+    }
+
+    public void ClearConnectionOverride(string? fallbackValue)
+    {
+        _suppressDirtyTracking = true;
+        Value = fallbackValue;
+        _suppressDirtyTracking = false;
+        IsEditable = true;
+        IsDirty = false;
+    }
 }

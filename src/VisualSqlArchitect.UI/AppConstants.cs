@@ -53,9 +53,6 @@ public static class AppConstants
     /// </summary>
     public const int PreviewDebounceMs = 500;
 
-    /// <summary>Milliseconds to wait before refreshing the explain-plan display.</summary>
-    public const int ExplainPlanRefreshMs = 600;
-
     /// <summary>Milliseconds debounce before re-running canvas validation.</summary>
     public const int ValidationDebounceMs = 200;
 }

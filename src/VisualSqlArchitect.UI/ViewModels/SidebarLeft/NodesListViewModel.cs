@@ -13,6 +13,7 @@ namespace VisualSqlArchitect.UI.ViewModels;
 public sealed class NodesListViewModel : ViewModelBase
 {
     private string _searchQuery = string.Empty;
+    private CanvasContext _canvasContext = CanvasContext.Query;
 
     /// <summary>
     /// The search query to filter node types.
@@ -28,6 +29,23 @@ public sealed class NodesListViewModel : ViewModelBase
                 RaisePropertyChanged(nameof(ShowIntro));
                 RaisePropertyChanged(nameof(HasResults));
             }
+        }
+    }
+
+    public CanvasContext CanvasContext
+    {
+        get => _canvasContext;
+        set
+        {
+            if (!Set(ref _canvasContext, value))
+                return;
+
+            // Avoid residual results from another mode context.
+            _searchQuery = string.Empty;
+            RaisePropertyChanged(nameof(SearchQuery));
+            InitializeGroups(_spawnNode);
+            RaisePropertyChanged(nameof(ShowIntro));
+            RaisePropertyChanged(nameof(HasResults));
         }
     }
 
@@ -62,12 +80,22 @@ public sealed class NodesListViewModel : ViewModelBase
     {
         FilteredGroups.Clear();
 
+        if (CanvasContext == CanvasContext.Ddl)
+        {
+            InitializeDdlGroups(spawnNode);
+            RaisePropertyChanged(nameof(HasResults));
+            return;
+        }
+
         // Create a dictionary to hold groups as we build them
         var groupsDict = new Dictionary<NodeCategory, NodeTypeGroupViewModel>();
 
         // Get all node definitions and group by category
         foreach (var def in NodeDefinitionRegistry.All)
         {
+            if (!IsDefinitionAllowedInContext(def))
+                continue;
+
             // Filter based on search
             if (!string.IsNullOrEmpty(SearchQuery))
             {
@@ -107,6 +135,95 @@ public sealed class NodesListViewModel : ViewModelBase
         RaisePropertyChanged(nameof(HasResults));
     }
 
+    private void InitializeDdlGroups(Action<NodeDefinition, Point> spawnNode)
+    {
+        var groups = new Dictionary<string, NodeTypeGroupViewModel>(StringComparer.OrdinalIgnoreCase);
+        var groupOrder = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (NodeDefinition def in NodeDefinitionRegistry.All)
+        {
+            if (!IsDefinitionAllowedInContext(def))
+                continue;
+
+            if (!MatchesSearch(def))
+                continue;
+
+            (string key, string name, string color, int order) = ClassifyDdlGroup(def.Type);
+
+            if (!groups.TryGetValue(key, out NodeTypeGroupViewModel? group))
+            {
+                group = new NodeTypeGroupViewModel(NodeCategory.Ddl, color, name);
+                groups[key] = group;
+                groupOrder[key] = order;
+            }
+
+            group.Items.Add(
+                new NodeTypeItemViewModel(def, color, defn => spawnNode(defn, new Point(200, 200)))
+            );
+            group.Count = group.Items.Count;
+        }
+
+        foreach ((string key, NodeTypeGroupViewModel group) in groups
+                     .OrderBy(kv => groupOrder.TryGetValue(kv.Key, out int order) ? order : int.MaxValue)
+                     .ThenBy(kv => kv.Value.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            _ = key;
+            FilteredGroups.Add(group);
+        }
+    }
+
+    private bool MatchesSearch(NodeDefinition def)
+    {
+        if (string.IsNullOrEmpty(SearchQuery))
+            return true;
+
+        string query = SearchQuery.ToLowerInvariant();
+        return def.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase)
+            || def.Description.Contains(query, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static (string Key, string Name, string Color, int Order) ClassifyDdlGroup(NodeType type)
+    {
+        return type switch
+        {
+            NodeType.TableDefinition
+                or NodeType.ColumnDefinition
+                or NodeType.ViewDefinition
+                or NodeType.EnumTypeDefinition
+                or NodeType.SequenceDefinition
+                or NodeType.ScalarTypeDefinition
+                => ("ddl.definitions", "Definitions", "#60A5FA", 0),
+
+            NodeType.PrimaryKeyConstraint
+                or NodeType.ForeignKeyConstraint
+                or NodeType.UniqueConstraint
+                or NodeType.CheckConstraint
+                or NodeType.DefaultConstraint
+                or NodeType.IndexDefinition
+                => ("ddl.constraints", "Constraints and Indexes", "#A78BFA", 1),
+
+            NodeType.CreateTableOutput
+                or NodeType.CreateTypeOutput
+                or NodeType.CreateSequenceOutput
+                or NodeType.CreateTableAsOutput
+                or NodeType.CreateViewOutput
+                or NodeType.AlterViewOutput
+                or NodeType.AlterTableOutput
+                or NodeType.CreateIndexOutput
+                => ("ddl.outputs", "Outputs", "#22C55E", 2),
+
+            NodeType.AddColumnOp
+                or NodeType.DropColumnOp
+                or NodeType.RenameColumnOp
+                or NodeType.RenameTableOp
+                or NodeType.DropTableOp
+                or NodeType.AlterColumnTypeOp
+                => ("ddl.alter", "Alter Operations", "#F59E0B", 3),
+
+            _ => ("ddl.misc", "Other DDL", "#94A3B8", 4),
+        };
+    }
+
     private static string GetCategoryColor(NodeCategory cat) => cat switch
     {
         NodeCategory.DataSource => "#60A5FA",        // Blue
@@ -123,4 +240,14 @@ public sealed class NodesListViewModel : ViewModelBase
         NodeCategory.Literal => "#6B7280",           // Gray
         _ => "#D1D5DB"
     };
+
+    private bool IsDefinitionAllowedInContext(NodeDefinition def)
+    {
+        return CanvasContext switch
+        {
+            CanvasContext.Ddl => def.Category == NodeCategory.Ddl,
+            CanvasContext.Query or CanvasContext.ViewSubcanvas => def.Category != NodeCategory.Ddl,
+            _ => true,
+        };
+    }
 }

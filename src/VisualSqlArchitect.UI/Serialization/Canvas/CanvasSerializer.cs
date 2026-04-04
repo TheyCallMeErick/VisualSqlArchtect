@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using System.IO.Compression;
 using System.Text;
 using Avalonia;
+using VisualSqlArchitect.Core;
 using VisualSqlArchitect.Nodes;
 using VisualSqlArchitect.UI.ViewModels;
 
@@ -58,6 +59,19 @@ public record SavedCanvas(
     string? Description = null // optional user-supplied note
 );
 
+/// <summary>
+/// Top-level workspace save file (schema v4+).
+/// Contains independent query and DDL canvases.
+/// </summary>
+public record SavedWorkspaceCanvas(
+    int Version,
+    SavedCanvas QueryCanvas,
+    SavedCanvas DdlCanvas,
+    string? AppVersion = null,
+    string? CreatedAt = null,
+    string? Description = null
+);
+
 public record SavedColumn(
     string Name,
     string Type
@@ -74,13 +88,19 @@ public record SavedNode(
     Dictionary<string, string> Parameters,
     Dictionary<string, string> PinLiterals,
     List<SavedColumn>? Columns = null,  // For TableSource: persisted column definitions
-    SavedCteSubgraph? CteSubgraph = null
+    SavedCteSubgraph? CteSubgraph = null,
+    SavedViewSubgraph? ViewSubgraph = null
 );
 
 public record SavedCteSubgraph(
     List<SavedNode> Nodes,
     List<SavedConnection> Connections,
     string? ResultOutputNodeId
+);
+
+public record SavedViewSubgraph(
+    string GraphJson,
+    string? FromTable
 );
 
 public record SavedConnection(
@@ -112,9 +132,19 @@ public sealed record LocalFileVersionInfo(
 
 public static class CanvasSerializer
 {
+    private enum CanvasNodeFamily
+    {
+        Any,
+        Query,
+        Ddl,
+    }
+
     /// <summary>Current schema version written by this build.</summary>
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
+    public const int LegacyCanvasSchemaVersion = 3;
     public const string CteSubgraphParameterKey = "__cteSubgraphJson";
+    public const string ViewSubgraphParameterKey = "ViewSubgraphGraphJson";
+    public const string ViewFromTableParameterKey = "ViewFromTable";
 
     /// <summary>Semantic version of the application (bumped per release).</summary>
     public const string AppVersion = AppConstants.AppVersion;
@@ -137,8 +167,42 @@ public static class CanvasSerializer
         string? description = null
     )
     {
-        var saved = new SavedCanvas(
+        SavedCanvas saved = BuildSavedCanvas(vm, provider, connectionName, description);
+        return JsonSerializer.Serialize(saved, _opts);
+    }
+
+    public static string SerializeWorkspace(
+        CanvasViewModel queryVm,
+        CanvasViewModel? ddlVm,
+        string provider = "Postgres",
+        string connectionName = "untitled",
+        string? description = null
+    )
+    {
+        SavedCanvas query = BuildSavedCanvas(queryVm, provider, connectionName, description);
+        SavedCanvas ddl = BuildSavedDdlCanvas(ddlVm, provider, connectionName);
+
+        var workspace = new SavedWorkspaceCanvas(
             Version: CurrentSchemaVersion,
+            QueryCanvas: query,
+            DdlCanvas: ddl,
+            AppVersion: AppVersion,
+            CreatedAt: DateTime.UtcNow.ToString("o"),
+            Description: description
+        );
+
+        return JsonSerializer.Serialize(workspace, _opts);
+    }
+
+    private static SavedCanvas BuildSavedCanvas(
+        CanvasViewModel vm,
+        string provider,
+        string connectionName,
+        string? description
+    )
+    {
+        return new SavedCanvas(
+            Version: LegacyCanvasSchemaVersion,
             DatabaseProvider: provider,
             ConnectionName: connectionName,
             Zoom: vm.Zoom,
@@ -155,8 +219,49 @@ public static class CanvasSerializer
             CreatedAt: DateTime.UtcNow.ToString("o"), // ISO-8601
             Description: description
         );
+    }
 
-        return JsonSerializer.Serialize(saved, _opts);
+    private static SavedCanvas BuildSavedDdlCanvas(
+        CanvasViewModel? ddlVm,
+        string provider,
+        string connectionName
+    )
+    {
+        if (ddlVm is null)
+        {
+            return new SavedCanvas(
+                Version: LegacyCanvasSchemaVersion,
+                DatabaseProvider: provider,
+                ConnectionName: connectionName,
+                Zoom: 1,
+                PanX: 0,
+                PanY: 0,
+                Nodes: [],
+                Connections: [],
+                SelectBindings: [],
+                WhereBindings: [],
+                AppVersion: AppVersion,
+                CreatedAt: DateTime.UtcNow.ToString("o")
+            );
+        }
+
+        return new SavedCanvas(
+            Version: LegacyCanvasSchemaVersion,
+            DatabaseProvider: ddlVm.Provider.ToString(),
+            ConnectionName: connectionName,
+            Zoom: 1,
+            PanX: 0,
+            PanY: 0,
+            Nodes: [.. ddlVm.Nodes.Select(n => SerialiseNode(n, ddlVm.Nodes, ddlVm.Connections))],
+            Connections: [.. ddlVm.Connections
+                .Select(SerialiseConnection)
+                .Where(c => c is not null)
+                .Select(c => c!)],
+            SelectBindings: [],
+            WhereBindings: [],
+            AppVersion: AppVersion,
+            CreatedAt: DateTime.UtcNow.ToString("o")
+        );
     }
 
     // ── Subgraph helpers (used by snippet system) ─────────────────────────────
@@ -259,6 +364,7 @@ public static class CanvasSerializer
     {
         var parameters = new Dictionary<string, string>(n.Parameters);
         parameters.Remove(CteSubgraphParameterKey);
+        SavedViewSubgraph? viewSubgraph = BuildViewSubgraph(n, parameters);
         // Persist ResultOutput column order as a joined string
         if (n.Type == NodeType.ResultOutput && n.OutputColumnOrder.Count > 0)
             parameters["__colOrder"] = string.Join("|", n.OutputColumnOrder.Select(e => e.Key));
@@ -287,8 +393,36 @@ public static class CanvasSerializer
             Parameters: parameters,
             PinLiterals: new Dictionary<string, string>(n.PinLiterals),
             Columns: columns,
-            CteSubgraph: cteSubgraph
+            CteSubgraph: cteSubgraph,
+            ViewSubgraph: viewSubgraph
         );
+    }
+
+    private static SavedViewSubgraph? BuildViewSubgraph(
+        NodeViewModel node,
+        Dictionary<string, string> parameters
+    )
+    {
+        if (node.Type != NodeType.ViewDefinition)
+            return null;
+
+        if (!parameters.TryGetValue(ViewSubgraphParameterKey, out string? payload)
+            || string.IsNullOrWhiteSpace(payload))
+            return null;
+
+        // Keep malformed payloads in Parameters for diagnostics/fallback compatibility.
+        try
+        {
+            using JsonDocument _ = JsonDocument.Parse(payload);
+        }
+        catch
+        {
+            return null;
+        }
+
+        parameters.Remove(ViewSubgraphParameterKey);
+        parameters.TryGetValue(ViewFromTableParameterKey, out string? fromTable);
+        return new SavedViewSubgraph(payload, string.IsNullOrWhiteSpace(fromTable) ? null : fromTable.Trim());
     }
 
     private static SavedCteSubgraph? BuildCteSubgraph(
@@ -387,7 +521,7 @@ public static class CanvasSerializer
 
     /// <summary>
     /// Upgrades a <see cref="SavedCanvas"/> from any supported older version to
-    /// <see cref="CurrentSchemaVersion"/>.  Returns the migrated canvas and a list
+    /// <see cref="LegacyCanvasSchemaVersion"/>. Returns the migrated canvas and a list
     /// of human-readable migration notes (empty when no migration was needed).
     /// </summary>
     private static (SavedCanvas Canvas, List<string> Warnings) MigrateToLatest(SavedCanvas canvas)
@@ -411,7 +545,7 @@ public static class CanvasSerializer
             );
             c = c with
             {
-                Version = CurrentSchemaVersion,
+                Version = LegacyCanvasSchemaVersion,
                 AppVersion = "unknown (pre-v3)",
                 CreatedAt = DateTime.UtcNow.ToString("o"),
             };
@@ -419,7 +553,7 @@ public static class CanvasSerializer
 
         // Some early v3 files may still miss metadata fields; backfill them assistively.
         if (
-            c.Version == CurrentSchemaVersion
+            c.Version == LegacyCanvasSchemaVersion
             && (string.IsNullOrWhiteSpace(c.AppVersion) || string.IsNullOrWhiteSpace(c.CreatedAt))
         )
         {
@@ -459,6 +593,9 @@ public static class CanvasSerializer
             null
     )
     {
+        if (LooksLikeWorkspaceEnvelope(json))
+            return DeserializeWorkspace(json, vm, null, columnLookup);
+
         SavedCanvas? raw;
         try
         {
@@ -472,10 +609,106 @@ public static class CanvasSerializer
         if (raw is null)
             return CanvasLoadResult.Fail("Canvas file is empty or could not be parsed.");
 
-        if (raw.Version < 1 || raw.Version > CurrentSchemaVersion)
+        return DeserializeSavedCanvas(raw, vm, columnLookup);
+    }
+
+    public static CanvasLoadResult DeserializeWorkspace(
+        string json,
+        CanvasViewModel queryVm,
+        CanvasViewModel? ddlVm,
+        IReadOnlyDictionary<string, IReadOnlyList<(string Name, PinDataType Type)>>? columnLookup =
+            null
+    )
+    {
+        if (!LooksLikeWorkspaceEnvelope(json))
+        {
+            CanvasLoadResult legacy = Deserialize(json, queryVm, columnLookup);
+            if (!legacy.Success)
+                return legacy;
+
+            if (ddlVm is not null)
+                ddlVm.ReplaceGraph([], []);
+
+            return legacy;
+        }
+
+        SavedWorkspaceCanvas? workspace;
+        try
+        {
+            workspace = JsonSerializer.Deserialize<SavedWorkspaceCanvas>(json, _opts);
+        }
+        catch (JsonException ex)
+        {
+            return CanvasLoadResult.Fail($"Invalid workspace JSON: {ex.Message}");
+        }
+
+        if (workspace is null)
+            return CanvasLoadResult.Fail("Workspace file is empty or could not be parsed.");
+
+        if (workspace.Version < 4 || workspace.Version > CurrentSchemaVersion)
+            return CanvasLoadResult.Fail(
+                $"Unsupported workspace schema version {workspace.Version}. "
+                    + $"This build supports versions 4–{CurrentSchemaVersion}."
+            );
+
+        CanvasLoadResult queryLoad = DeserializeSavedCanvas(
+            workspace.QueryCanvas,
+            queryVm,
+            columnLookup,
+            CanvasNodeFamily.Query
+        );
+        if (!queryLoad.Success)
+            return queryLoad;
+
+        var warnings = queryLoad.Warnings?.ToList() ?? [];
+
+        if (ddlVm is not null)
+        {
+            CanvasLoadResult ddlLoad = ApplyDdlFromSavedCanvas(workspace.DdlCanvas, ddlVm);
+            if (!ddlLoad.Success)
+                warnings.Add($"DDL canvas restore skipped: {ddlLoad.Error}");
+            else if (ddlLoad.Warnings is { Count: > 0 })
+                warnings.AddRange(ddlLoad.Warnings.Select(w => $"DDL: {w}"));
+        }
+        else if (workspace.DdlCanvas.Nodes.Count > 0 || workspace.DdlCanvas.Connections.Count > 0)
+        {
+            warnings.Add("File contains a DDL canvas snapshot, but no DDL target canvas was provided during load.");
+        }
+
+        return CanvasLoadResult.Ok(warnings.Count > 0 ? warnings : null);
+    }
+
+    private static CanvasLoadResult ApplyDdlFromSavedCanvas(
+        SavedCanvas saved,
+        CanvasViewModel ddlVm
+    )
+    {
+        var scratch = new CanvasViewModel();
+        scratch.Nodes.Clear();
+        scratch.Connections.Clear();
+
+        CanvasLoadResult load = DeserializeSavedCanvas(saved, scratch, null, CanvasNodeFamily.Ddl);
+        if (!load.Success)
+            return load;
+
+        ddlVm.ReplaceGraph(scratch.Nodes.ToList(), scratch.Connections.ToList());
+        if (Enum.TryParse(saved.DatabaseProvider, true, out DatabaseProvider provider))
+            ddlVm.Provider = provider;
+
+        return load;
+    }
+
+    private static CanvasLoadResult DeserializeSavedCanvas(
+        SavedCanvas raw,
+        CanvasViewModel vm,
+        IReadOnlyDictionary<string, IReadOnlyList<(string Name, PinDataType Type)>>? columnLookup,
+        CanvasNodeFamily allowedFamily = CanvasNodeFamily.Any
+    )
+    {
+        if (raw.Version < 1 || raw.Version > LegacyCanvasSchemaVersion)
             return CanvasLoadResult.Fail(
                 $"Unsupported schema version {raw.Version}. "
-                    + $"This build supports versions 1–{CurrentSchemaVersion}."
+                    + $"This build supports legacy canvas versions 1–{LegacyCanvasSchemaVersion}."
             );
 
         // Apply forward migrations
@@ -495,7 +728,7 @@ public static class CanvasSerializer
 
         foreach (SavedNode sn in saved.Nodes)
         {
-            (NodeViewModel? nodeVm, string? skipReason) = BuildNodeVm(sn, columnLookup);
+            (NodeViewModel? nodeVm, string? skipReason) = BuildNodeVm(sn, columnLookup, allowedFamily);
             if (nodeVm is null)
             {
                 skippedNodes.Add((sn.NodeId, sn.NodeType, skipReason ?? "Unknown error"));
@@ -526,6 +759,17 @@ public static class CanvasSerializer
                 $"Warning: {skippedNodes.Count} node(s) could not be loaded and were skipped: {skippedSummary}. " +
                 "This may indicate the file was created with a newer version or has unsupported node types."
             );
+
+            int familyFiltered = skippedNodes.Count(s =>
+                s.Reason.Contains("canvas family mismatch", StringComparison.OrdinalIgnoreCase)
+            );
+            if (familyFiltered > 0)
+            {
+                string target = allowedFamily == CanvasNodeFamily.Ddl ? "DDL" : "Query";
+                warnings.Add(
+                    $"Skipped {familyFiltered} legacy node(s) that belong to the opposite canvas family while loading {target} canvas."
+                );
+            }
         }
 
         // Rebuild connections
@@ -670,6 +914,22 @@ public static class CanvasSerializer
         return CanvasLoadResult.Ok(warnings.Count > 0 ? warnings : null);
     }
 
+    private static bool LooksLikeWorkspaceEnvelope(string json)
+    {
+        try
+        {
+            using JsonDocument doc = JsonDocument.Parse(json);
+            JsonElement root = doc.RootElement;
+            return root.ValueKind == JsonValueKind.Object
+                && root.TryGetProperty(nameof(SavedWorkspaceCanvas.QueryCanvas), out _)
+                && root.TryGetProperty(nameof(SavedWorkspaceCanvas.DdlCanvas), out _);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static void MaterializeCteSubgraphs(
         SavedCanvas saved,
         CanvasViewModel vm,
@@ -769,11 +1029,21 @@ public static class CanvasSerializer
 
     private static (NodeViewModel?, string? SkipReason) BuildNodeVm(
         SavedNode sn,
-        IReadOnlyDictionary<string, IReadOnlyList<(string Name, PinDataType Type)>>? columnLookup
+        IReadOnlyDictionary<string, IReadOnlyList<(string Name, PinDataType Type)>>? columnLookup,
+        CanvasNodeFamily allowedFamily = CanvasNodeFamily.Any
     )
     {
         if (!Enum.TryParse<NodeType>(sn.NodeType, out NodeType nodeType))
             return (null, $"Unknown node type '{sn.NodeType}' (not supported in this version)");
+
+        if (!IsNodeTypeAllowed(nodeType, allowedFamily))
+        {
+            string familyName = allowedFamily == CanvasNodeFamily.Ddl ? "DDL" : "Query";
+            return (
+                null,
+                $"Node '{sn.NodeType}' skipped due to canvas family mismatch (target: {familyName})"
+            );
+        }
 
         NodeViewModel vm;
 
@@ -866,6 +1136,20 @@ public static class CanvasSerializer
         if (sn.CteSubgraph is not null)
             vm.Parameters[CteSubgraphParameterKey] = JsonSerializer.Serialize(sn.CteSubgraph);
 
+        if (sn.ViewSubgraph is not null)
+        {
+            vm.Parameters[ViewSubgraphParameterKey] = sn.ViewSubgraph.GraphJson;
+
+            bool hasFromTable = vm.Parameters.TryGetValue(ViewFromTableParameterKey, out string? existingFrom)
+                && !string.IsNullOrWhiteSpace(existingFrom);
+
+            if (!string.IsNullOrWhiteSpace(sn.ViewSubgraph.FromTable)
+                && !hasFromTable)
+            {
+                vm.Parameters[ViewFromTableParameterKey] = sn.ViewSubgraph.FromTable!;
+            }
+        }
+
         return (vm, null);
     }
 
@@ -924,6 +1208,43 @@ public static class CanvasSerializer
         }
     }
 
+    private static bool IsNodeTypeAllowed(NodeType nodeType, CanvasNodeFamily family)
+    {
+        if (family == CanvasNodeFamily.Any)
+            return true;
+
+        bool isDdlNode = IsDdlNodeType(nodeType);
+        return family == CanvasNodeFamily.Ddl ? isDdlNode : !isDdlNode;
+    }
+
+    private static bool IsDdlNodeType(NodeType nodeType) =>
+        nodeType
+            is NodeType.TableDefinition
+                or NodeType.ColumnDefinition
+                or NodeType.PrimaryKeyConstraint
+                or NodeType.ForeignKeyConstraint
+                or NodeType.UniqueConstraint
+                or NodeType.CheckConstraint
+                or NodeType.DefaultConstraint
+                or NodeType.IndexDefinition
+                or NodeType.ViewDefinition
+                or NodeType.CreateTableOutput
+                or NodeType.EnumTypeDefinition
+                or NodeType.CreateTypeOutput
+                or NodeType.SequenceDefinition
+                or NodeType.CreateSequenceOutput
+                or NodeType.CreateTableAsOutput
+                or NodeType.CreateViewOutput
+                or NodeType.AlterViewOutput
+                or NodeType.AlterTableOutput
+                or NodeType.CreateIndexOutput
+                or NodeType.AddColumnOp
+                or NodeType.DropColumnOp
+                or NodeType.RenameColumnOp
+                or NodeType.RenameTableOp
+                or NodeType.DropTableOp
+                or NodeType.AlterColumnTypeOp;
+
     // ── File I/O helpers ──────────────────────────────────────────────────────
 
     public static async Task SaveToFileAsync(
@@ -934,7 +1255,19 @@ public static class CanvasSerializer
         string? description = null
     )
     {
-        string json = Serialize(vm, provider, connection, description);
+        await SaveToFileAsync(path, vm, null, provider, connection, description);
+    }
+
+    public static async Task SaveToFileAsync(
+        string path,
+        CanvasViewModel queryVm,
+        CanvasViewModel? ddlVm,
+        string provider = "Postgres",
+        string connection = "untitled",
+        string? description = null
+    )
+    {
+        string json = SerializeWorkspace(queryVm, ddlVm, provider, connection, description);
         byte[] utf8 = Encoding.UTF8.GetBytes(json);
         bool useCompression = utf8.Length >= CompressionThresholdBytes;
         byte[] payload = useCompression ? CompressBytes(utf8) : utf8;
@@ -962,6 +1295,17 @@ public static class CanvasSerializer
             null
     )
     {
+        return await LoadFromFileAsync(path, vm, null, columnLookup);
+    }
+
+    public static async Task<CanvasLoadResult> LoadFromFileAsync(
+        string path,
+        CanvasViewModel queryVm,
+        CanvasViewModel? ddlVm,
+        IReadOnlyDictionary<string, IReadOnlyList<(string Name, PinDataType Type)>>? columnLookup =
+            null
+    )
+    {
         byte[] bytes;
         try
         {
@@ -982,7 +1326,7 @@ public static class CanvasSerializer
             return CanvasLoadResult.Fail($"Could not decode canvas file: {ex.Message}");
         }
 
-        return Deserialize(json, vm, columnLookup);
+        return DeserializeWorkspace(json, queryVm, ddlVm, columnLookup);
     }
 
     /// <summary>
@@ -994,8 +1338,19 @@ public static class CanvasSerializer
         {
             byte[] bytes = File.ReadAllBytes(path);
             string json = DecodeCanvasJson(bytes);
+            if (LooksLikeWorkspaceEnvelope(json))
+            {
+                SavedWorkspaceCanvas? workspace = JsonSerializer.Deserialize<SavedWorkspaceCanvas>(json, _opts);
+                if (workspace?.QueryCanvas is null || workspace.DdlCanvas is null)
+                    return false;
+
+                return workspace.Version is >= 4 and <= CurrentSchemaVersion
+                    && workspace.QueryCanvas.Version is >= 1 and <= LegacyCanvasSchemaVersion
+                    && workspace.DdlCanvas.Version is >= 1 and <= LegacyCanvasSchemaVersion;
+            }
+
             SavedCanvas? saved = JsonSerializer.Deserialize<SavedCanvas>(json, _opts);
-            return saved?.Version is >= 1 and <= CurrentSchemaVersion;
+            return saved?.Version is >= 1 and <= LegacyCanvasSchemaVersion;
         }
         catch
         {
@@ -1018,9 +1373,24 @@ public static class CanvasSerializer
         {
             byte[] bytes = File.ReadAllBytes(path);
             string json = DecodeCanvasJson(bytes);
+            if (LooksLikeWorkspaceEnvelope(json))
+            {
+                SavedWorkspaceCanvas? workspace = JsonSerializer.Deserialize<SavedWorkspaceCanvas>(json, _opts);
+                if (workspace is null)
+                    return null;
+
+                return (
+                    workspace.Version,
+                    workspace.AppVersion ?? workspace.QueryCanvas.AppVersion,
+                    workspace.CreatedAt ?? workspace.QueryCanvas.CreatedAt,
+                    workspace.Description ?? workspace.QueryCanvas.Description
+                );
+            }
+
             SavedCanvas? saved = JsonSerializer.Deserialize<SavedCanvas>(json, _opts);
             if (saved is null)
                 return null;
+
             return (saved.Version, saved.AppVersion, saved.CreatedAt, saved.Description);
         }
         catch

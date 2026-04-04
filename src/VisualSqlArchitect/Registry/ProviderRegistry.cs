@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using VisualSqlArchitect.Core;
 using VisualSqlArchitect.Metadata;
 using VisualSqlArchitect.Providers.Dialects;
@@ -7,16 +8,33 @@ namespace VisualSqlArchitect.Registry;
 
 public sealed class ProviderRegistry : IProviderRegistry
 {
-    private readonly Dictionary<DatabaseProvider, ISqlDialect> _dialects = new();
-    private readonly Dictionary<DatabaseProvider, IMetadataQueryProvider> _metadataProviders = new();
-    private readonly Dictionary<DatabaseProvider, IFunctionFragmentProvider> _functionFragments = new();
-    private readonly Dictionary<DatabaseProvider, ISqlFunctionRegistry> _registryCache = new();
+    private readonly ConcurrentDictionary<DatabaseProvider, ISqlDialect> _dialects = new();
+    private readonly ConcurrentDictionary<DatabaseProvider, IMetadataQueryProvider> _metadataProviders = new();
+    private readonly ConcurrentDictionary<DatabaseProvider, IFunctionFragmentProvider> _functionFragments = new();
+    private readonly ConcurrentDictionary<DatabaseProvider, ISqlFunctionRegistry> _registryCache = new();
+
+    public ProviderRegistry()
+    {
+    }
+
+    public ProviderRegistry(IEnumerable<IProviderRegistration> registrations)
+    {
+        ArgumentNullException.ThrowIfNull(registrations);
+
+        foreach (IProviderRegistration registration in registrations)
+        {
+            RegisterProvider(
+                registration.Provider,
+                registration.Dialect,
+                registration.MetadataProvider,
+                registration.FunctionFragments
+            );
+        }
+    }
 
     public static IProviderRegistry CreateDefault()
     {
-        var registry = new ProviderRegistry();
-        registry.RegisterDefaultProviders();
-        return registry;
+        return new ProviderRegistry(DefaultProviderRegistrations.CreateAll());
     }
 
     public void RegisterProvider(
@@ -32,17 +50,12 @@ public sealed class ProviderRegistry : IProviderRegistry
         _dialects[provider] = dialect;
         _metadataProviders[provider] = metadataProvider;
         _functionFragments[provider] = functionFragments;
-        _registryCache.Remove(provider);
+        _registryCache.TryRemove(provider, out _);
     }
 
     public ISqlFunctionRegistry CreateFunctionRegistry(DatabaseProvider provider)
     {
-        if (!_registryCache.TryGetValue(provider, out ISqlFunctionRegistry? cached))
-        {
-            cached = new SqlFunctionRegistry(provider);
-            _registryCache[provider] = cached;
-        }
-        return cached;
+        return _registryCache.GetOrAdd(provider, static p => new SqlFunctionRegistry(p));
     }
 
     public QueryBuilderService CreateQueryBuilder(DatabaseProvider provider, string fromTable)
@@ -79,11 +92,4 @@ public sealed class ProviderRegistry : IProviderRegistry
     public IReadOnlyList<DatabaseProvider> GetRegisteredProviders() =>
         _dialects.Keys.ToList().AsReadOnly();
 
-    private void RegisterDefaultProviders()
-    {
-        RegisterProvider(DatabaseProvider.Postgres, new PostgresDialect(), new PostgresMetadataQueries(), new PostgresFunctionFragments());
-        RegisterProvider(DatabaseProvider.MySql, new MySqlDialect(), new MySqlMetadataQueries(), new MySqlFunctionFragments());
-        RegisterProvider(DatabaseProvider.SqlServer, new SqlServerDialect(), new SqlServerMetadataQueries(), new SqlServerFunctionFragments());
-        RegisterProvider(DatabaseProvider.SQLite, new SqliteDialect(), new SqliteMetadataQueries(), new SqliteFunctionFragments());
-    }
 }

@@ -1,6 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:VisualSqlArchitect.UI.ViewModels"
+             xmlns:validation="using:VisualSqlArchitect.UI.Services.Validation"
+             xmlns:livesql="using:VisualSqlArchitect.UI.Services.LiveSqlBar"
              xmlns:core="using:VisualSqlArchitect.Core"
              xmlns:conv="using:VisualSqlArchitect.UI.Converters"
              xmlns:loc="using:VisualSqlArchitect.UI.Services.Localization"
@@ -63,15 +65,58 @@
       <Setter Property="Background" Value="#1E2335"/>
       <Setter Property="Foreground" Value="#E8EAED"/>
     </Style>
+    <Style Selector="Button.sql-cta">
+      <Setter Property="MinWidth" Value="180"/>
+      <Setter Property="Padding" Value="12,9"/>
+      <Setter Property="CornerRadius" Value="10"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.14"/>
+          <BrushTransition Property="Foreground" Duration="0:0:0.14"/>
+          <BrushTransition Property="BorderBrush" Duration="0:0:0.14"/>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.14"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.sql-cta:pointerover">
+      <Setter Property="RenderTransform" Value="scale(1.03)"/>
+    </Style>
+    <Style Selector="Button.sql-cta:pressed">
+      <Setter Property="RenderTransform" Value="scale(0.98)"/>
+    </Style>
+    <Style Selector="Button.sql-cta.explain">
+      <Setter Property="Background" Value="#0D1D34"/>
+      <Setter Property="BorderBrush" Value="#2563EB"/>
+      <Setter Property="Foreground" Value="#BFDBFE"/>
+    </Style>
+    <Style Selector="Button.sql-cta.explain:pointerover">
+      <Setter Property="Background" Value="#12305A"/>
+      <Setter Property="Foreground" Value="#DBEAFE"/>
+    </Style>
+    <Style Selector="Button.sql-cta.benchmark">
+      <Setter Property="Background" Value="#211A02"/>
+      <Setter Property="BorderBrush" Value="#F59E0B"/>
+      <Setter Property="Foreground" Value="#FDE68A"/>
+    </Style>
+    <Style Selector="Button.sql-cta.benchmark:pointerover">
+      <Setter Property="Background" Value="#3A2B06"/>
+      <Setter Property="Foreground" Value="#FEF3C7"/>
+    </Style>
 
   </UserControl.Styles>
 
   <!-- ══ Bar shell ══════════════════════════════════════════════════════════ -->
   <Border Background="#0A0C11"
           BorderBrush="#1E2335"
-          BorderThickness="0,1,0,0">
+          BorderThickness="0,1,0,0"
+          VerticalAlignment="Stretch">
 
-    <Grid RowDefinitions="Auto,Auto,Auto,Auto" Margin="0">
+    <Grid RowDefinitions="Auto,Auto,*,Auto,Auto,Auto" Margin="0">
 
       <!-- ── Safe Preview blocked banner ──────────────────────────────────────── -->
       <Border Grid.Row="0"
@@ -97,7 +142,7 @@
 
       <!-- ── Top strip: label + provider + actions ───────────────────────────── -->
       <Grid Grid.Row="1"
-            ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto,Auto,Auto,Auto"
+            ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto"
             Margin="12,6,8,4">
 
         <!-- Status dot -->
@@ -184,34 +229,8 @@
           </StackPanel>
         </Button>
 
-        <!-- Benchmark button -->
-        <Button Grid.Column="6"
-                Classes="sql-action"
-                Name="BenchmarkBtn"
-          ToolTip.Tip="{Binding [tooltip.openBenchmark], Source={x:Static loc:LocalizationService.Instance}}"
-                IsEnabled="{Binding HasSql}"
-                AutomationProperties.Name="Open benchmark">
-          <StackPanel Orientation="Horizontal" Spacing="4">
-            <mi:MaterialIcon Kind="TimerOutline" Width="12" Height="12"/>
-            <TextBlock Text="{Binding [liveSql.benchmark], Source={x:Static loc:LocalizationService.Instance}}" FontSize="11"/>
-          </StackPanel>
-        </Button>
-
-        <!-- Explain Plan button -->
-        <Button Grid.Column="7"
-                Classes="sql-action"
-                Name="ExplainBtn"
-          ToolTip.Tip="{Binding [tooltip.openExplainPlan], Source={x:Static loc:LocalizationService.Instance}}"
-                IsEnabled="{Binding HasSql}"
-                AutomationProperties.Name="Open explain plan">
-          <StackPanel Orientation="Horizontal" Spacing="4">
-            <mi:MaterialIcon Kind="TableSearch" Width="12" Height="12"/>
-            <TextBlock Text="{Binding [liveSql.explain], Source={x:Static loc:LocalizationService.Instance}}" FontSize="11"/>
-          </StackPanel>
-        </Button>
-
         <!-- Recompile indicator (spinning when active) -->
-        <ProgressBar Grid.Column="8"
+        <ProgressBar Grid.Column="6"
                      Width="20" Height="2"
                      IsIndeterminate="True"
                      Foreground="#3B82F6"
@@ -226,7 +245,6 @@
         <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Auto"
                       MinHeight="90"
-                      MaxHeight="220"
                       Margin="10,8">
           <ItemsControl ItemsSource="{Binding Tokens}"
                         HorizontalAlignment="Stretch">
@@ -236,9 +254,9 @@
               </ItemsPanelTemplate>
             </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="vm:SqlToken">
+              <DataTemplate x:DataType="livesql:SqlToken">
                 <TextBlock Text="{Binding Text}"
-                           FontFamily="Consolas,Cascadia Code,monospace"
+                           FontFamily="{StaticResource MonoFont}"
                            FontSize="12"
                            Classes.tok-Keyword="{Binding Kind, Converter={StaticResource KindConverter}, ConverterParameter=Keyword}"
                            Classes.tok-Identifier="{Binding Kind, Converter={StaticResource KindConverter}, ConverterParameter=Identifier}"
@@ -254,8 +272,58 @@
         </ScrollViewer>
       </Border>
 
-      <!-- ── Guardrail warnings strip ──────────────────────────────────────── -->
+      <!-- ── Preview diagnostics strip (click to focus node) ───────────────── -->
       <ItemsControl Grid.Row="3"
+                    ItemsSource="{Binding DiagnosticItems}"
+                    IsVisible="{Binding HasDiagnostics}"
+                    Margin="12,2,12,1">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <WrapPanel Orientation="Horizontal"/>
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="livesql:LiveSqlDiagnosticItem">
+              <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,2,6,0">
+                <Button Background="Transparent"
+                        BorderThickness="0"
+                        Padding="0"
+                        Cursor="Hand"
+                        Command="{Binding FocusCommand}">
+                  <Border CornerRadius="4"
+                          Background="#21111D"
+                          BorderBrush="#FB7185"
+                          BorderThickness="1"
+                          Padding="6,3">
+                    <StackPanel Orientation="Horizontal" Spacing="5">
+                  <mi:MaterialIcon Kind="AlertCircleOutline"
+                                   Width="11" Height="11"
+                                   Foreground="#FB7185"
+                                   VerticalAlignment="Center"/>
+                  <TextBlock Text="{Binding Message}"
+                             FontSize="10"
+                             Foreground="#FCA5A5"
+                             VerticalAlignment="Center"/>
+                    </StackPanel>
+                  </Border>
+                </Button>
+
+                <Button IsVisible="{Binding HasQuickAction}"
+                        Command="{Binding QuickActionCommand}"
+                        Background="#1F2937"
+                        BorderBrush="#60A5FA"
+                        Foreground="#93C5FD"
+                        BorderThickness="1"
+                        Padding="6,1"
+                        FontSize="9"
+                        Content="{Binding QuickActionLabel}"/>
+              </StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <!-- ── Guardrail warnings strip ──────────────────────────────────────── -->
+      <ItemsControl Grid.Row="4"
                     ItemsSource="{Binding GuardIssues}"
                     IsVisible="{Binding HasGuardWarning}"
                     Margin="12,2,12,5">
@@ -265,7 +333,7 @@
           </ItemsPanelTemplate>
         </ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate>
-          <DataTemplate x:DataType="vm:GuardIssue">
+          <DataTemplate x:DataType="validation:GuardIssue">
             <Border CornerRadius="4"
                     Background="#241A00"
                     BorderBrush="#FBBF24"
@@ -293,6 +361,46 @@
           </DataTemplate>
         </ItemsControl.ItemTemplate>
       </ItemsControl>
+
+      <Border Grid.Row="5"
+              Margin="12,2,12,10"
+              Padding="10,10"
+              Background="#0B101A"
+              BorderBrush="#25324A"
+              BorderThickness="1"
+              CornerRadius="10">
+        <Grid ColumnDefinitions="*,Auto,Auto,*">
+          <TextBlock Grid.Column="0"
+                     Text="{Binding [liveSql.actionsHint], Source={x:Static loc:LocalizationService.Instance}, FallbackValue=Performance tools}"
+                     FontSize="10"
+                     Foreground="#64748B"
+                     VerticalAlignment="Center"/>
+          <Button Grid.Column="1"
+                  Name="ExplainBtn"
+                  Classes="sql-cta explain"
+                  Margin="0,0,8,0"
+                  ToolTip.Tip="{Binding [tooltip.openExplainPlan], Source={x:Static loc:LocalizationService.Instance}}"
+                  IsEnabled="{Binding HasSql}"
+                  AutomationProperties.Name="{Binding [tooltip.openExplainPlan], Source={x:Static loc:LocalizationService.Instance}}">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+              <mi:MaterialIcon Kind="TableSearch" Width="14" Height="14"/>
+              <TextBlock Text="{Binding [liveSql.explain], Source={x:Static loc:LocalizationService.Instance}}"/>
+              <TextBlock Text="F4" FontSize="10" Foreground="#93C5FD" VerticalAlignment="Center"/>
+            </StackPanel>
+          </Button>
+          <Button Grid.Column="2"
+                  Name="BenchmarkBtn"
+                  Classes="sql-cta benchmark"
+                  ToolTip.Tip="{Binding [tooltip.openBenchmark], Source={x:Static loc:LocalizationService.Instance}}"
+                  IsEnabled="{Binding HasSql}"
+                  AutomationProperties.Name="{Binding [tooltip.openBenchmark], Source={x:Static loc:LocalizationService.Instance}}">
+            <StackPanel Orientation="Horizontal" Spacing="7">
+              <mi:MaterialIcon Kind="TimerOutline" Width="14" Height="14"/>
+              <TextBlock Text="{Binding [liveSql.benchmark], Source={x:Static loc:LocalizationService.Instance}}"/>
+            </StackPanel>
+          </Button>
+        </Grid>
+      </Border>
 
     </Grid>
   </Border>

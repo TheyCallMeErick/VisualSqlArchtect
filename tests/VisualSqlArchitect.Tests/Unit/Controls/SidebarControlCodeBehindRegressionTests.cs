@@ -14,7 +14,7 @@ public class SidebarControlCodeBehindRegressionTests
         Assert.Contains("nodesButton.Click += (_, _) => vm.ActiveTab = ESidebarTab.Nodes;", source);
         Assert.Contains("connectionButton.Click += (_, _) => vm.ActiveTab = ESidebarTab.Connection;", source);
         Assert.Contains("schemaButton.Click += (_, _) => vm.ActiveTab = ESidebarTab.Schema;", source);
-        Assert.Contains("vm.ActiveTab = ESidebarTab.Diagnostics;", source);
+        Assert.DoesNotContain("DiagnosticsTabButton", source);
     }
 
     [Fact]
@@ -25,7 +25,7 @@ public class SidebarControlCodeBehindRegressionTests
         Assert.Contains("nodesControl.DataContext = vm.NodesList;", source);
         Assert.Contains("connectionControl.DataContext = vm.ConnectionManager;", source);
         Assert.Contains("schemaControl.DataContext = vm.Schema;", source);
-        Assert.Contains("diagnosticsControl.DataContext = vm.Diagnostics;", source);
+        Assert.DoesNotContain("diagnosticsControl", source);
 
         Assert.Contains("_buttonsWired = false;", source);
         Assert.Contains("WireUpButtons();", source);

@@ -56,6 +56,7 @@ public enum NodeCategory
     ResultModifier,
     Output,
     Literal,
+    Ddl,
 }
 
 /// <summary>
@@ -177,6 +178,34 @@ public enum NodeType
     JsonExport,
     CsvExport,
     ExcelExport,
+
+    // ── DDL ─────────────────────────────────────────────────────────────────
+    TableDefinition,
+    ColumnDefinition,
+    PrimaryKeyConstraint,
+    ForeignKeyConstraint,
+    UniqueConstraint,
+    CheckConstraint,
+    DefaultConstraint,
+    IndexDefinition,
+    ViewDefinition,
+    CreateTableOutput,
+    EnumTypeDefinition,
+    ScalarTypeDefinition,
+    CreateTypeOutput,
+    SequenceDefinition,
+    CreateSequenceOutput,
+    CreateTableAsOutput,
+    CreateViewOutput,
+    AlterViewOutput,
+    AlterTableOutput,
+    CreateIndexOutput,
+    AddColumnOp,
+    DropColumnOp,
+    RenameColumnOp,
+    RenameTableOp,
+    DropTableOp,
+    AlterColumnTypeOp,
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1798,6 +1827,364 @@ public static class NodeDefinitionRegistry
                         "Name of the first worksheet (e.g. Results)"
                     ),
                 ]
+            ),
+
+            // ── DDL ───────────────────────────────────────────────────────
+
+            [NodeType.TableDefinition] = new(
+                NodeType.TableDefinition,
+                NodeCategory.Ddl,
+                "Table Definition",
+                "Defines a DDL table with columns and constraints",
+                [
+                    In("column", PinDataType.ColumnDef, required: false, multi: true),
+                    In("constraint", PinDataType.Constraint, required: false, multi: true),
+                    Out("table", PinDataType.TableDef),
+                ],
+                [
+                    Param("SchemaName", ParameterKind.Text, "public", "Table schema"),
+                    Param("TableName", ParameterKind.Text, "", "Table name"),
+                    Param("IfNotExists", ParameterKind.Boolean, "true", "Emit IF NOT EXISTS when supported"),
+                    Param("Comment", ParameterKind.Text, "", "Table comment"),
+                ]
+            ),
+
+            [NodeType.ColumnDefinition] = new(
+                NodeType.ColumnDefinition,
+                NodeCategory.Ddl,
+                "Column Definition",
+                "Defines a table column and its type metadata",
+                [
+                    In("default_value", PinDataType.Expression, required: false),
+                    In("type_def", PinDataType.TypeDef, required: false),
+                    In("sequence", PinDataType.SequenceDef, required: false),
+                    Out("column", PinDataType.ColumnDef),
+                ],
+                [
+                    Param("ColumnName", ParameterKind.Text, "", "Column name"),
+                    Param("DataType", ParameterKind.Text, "INT", "Canonical data type"),
+                    Param("IsNullable", ParameterKind.Boolean, "false", "Allow NULL values"),
+                    Param("UseNativeType", ParameterKind.Boolean, "false", "Use a provider-native type expression"),
+                    Param("NativeTypeExpression", ParameterKind.Text, "", "Provider-native type expression (e.g. CIDR, GEOGRAPHY)"),
+                    Param("Comment", ParameterKind.Text, "", "Column comment"),
+                ]
+            ),
+
+            [NodeType.EnumTypeDefinition] = new(
+                NodeType.EnumTypeDefinition,
+                NodeCategory.Ddl,
+                "Enum Type Definition",
+                "Defines ENUM values for MySQL inline columns or PostgreSQL CREATE TYPE",
+                [Out("type_def", PinDataType.TypeDef)],
+                [
+                    Param("SchemaName", ParameterKind.Text, "public", "Type schema (PostgreSQL)"),
+                    Param("TypeName", ParameterKind.Text, "status_enum", "Type name"),
+                    Param("EnumValues", ParameterKind.Text, "NEW,ACTIVE,DISABLED", "Comma/newline-separated enum values"),
+                ]
+            ),
+
+            [NodeType.ScalarTypeDefinition] = new(
+                NodeType.ScalarTypeDefinition,
+                NodeCategory.Ddl,
+                "Scalar Type Definition",
+                "Defines reusable scalar SQL type metadata for ColumnDefinition",
+                [Out("type_def", PinDataType.TypeDef)],
+                [
+                    Param(
+                        "TypeKind",
+                        ParameterKind.Enum,
+                        "VARCHAR",
+                        "Base scalar type",
+                        "VARCHAR",
+                        "TEXT",
+                        "INT",
+                        "BIGINT",
+                        "DECIMAL",
+                        "BOOLEAN",
+                        "DATE",
+                        "DATETIME",
+                        "JSON",
+                        "UUID"
+                    ),
+                    Param("Length", ParameterKind.Number, "255", "Length for VARCHAR (optional)"),
+                    Param("Precision", ParameterKind.Number, "18", "Precision for DECIMAL"),
+                    Param("Scale", ParameterKind.Number, "2", "Scale for DECIMAL"),
+                ]
+            ),
+
+            [NodeType.PrimaryKeyConstraint] = new(
+                NodeType.PrimaryKeyConstraint,
+                NodeCategory.Ddl,
+                "Primary Key Constraint",
+                "Defines PRIMARY KEY over one or more columns",
+                [
+                    In("column", PinDataType.ColumnDef, multi: true),
+                    Out("pk", PinDataType.Constraint),
+                ],
+                [Param("ConstraintName", ParameterKind.Text, "", "Optional PK name")]
+            ),
+
+            [NodeType.ForeignKeyConstraint] = new(
+                NodeType.ForeignKeyConstraint,
+                NodeCategory.Ddl,
+                "Foreign Key Constraint",
+                "Defines a foreign key between child and parent columns",
+                [
+                    In("child_column", PinDataType.ColumnDef, multi: true),
+                    In("parent_column", PinDataType.ColumnDef, multi: true),
+                    Out("fk", PinDataType.Constraint),
+                ],
+                [
+                    Param("ConstraintName", ParameterKind.Text, "", "Optional FK name"),
+                    Param("OnDelete", ParameterKind.Enum, "NO ACTION", "Delete action", "NO ACTION", "CASCADE", "SET NULL", "SET DEFAULT", "RESTRICT"),
+                    Param("OnUpdate", ParameterKind.Enum, "NO ACTION", "Update action", "NO ACTION", "CASCADE", "SET NULL", "SET DEFAULT", "RESTRICT"),
+                ]
+            ),
+
+            [NodeType.UniqueConstraint] = new(
+                NodeType.UniqueConstraint,
+                NodeCategory.Ddl,
+                "Unique Constraint",
+                "Defines UNIQUE over one or more columns",
+                [
+                    In("column", PinDataType.ColumnDef, multi: true),
+                    Out("uq", PinDataType.Constraint),
+                ],
+                [Param("ConstraintName", ParameterKind.Text, "", "Optional UNIQUE name")]
+            ),
+
+            [NodeType.CheckConstraint] = new(
+                NodeType.CheckConstraint,
+                NodeCategory.Ddl,
+                "Check Constraint",
+                "Defines CHECK expression for a table",
+                [Out("ck", PinDataType.Constraint)],
+                [
+                    Param("ConstraintName", ParameterKind.Text, "", "Optional CHECK name"),
+                    Param("Expression", ParameterKind.Text, "", "Boolean validation expression"),
+                ]
+            ),
+
+            [NodeType.DefaultConstraint] = new(
+                NodeType.DefaultConstraint,
+                NodeCategory.Ddl,
+                "Default Constraint",
+                "Defines DEFAULT value for a column",
+                [
+                    In("column", PinDataType.ColumnDef),
+                    Out("dc", PinDataType.Constraint),
+                ],
+                [
+                    Param("ConstraintName", ParameterKind.Text, "", "Optional default constraint name"),
+                    Param("DefaultValue", ParameterKind.Text, "", "Default literal or expression"),
+                ]
+            ),
+
+            [NodeType.IndexDefinition] = new(
+                NodeType.IndexDefinition,
+                NodeCategory.Ddl,
+                "Index Definition",
+                "Defines CREATE INDEX statement metadata",
+                [
+                    In("table", PinDataType.TableDef),
+                    In("column", PinDataType.ColumnDef, multi: true),
+                    In("expression_column", PinDataType.Expression, required: false, multi: true),
+                    In("include_column", PinDataType.ColumnDef, required: false, multi: true),
+                    Out("idx", PinDataType.IndexDef),
+                ],
+                [
+                    Param("IndexName", ParameterKind.Text, "", "Index name"),
+                    Param("IsUnique", ParameterKind.Boolean, "false", "Emit UNIQUE"),
+                ]
+            ),
+
+            [NodeType.ViewDefinition] = new(
+                NodeType.ViewDefinition,
+                NodeCategory.Ddl,
+                "View Definition",
+                "Defines view metadata and SELECT body for CREATE/ALTER VIEW",
+                [Out("view", PinDataType.ViewDef)],
+                [
+                    Param("Schema", ParameterKind.Text, "public", "View schema"),
+                    Param("ViewName", ParameterKind.Text, "", "View name"),
+                    Param("OrReplace", ParameterKind.Boolean, "false", "Emit OR REPLACE where supported"),
+                    Param("IsMaterialized", ParameterKind.Boolean, "false", "PostgreSQL materialized view"),
+                    Param("ViewFromTable", ParameterKind.Text, "", "Source FROM used when compiling subcanvas graph"),
+                    Param("ViewSubgraphGraphJson", ParameterKind.Text, "", "Serialized NodeGraph for view subcanvas"),
+                    Param("SelectSql", ParameterKind.Text, "", "Compiled SELECT statement for the view body"),
+                ]
+            ),
+
+            [NodeType.CreateTableOutput] = new(
+                NodeType.CreateTableOutput,
+                NodeCategory.Ddl,
+                "Create Table Output",
+                "Terminal output for CREATE TABLE",
+                [In("table", PinDataType.TableDef)],
+                [Param("IdempotentMode", ParameterKind.Enum, "None", "Script idempotency mode", "None", "IfNotExists", "DropAndCreate")]
+            ),
+
+            [NodeType.CreateTypeOutput] = new(
+                NodeType.CreateTypeOutput,
+                NodeCategory.Ddl,
+                "Create Type Output",
+                "Terminal output for CREATE TYPE (PostgreSQL)",
+                [In("type_def", PinDataType.TypeDef)],
+                [Param("IdempotentMode", ParameterKind.Enum, "None", "Script idempotency mode", "None", "IfNotExists", "DropAndCreate")]
+            ),
+
+            [NodeType.SequenceDefinition] = new(
+                NodeType.SequenceDefinition,
+                NodeCategory.Ddl,
+                "Sequence Definition",
+                "Defines CREATE SEQUENCE metadata",
+                [Out("seq", PinDataType.SequenceDef)],
+                [
+                    Param("Schema", ParameterKind.Text, "public", "Sequence schema"),
+                    Param("SequenceName", ParameterKind.Text, "seq_default", "Sequence name"),
+                    Param("StartValue", ParameterKind.Number, "1", "START WITH value"),
+                    Param("Increment", ParameterKind.Number, "1", "INCREMENT BY value"),
+                    Param("MinValue", ParameterKind.Text, "", "Optional MINVALUE"),
+                    Param("MaxValue", ParameterKind.Text, "", "Optional MAXVALUE"),
+                    Param("Cycle", ParameterKind.Boolean, "false", "Emit CYCLE"),
+                    Param("Cache", ParameterKind.Number, "", "Optional CACHE value"),
+                ]
+            ),
+
+            [NodeType.CreateSequenceOutput] = new(
+                NodeType.CreateSequenceOutput,
+                NodeCategory.Ddl,
+                "Create Sequence Output",
+                "Terminal output for CREATE SEQUENCE",
+                [In("seq", PinDataType.SequenceDef)],
+                [Param("IdempotentMode", ParameterKind.Enum, "None", "Script idempotency mode", "None", "IfNotExists", "DropAndCreate")]
+            ),
+
+            [NodeType.CreateTableAsOutput] = new(
+                NodeType.CreateTableAsOutput,
+                NodeCategory.Ddl,
+                "Create Table As Output",
+                "Terminal output for CREATE TABLE AS SELECT / LIKE",
+                [
+                    In("source_table", PinDataType.TableDef, required: false),
+                ],
+                [
+                    Param("TableName", ParameterKind.Text, "new_table", "Target table name"),
+                    Param("Schema", ParameterKind.Text, "public", "Target schema"),
+                    Param("IncludeData", ParameterKind.Boolean, "true", "PostgreSQL WITH DATA/WITH NO DATA"),
+                    Param("SelectSql", ParameterKind.Text, "", "Fallback SELECT SQL when source_query cannot be resolved"),
+                    Param("IdempotentMode", ParameterKind.Enum, "None", "Script idempotency mode", "None", "IfNotExists", "DropAndCreate"),
+                ]
+            ),
+
+            [NodeType.CreateViewOutput] = new(
+                NodeType.CreateViewOutput,
+                NodeCategory.Ddl,
+                "Create View Output",
+                "Terminal output for CREATE VIEW",
+                [In("view", PinDataType.ViewDef)],
+                [Param("IdempotentMode", ParameterKind.Enum, "None", "Script idempotency mode", "None", "IfNotExists", "DropAndCreate")]
+            ),
+
+            [NodeType.AlterViewOutput] = new(
+                NodeType.AlterViewOutput,
+                NodeCategory.Ddl,
+                "Alter View Output",
+                "Terminal output for ALTER VIEW",
+                [In("view", PinDataType.ViewDef)],
+                []
+            ),
+
+            [NodeType.AlterTableOutput] = new(
+                NodeType.AlterTableOutput,
+                NodeCategory.Ddl,
+                "Alter Table Output",
+                "Terminal output for ALTER TABLE operations",
+                [
+                    In("table", PinDataType.TableDef),
+                    In("operation", PinDataType.AlterOp, multi: true),
+                ],
+                [Param("EmitSeparateStatements", ParameterKind.Boolean, "true", "Emit one statement per operation")]
+            ),
+
+            [NodeType.CreateIndexOutput] = new(
+                NodeType.CreateIndexOutput,
+                NodeCategory.Ddl,
+                "Create Index Output",
+                "Terminal output for CREATE INDEX",
+                [In("index", PinDataType.IndexDef)],
+                []
+            ),
+
+            [NodeType.AddColumnOp] = new(
+                NodeType.AddColumnOp,
+                NodeCategory.Ddl,
+                "Add Column Op",
+                "ALTER TABLE operation: ADD COLUMN",
+                [
+                    In("column", PinDataType.ColumnDef),
+                    Out("op", PinDataType.AlterOp),
+                ],
+                []
+            ),
+
+            [NodeType.DropColumnOp] = new(
+                NodeType.DropColumnOp,
+                NodeCategory.Ddl,
+                "Drop Column Op",
+                "ALTER TABLE operation: DROP COLUMN",
+                [Out("op", PinDataType.AlterOp)],
+                [
+                    Param("ColumnName", ParameterKind.Text, "", "Column to drop"),
+                    Param("IfExists", ParameterKind.Boolean, "false", "Emit IF EXISTS when supported"),
+                ]
+            ),
+
+            [NodeType.RenameColumnOp] = new(
+                NodeType.RenameColumnOp,
+                NodeCategory.Ddl,
+                "Rename Column Op",
+                "ALTER TABLE operation: RENAME COLUMN",
+                [Out("op", PinDataType.AlterOp)],
+                [
+                    Param("OldName", ParameterKind.Text, "", "Current column name"),
+                    Param("NewName", ParameterKind.Text, "", "New column name"),
+                ]
+            ),
+
+            [NodeType.RenameTableOp] = new(
+                NodeType.RenameTableOp,
+                NodeCategory.Ddl,
+                "Rename Table Op",
+                "ALTER TABLE operation: RENAME TABLE",
+                [Out("op", PinDataType.AlterOp)],
+                [
+                    Param("NewName", ParameterKind.Text, "", "New table name"),
+                    Param("NewSchema", ParameterKind.Text, "", "Target schema (optional)"),
+                ]
+            ),
+
+            [NodeType.DropTableOp] = new(
+                NodeType.DropTableOp,
+                NodeCategory.Ddl,
+                "Drop Table Op",
+                "ALTER TABLE operation: DROP TABLE",
+                [Out("op", PinDataType.AlterOp)],
+                [
+                    Param("IfExists", ParameterKind.Boolean, "false", "Emit IF EXISTS when supported"),
+                ]
+            ),
+
+            [NodeType.AlterColumnTypeOp] = new(
+                NodeType.AlterColumnTypeOp,
+                NodeCategory.Ddl,
+                "Alter Column Type Op",
+                "ALTER TABLE operation: ALTER COLUMN TYPE",
+                [
+                    In("new_column", PinDataType.ColumnDef),
+                    Out("op", PinDataType.AlterOp),
+                ],
+                []
             ),
         };
 

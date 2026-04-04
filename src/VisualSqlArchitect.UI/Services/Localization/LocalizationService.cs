@@ -6,6 +6,15 @@ namespace VisualSqlArchitect.UI.Services.Localization;
 public sealed class LocalizationService : ILocalizationService
 {
     private const string DefaultCulture = "pt-BR";
+    private static readonly string[] SupportedCultures =
+    {
+        "pt-BR",
+        "en-US",
+        "es-ES",
+        "ru-RU",
+        "ja-JP",
+        "zh-TW",
+    };
     private readonly object _sync = new();
     private Dictionary<string, string> _strings = new(StringComparer.OrdinalIgnoreCase);
 
@@ -17,7 +26,9 @@ public sealed class LocalizationService : ILocalizationService
 
     public string CurrentLanguageLabel => CurrentCulture.Equals("pt-BR", StringComparison.OrdinalIgnoreCase)
         ? "PT-BR"
-        : "EN-US";
+        : CurrentCulture.ToUpperInvariant();
+
+    public IReadOnlyList<string> AvailableCultures => SupportedCultures;
 
     public string this[string key]
     {
@@ -64,11 +75,32 @@ public sealed class LocalizationService : ILocalizationService
 
     private static string NormalizeCulture(string? culture)
     {
-        if (string.Equals(culture, "en", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(culture, "en-US", StringComparison.OrdinalIgnoreCase))
-            return "en-US";
+        if (string.IsNullOrWhiteSpace(culture))
+            return DefaultCulture;
 
-        return "pt-BR";
+        string normalized = culture.Trim();
+        if (string.Equals(normalized, "en", StringComparison.OrdinalIgnoreCase))
+            normalized = "en-US";
+        else if (string.Equals(normalized, "pt", StringComparison.OrdinalIgnoreCase))
+            normalized = "pt-BR";
+        else if (string.Equals(normalized, "es", StringComparison.OrdinalIgnoreCase))
+            normalized = "es-ES";
+        else if (string.Equals(normalized, "ru", StringComparison.OrdinalIgnoreCase))
+            normalized = "ru-RU";
+        else if (string.Equals(normalized, "ja", StringComparison.OrdinalIgnoreCase))
+            normalized = "ja-JP";
+        else if (string.Equals(normalized, "zh-TW", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(normalized, "zh-Hant", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(normalized, "zh", StringComparison.OrdinalIgnoreCase))
+            normalized = "zh-TW";
+
+        foreach (string supported in SupportedCultures)
+        {
+            if (string.Equals(normalized, supported, StringComparison.OrdinalIgnoreCase))
+                return supported;
+        }
+
+        return DefaultCulture;
     }
 
     private static Dictionary<string, string>? LoadFromJson(string culture)

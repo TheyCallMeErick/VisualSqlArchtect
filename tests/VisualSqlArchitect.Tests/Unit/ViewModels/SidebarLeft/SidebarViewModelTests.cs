@@ -31,7 +31,6 @@ public class SidebarViewModelTests
         Assert.True(vm.ShowNodes);
         Assert.False(vm.ShowConnection);
         Assert.False(vm.ShowSchema);
-        Assert.False(vm.ShowDiagnostics);
     }
 
     [Fact]
@@ -51,13 +50,11 @@ public class SidebarViewModelTests
         Assert.False(vm.ShowNodes);
         Assert.True(vm.ShowConnection);
         Assert.False(vm.ShowSchema);
-        Assert.False(vm.ShowDiagnostics);
 
         Assert.Contains(nameof(SidebarViewModel.ActiveTab), raised);
         Assert.Contains(nameof(SidebarViewModel.ShowNodes), raised);
         Assert.Contains(nameof(SidebarViewModel.ShowConnection), raised);
         Assert.Contains(nameof(SidebarViewModel.ShowSchema), raised);
-        Assert.Contains(nameof(SidebarViewModel.ShowDiagnostics), raised);
     }
 
     [Fact]
@@ -69,8 +66,7 @@ public class SidebarViewModelTests
         {
             if (e.PropertyName is nameof(SidebarViewModel.ShowNodes)
                 or nameof(SidebarViewModel.ShowConnection)
-                or nameof(SidebarViewModel.ShowSchema)
-                or nameof(SidebarViewModel.ShowDiagnostics))
+                or nameof(SidebarViewModel.ShowSchema))
             {
                 derivedChanges++;
             }
@@ -103,8 +99,6 @@ public class SidebarViewModelTests
         vm.SelectNodesCommand.Execute(null);
         Assert.Equal(ESidebarTab.Nodes, vm.ActiveTab);
 
-        vm.SelectDiagnosticsCommand.Execute(null);
-        Assert.Equal(ESidebarTab.Diagnostics, vm.ActiveTab);
     }
 
     [Fact]

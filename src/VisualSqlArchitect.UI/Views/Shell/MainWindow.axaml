@@ -7,8 +7,9 @@
   xmlns:loc="using:VisualSqlArchitect.UI.Services.Localization"
         xmlns:mi="using:Material.Icons.Avalonia"
         x:Class="VisualSqlArchitect.UI.MainWindow"
+          x:Name="RootWindow"
   x:DataType="vm:ShellViewModel"
-        Title="Visual SQL Architect"
+        Title="{Binding [app.windowTitle], Source={x:Static loc:LocalizationService.Instance}}"
         Width="1440" Height="900"
         MinWidth="960" MinHeight="620"
         Background="{StaticResource MacroBg0Brush}"
@@ -33,38 +34,165 @@
       <Setter Property="CornerRadius"    Value="6"/>
       <Setter Property="FontSize"        Value="12"/>
       <Setter Property="Cursor"          Value="Hand"/>
+      <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.12"/>
+          <BrushTransition Property="Foreground" Duration="0:0:0.12"/>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.12"/>
+        </Transitions>
+      </Setter>
     </Style>
     <Style Selector="Button.tb:pointerover">
       <Setter Property="Background" Value="{StaticResource MacroBg2Brush}"/>
       <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+      <Setter Property="RenderTransform" Value="scale(1.03)"/>
     </Style>
     <Style Selector="Button.tb.danger:pointerover">
       <Setter Property="Background" Value="{StaticResource BtnDangerBgBrush}"/>
       <Setter Property="Foreground" Value="{StaticResource BtnDangerFgBrush}"/>
     </Style>
-    <Style Selector="Button.sidebar-toggle-fab">
-      <Setter Property="Width" Value="28"/>
-      <Setter Property="Height" Value="28"/>
-      <Setter Property="Padding" Value="0"/>
-      <Setter Property="Background" Value="#AA111A2A"/>
-      <Setter Property="BorderBrush" Value="#CC3E4B63"/>
+    <Style Selector="Border.undo-redo-host">
+      <Setter Property="Background" Value="{StaticResource MacroBg2Brush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource MacroBorderSubtleBrush}"/>
       <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="CornerRadius" Value="9"/>
+      <Setter Property="CornerRadius" Value="999"/>
+      <Setter Property="Padding" Value="2"/>
+      <Setter Property="BoxShadow" Value="0 4 12 0 #22000000"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.14"/>
+          <BrushTransition Property="BorderBrush" Duration="0:0:0.14"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.undo-redo-btn">
+      <Setter Property="Width" Value="30"/>
+      <Setter Property="Height" Value="24"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="CornerRadius" Value="999"/>
       <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
-      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.12"/>
+          <BrushTransition Property="Foreground" Duration="0:0:0.12"/>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.12"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.undo-redo-btn:pointerover">
+      <Setter Property="Background" Value="{StaticResource MacroBg3Brush}"/>
+      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+      <Setter Property="RenderTransform" Value="scale(1.06)"/>
+    </Style>
+    <Style Selector="Button.undo-redo-btn:pressed">
+      <Setter Property="RenderTransform" Value="scale(0.96)"/>
+    </Style>
+    <Style Selector="Border.tabs-scroll-host">
+      <Setter Property="Background" Value="{StaticResource MacroBg1Brush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource MacroBorderSubtleBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="10"/>
+      <Setter Property="Padding" Value="3,2"/>
+      <Setter Property="MinHeight" Value="30"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.14"/>
+          <BrushTransition Property="BorderBrush" Duration="0:0:0.14"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="ScrollViewer.topbar-tabs-scroll">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="ClipToBounds" Value="True"/>
+    </Style>
+    <Style Selector="Border.mode-switch-host">
+      <Setter Property="Background" Value="{StaticResource MacroBg2Brush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource MacroBorderSubtleBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="999"/>
+      <Setter Property="Padding" Value="4"/>
+      <Setter Property="BoxShadow" Value="{StaticResource PanelShadow}"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.14"/>
+          <BrushTransition Property="BorderBrush" Duration="0:0:0.14"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.mode-switch-btn">
+      <Setter Property="MinWidth" Value="84"/>
+      <Setter Property="Height" Value="28"/>
+      <Setter Property="Padding" Value="14,0"/>
+      <Setter Property="CornerRadius" Value="999"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+      <Setter Property="FontSize" Value="11"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
       <Setter Property="HorizontalContentAlignment" Value="Center"/>
       <Setter Property="VerticalContentAlignment" Value="Center"/>
       <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.14"/>
+          <BrushTransition Property="Foreground" Duration="0:0:0.14"/>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.14"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.mode-switch-btn:pointerover">
+      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+      <Setter Property="Background" Value="{StaticResource MacroBg3Brush}"/>
+      <Setter Property="RenderTransform" Value="scale(1.04)"/>
+    </Style>
+    <Style Selector="Button.mode-switch-btn.active">
+      <Setter Property="Background" Value="{StaticResource AccentBlueBrush}"/>
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="RenderTransform" Value="scale(1.02)"/>
+    </Style>
+    <Style Selector="Button.mode-switch-btn:pressed">
+      <Setter Property="RenderTransform" Value="scale(0.98)"/>
+    </Style>
+    <Style Selector="Button.sidebar-toggle-fab">
+      <Setter Property="Width" Value="24"/>
+      <Setter Property="Height" Value="24"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="Background" Value="{StaticResource MacroBg2Brush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource MacroBorderSubtleBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="8"/>
+      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+      <Setter Property="FontSize" Value="11"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.12"/>
+          <BrushTransition Property="BorderBrush" Duration="0:0:0.12"/>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.12"/>
+        </Transitions>
+      </Setter>
     </Style>
     <Style Selector="Button.sidebar-toggle-fab:pointerover">
-      <Setter Property="Background" Value="#D2182538"/>
+      <Setter Property="Background" Value="{StaticResource MacroBg3Brush}"/>
       <Setter Property="BorderBrush" Value="{StaticResource AccentBlueBrush}"/>
       <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+      <Setter Property="RenderTransform" Value="scale(1.05)"/>
     </Style>
     <Style Selector="Button.sidebar-toggle-fab:pressed">
-      <Setter Property="Background" Value="#E0202F47"/>
-      <Setter Property="BorderBrush" Value="#FF5FA3FF"/>
+      <Setter Property="Background" Value="{StaticResource Surface2Brush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderActiveBrush}"/>
       <Setter Property="Foreground" Value="White"/>
     </Style>
     <Style Selector="Button.settings-nav">
@@ -76,13 +204,19 @@
       <Setter Property="CornerRadius" Value="8"/>
       <Setter Property="FontSize" Value="12"/>
       <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.12"/>
+          <BrushTransition Property="Foreground" Duration="0:0:0.12"/>
+        </Transitions>
+      </Setter>
     </Style>
     <Style Selector="Button.settings-nav:pointerover">
-      <Setter Property="Background" Value="#45263249"/>
+      <Setter Property="Background" Value="{StaticResource MacroBg3Brush}"/>
       <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
     </Style>
     <Style Selector="Button.settings-nav.active">
-      <Setter Property="Background" Value="#7027334C"/>
+      <Setter Property="Background" Value="{StaticResource Surface2Brush}"/>
       <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
@@ -94,7 +228,7 @@
             <Grid>
             <Grid IsVisible="{Binding IsCanvasVisible}">
             <Grid RowDefinitions="36,Auto,Auto,*,28"
-              DataContext="{Binding Canvas}">
+              DataContext="{Binding ActiveCanvas}">
 
     <!-- ╔══ TITLE BAR ══════════════════════════════════════════════════╗ -->
     <shell:AppHeaderBar Grid.Row="0"
@@ -103,68 +237,98 @@
                         ShowBrandBadge="True"
                         ShowWindowControls="True">
       <shell:AppHeaderBar.CenterContent>
-        <StackPanel Orientation="Horizontal" Spacing="2"
-                    HorizontalAlignment="Center" VerticalAlignment="Center">
-          <StackPanel Name="QueryTabsHost"
-                      Orientation="Horizontal"
-                      Spacing="2"
-                      VerticalAlignment="Center"/>
-          <Button Classes="tb" Width="26" Height="26" Padding="0"
-                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-              Name="NewTabBtn" ToolTip.Tip="{Binding [tooltip.newCanvas], Source={x:Static loc:LocalizationService.Instance}}">
+        <Grid ColumnDefinitions="Auto,Auto,*,Auto"
+              HorizontalAlignment="Left"
+              VerticalAlignment="Center"
+              MaxWidth="1040">
+          <Border Grid.Column="0"
+                  Classes="undo-redo-host"
+                  Margin="0,0,8,0"
+                  VerticalAlignment="Center">
+            <Grid ColumnDefinitions="Auto,1,Auto">
+              <Button Grid.Column="0"
+                      Classes="undo-redo-btn"
+                      Command="{Binding UndoCommand}"
+                      ToolTip.Tip="{Binding UndoRedo.UndoDescription}"
+                      AutomationProperties.Name="{Binding [main.undo], Source={x:Static loc:LocalizationService.Instance}}">
+                <mi:MaterialIcon Kind="Undo" Width="14" Height="14"/>
+              </Button>
+              <Border Grid.Column="1"
+                      Width="1"
+                      Height="14"
+                      VerticalAlignment="Center"
+                      Background="{StaticResource MacroBorderSubtleBrush}"/>
+              <Button Grid.Column="2"
+                      Classes="undo-redo-btn"
+                      Command="{Binding RedoCommand}"
+                      ToolTip.Tip="{Binding UndoRedo.RedoDescription}"
+                      AutomationProperties.Name="{Binding [main.redo], Source={x:Static loc:LocalizationService.Instance}}">
+                <mi:MaterialIcon Kind="Redo" Width="14" Height="14"/>
+              </Button>
+            </Grid>
+          </Border>
+
+          <Border Grid.Column="1"
+                  Classes="mode-switch-host"
+                  Margin="0,0,8,0"
+                  VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <Button Classes="mode-switch-btn"
+                      Name="QueryModeBtn"
+                      Content="{Binding [mode.query], Source={x:Static loc:LocalizationService.Instance}}"
+                      Click="QueryModeBtn_Click"
+                      ToolTip.Tip="{Binding [tooltip.switchToQueryMode], Source={x:Static loc:LocalizationService.Instance}}"/>
+              <Button Classes="mode-switch-btn"
+                      Name="DdlModeBtn"
+                      Content="{Binding [mode.ddl], Source={x:Static loc:LocalizationService.Instance}}"
+                      Click="DdlModeBtn_Click"
+                      ToolTip.Tip="{Binding [tooltip.switchToDdlMode], Source={x:Static loc:LocalizationService.Instance}}"/>
+            </StackPanel>
+          </Border>
+
+          <Border Grid.Column="2"
+                  Classes="tabs-scroll-host"
+                  Margin="0,0,8,0"
+                  VerticalAlignment="Center">
+            <ScrollViewer Classes="topbar-tabs-scroll"
+                          HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Disabled"
+                          Margin="0">
+              <StackPanel Name="QueryTabsHost"
+                          Orientation="Horizontal"
+                          Spacing="2"
+                          VerticalAlignment="Center"/>
+            </ScrollViewer>
+          </Border>
+
+          <Button Grid.Column="3"
+                  Classes="tb"
+                  Width="26"
+                  Height="26"
+                  Padding="0"
+                  HorizontalContentAlignment="Center"
+                  VerticalContentAlignment="Center"
+                  Name="NewTabBtn"
+                  ToolTip.Tip="{Binding [tooltip.newCanvas], Source={x:Static loc:LocalizationService.Instance}}">
             <mi:MaterialIcon Kind="Plus" Width="14" Height="14"/>
           </Button>
-        </StackPanel>
+        </Grid>
       </shell:AppHeaderBar.CenterContent>
 
       <shell:AppHeaderBar.RightContent>
         <StackPanel Orientation="Horizontal" Spacing="3"
                     Margin="0,0,4,0" VerticalAlignment="Center">
 
-          <!-- Undo/Redo -->
-          <Button Classes="tb" Command="{Binding UndoCommand}"
-                  ToolTip.Tip="{Binding UndoRedo.UndoDescription}" Width="28" Height="28"
-                  Padding="0" HorizontalContentAlignment="Center"
-                  AutomationProperties.Name="Undo">
-            <mi:MaterialIcon Kind="Undo" Width="16" Height="16"/>
-          </Button>
-          <Button Classes="tb" Command="{Binding RedoCommand}"
-                  ToolTip.Tip="{Binding UndoRedo.RedoDescription}" Width="28" Height="28"
-                  Padding="0" HorizontalContentAlignment="Center"
-                  AutomationProperties.Name="Redo">
-            <mi:MaterialIcon Kind="Redo" Width="16" Height="16"/>
-          </Button>
-
-          <Border Width="1" Height="14" Background="{StaticResource MacroBorderSubtleBrush}" Margin="2,0"/>
-
-          <!-- Zoom -->
-          <Border Background="{StaticResource MacroBg2Brush}" CornerRadius="4" Padding="7,3" VerticalAlignment="Center">
-            <TextBlock Text="{Binding ZoomPercent}" FontSize="10" Foreground="{StaticResource TextMutedBrush}"/>
-          </Border>
-          <Button Classes="tb" Command="{Binding ZoomOutCommand}"
-                  Width="24" Height="24" Padding="0" HorizontalContentAlignment="Center"
-              ToolTip.Tip="{Binding [tooltip.zoomOut], Source={x:Static loc:LocalizationService.Instance}}"
-                  AutomationProperties.Name="Zoom out">
-            <mi:MaterialIcon Kind="MagnifyMinus" Width="14" Height="14"/>
-          </Button>
-          <Button Classes="tb" Command="{Binding ZoomInCommand}"
-                  Width="24" Height="24" Padding="0" HorizontalContentAlignment="Center"
-              ToolTip.Tip="{Binding [tooltip.zoomIn], Source={x:Static loc:LocalizationService.Instance}}"
-                  AutomationProperties.Name="Zoom in">
-            <mi:MaterialIcon Kind="MagnifyPlus" Width="14" Height="14"/>
-          </Button>
-
-          <Border Width="1" Height="14" Background="{StaticResource MacroBorderSubtleBrush}" Margin="2,0"/>
-
-          <!-- Orphan cleanup (visible only when orphans are detected) -->
+	          <!-- Orphan cleanup (visible only when orphans are detected) -->
           <Button Classes="tb" FontSize="11"
                   Command="{Binding CleanupOrphansCommand}"
                   IsVisible="{Binding HasOrphanNodes}"
-                  ToolTip.Tip="{Binding OrphanCount, StringFormat='Remove {0} orphan node(s) not connected to the output (Ctrl+Z to undo)'}"
-                  AutomationProperties.Name="Cleanup orphan nodes">
+                  ToolTip.Tip="{Binding [tooltip.cleanupOrphans], Source={x:Static loc:LocalizationService.Instance}}"
+                  AutomationProperties.Name="{Binding [main.cleanupOrphans], Source={x:Static loc:LocalizationService.Instance}}">
             <StackPanel Orientation="Horizontal" Spacing="4">
               <mi:MaterialIcon Kind="VectorUnion" Width="14" Height="14"/>
-              <TextBlock Text="{Binding OrphanCount, StringFormat='{}{0} Orphan(s)'}" FontSize="11"/>
+              <TextBlock Text="{Binding OrphanCount}" FontSize="11"/>
+              <TextBlock Text="{Binding [main.orphanSuffix], Source={x:Static loc:LocalizationService.Instance}}" FontSize="11"/>
             </StackPanel>
           </Button>
 
@@ -175,11 +339,13 @@
           <Button Classes="tb" FontSize="11"
                   Command="{Binding AutoFixNamingCommand}"
                   IsVisible="{Binding HasNamingViolations}"
-                  ToolTip.Tip="{Binding NamingConformance, StringFormat='Fix alias naming to snake_case — conformance: {0}%  (Ctrl+Z to undo)'}"
-                  AutomationProperties.Name="Auto-fix alias naming">
+                  ToolTip.Tip="{Binding [tooltip.autoFixAliasNaming], Source={x:Static loc:LocalizationService.Instance}}"
+                  AutomationProperties.Name="{Binding [main.autoFixAliasNaming], Source={x:Static loc:LocalizationService.Instance}}">
             <StackPanel Orientation="Horizontal" Spacing="4">
               <mi:MaterialIcon Kind="AutoFix" Width="14" Height="14"/>
-              <TextBlock Text="{Binding NamingConformance, StringFormat='Naming {0}%'}" FontSize="11"/>
+              <TextBlock Text="{Binding [main.namingPrefix], Source={x:Static loc:LocalizationService.Instance}}" FontSize="11"/>
+              <TextBlock Text="{Binding NamingConformance}" FontSize="11"/>
+              <TextBlock Text="%" FontSize="11"/>
             </StackPanel>
           </Button>
 
@@ -190,10 +356,28 @@
           <Button Classes="tb" FontSize="11"
                   Command="{Binding AutoLayoutCommand}"
               ToolTip.Tip="{Binding [tooltip.autoLayout], Source={x:Static loc:LocalizationService.Instance}}"
-                  AutomationProperties.Name="Auto layout canvas">
+                  AutomationProperties.Name="{Binding [main.autoLayoutCanvas], Source={x:Static loc:LocalizationService.Instance}}">
             <StackPanel Orientation="Horizontal" Spacing="4">
               <mi:MaterialIcon Kind="FormatHorizontalAlignCenter" Width="14" Height="14"/>
               <TextBlock Text="{Binding [main.layout], Source={x:Static loc:LocalizationService.Instance}}" FontSize="11"/>
+            </StackPanel>
+          </Button>
+
+          <Border Width="1"
+                  Height="14"
+                  Background="{StaticResource MacroBorderSubtleBrush}"
+                  Margin="2,0"
+                  IsVisible="{Binding HasTwoSelectedTableSources}"/>
+
+          <Button Classes="tb"
+                  FontSize="11"
+                  Command="{Binding RunSelectedAutoJoinCommand}"
+                  IsVisible="{Binding HasTwoSelectedTableSources}"
+                  ToolTip.Tip="{Binding [tooltip.autoJoinSelected], Source={x:Static loc:LocalizationService.Instance}}"
+                  AutomationProperties.Name="{Binding [autoJoin.runSelected], Source={x:Static loc:LocalizationService.Instance}}">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <mi:MaterialIcon Kind="SourceBranch" Width="14" Height="14"/>
+              <TextBlock Text="{Binding [autoJoin.runSelected], Source={x:Static loc:LocalizationService.Instance}}" FontSize="11"/>
             </StackPanel>
           </Button>
 
@@ -202,10 +386,28 @@
           <!-- Preview toggle -->
           <Button Classes="tb" Name="TogglePreviewBtn"
               ToolTip.Tip="{Binding [tooltip.dataPreview], Source={x:Static loc:LocalizationService.Instance}}"
-                  AutomationProperties.Name="Toggle data preview">
+                  AutomationProperties.Name="{Binding [main.toggleDataPreview], Source={x:Static loc:LocalizationService.Instance}}">
             <StackPanel Orientation="Horizontal" Spacing="4">
               <mi:MaterialIcon Kind="TableEye" Width="14" Height="14"/>
               <TextBlock Text="{Binding [main.preview], Source={x:Static loc:LocalizationService.Instance}}" FontSize="11"/>
+              <Border IsVisible="{Binding Diagnostics.HasAttention}"
+                      Background="{StaticResource PanelMutedBrush}"
+                      BorderBrush="{StaticResource BtnWarningBgBrush}"
+                      BorderThickness="1"
+                      CornerRadius="999"
+                      Padding="4,0">
+                <StackPanel Orientation="Horizontal" Spacing="3">
+                  <mi:MaterialIcon Kind="Alert"
+                                   Width="10"
+                                   Height="10"
+                                   Foreground="{StaticResource StatusWarningBrush}"
+                                   VerticalAlignment="Center"/>
+                  <TextBlock Text="{Binding Diagnostics.AttentionCountLabel}"
+                             FontSize="10"
+                             Foreground="{StaticResource StatusWarningBrush}"
+                             VerticalAlignment="Center"/>
+                </StackPanel>
+              </Border>
             </StackPanel>
           </Button>
 
@@ -257,10 +459,10 @@
             CornerRadius="{StaticResource StartRadiusButton}"
                 Padding="10,4"
                 Cursor="Hand"
-                AutomationProperties.Name="{Binding [main.cteEditor.exitA11y], Source={x:Static loc:LocalizationService.Instance}}">
+                AutomationProperties.Name="{Binding EditorExitA11y}">
           <StackPanel Orientation="Horizontal" Spacing="4">
             <mi:MaterialIcon Kind="ExitToApp" Width="14" Height="14"/>
-            <TextBlock Text="{Binding [main.cteEditor.backToCanvas], Source={x:Static loc:LocalizationService.Instance}}" FontSize="11"/>
+            <TextBlock Text="{Binding EditorExitLabel}" FontSize="11"/>
           </StackPanel>
         </Button>
       </Grid>
@@ -269,11 +471,11 @@
     <!-- ╔══ BODY ════════════════════════════════════════════════════════╗ -->
     <Grid Grid.Row="3" Name="BodyGrid">
       <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="320" MinWidth="220" MaxWidth="500"/>
-        <ColumnDefinition Width="8"/>
+        <ColumnDefinition Width="280" MinWidth="200" MaxWidth="420"/>
+        <ColumnDefinition Width="4"/>
         <ColumnDefinition Width="*"/>
-        <ColumnDefinition Width="8"/>
-        <ColumnDefinition Width="320" MinWidth="240" MaxWidth="640"/>
+        <ColumnDefinition Width="4"/>
+        <ColumnDefinition Width="280" MinWidth="220" MaxWidth="500"/>
       </Grid.ColumnDefinitions>
 
       <!-- ╠═ CENTRE: Canvas + Preview ════════════════════════════════════════╣ -->
@@ -294,16 +496,8 @@
 
           <!-- Command Palette overlay (Ctrl+K) -->
           <Panel HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,60,0,0"
-                 IsVisible="{Binding CommandPalette.IsVisible}">
-            <ctrl:CommandPaletteControl DataContext="{Binding CommandPalette}" Name="CommandPaletteOverlay"/>
-          </Panel>
-
-          <!-- Auto-Join overlay -->
-          <Panel HorizontalAlignment="Right" VerticalAlignment="Top"
-                 Margin="0,20,20,0" ZIndex="10"
-                 IsVisible="{Binding AutoJoin.IsVisible}"
-                 Name="AutoJoinPanel">
-            <ctrl:AutoJoinOverlay DataContext="{Binding AutoJoin}" Name="AutoJoinOverlayCtrl"/>
+                 IsVisible="{ReflectionBinding DataContext.CommandPalette.IsVisible, ElementName=RootWindow}">
+            <ctrl:CommandPaletteControl DataContext="{ReflectionBinding DataContext.CommandPalette, ElementName=RootWindow}" Name="CommandPaletteOverlay"/>
           </Panel>
 
           <!-- Benchmark overlay -->
@@ -347,6 +541,12 @@
                  IsVisible="{Binding IsCanvasDisabled}"
                  IsHitTestVisible="True"/>
 
+             <!-- View subcanvas dimmed state indicator -->
+             <Panel HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+               Background="{StaticResource MacroScrimBrush}" Opacity="0.25" ZIndex="29"
+               IsVisible="{Binding IsCanvasDimmedBySubcanvas}"
+               IsHitTestVisible="False"/>
+
           <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="15" ZIndex="31"
                       IsVisible="{Binding IsCanvasDisabled}">
             <ProgressBar IsIndeterminate="True" Foreground="{StaticResource AccentBlueBrush}" Background="{StaticResource MacroBorderSubtleBrush}"
@@ -373,80 +573,62 @@
               <Button Classes="tb" Content="−" Command="{Binding ZoomOutCommand}"
                       Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center"
                       ToolTip.Tip="{Binding [tooltip.zoomOut], Source={x:Static loc:LocalizationService.Instance}}"
-                      AutomationProperties.Name="Zoom out"/>
+                      AutomationProperties.Name="{Binding [zoom.out], Source={x:Static loc:LocalizationService.Instance}}"/>
               <Border Width="38" VerticalAlignment="Center" HorizontalAlignment="Center">
                 <TextBlock Text="{Binding ZoomPercent}" FontSize="10" Foreground="{StaticResource TextMutedBrush}"
                            HorizontalAlignment="Center"
-                           AutomationProperties.Name="Zoom level"/>
+                           AutomationProperties.Name="{Binding [zoom.level], Source={x:Static loc:LocalizationService.Instance}}"/>
               </Border>
               <Button Classes="tb" Content="+" Command="{Binding ZoomInCommand}"
                       Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center"
                       ToolTip.Tip="{Binding [tooltip.zoomIn], Source={x:Static loc:LocalizationService.Instance}}"
-                      AutomationProperties.Name="Zoom in"/>
+                      AutomationProperties.Name="{Binding [zoom.in], Source={x:Static loc:LocalizationService.Instance}}"/>
               <Border Width="1" Height="14" Background="{StaticResource MacroBorderSubtleBrush}" Margin="2,0"/>
               <Button Classes="tb" Content="⊡" Command="{Binding FitToScreenCommand}"
                       Width="26" Height="26" Padding="0" HorizontalContentAlignment="Center"
                       ToolTip.Tip="{Binding [tooltip.fitToScreen], Source={x:Static loc:LocalizationService.Instance}}"
-                      AutomationProperties.Name="Fit to screen"/>
+                      AutomationProperties.Name="{Binding [zoom.fit], Source={x:Static loc:LocalizationService.Instance}}"/>
             </StackPanel>
           </Border>
 
         </Panel>
       </Grid>
 
-          <!-- Floating data/sql preview (center column to avoid drawer overlap) -->
-          <Border Grid.Column="2"
-                  HorizontalAlignment="Center"
-              VerticalAlignment="Bottom"
-                  Width="980"
-                  MaxWidth="980"
-                  MinWidth="620"
-                  Margin="0,0,0,14"
-              MaxHeight="320"
-              MinHeight="180"
-              ZIndex="6"
-              IsVisible="{Binding DataPreview.IsVisible}"
-                  Background="#E20B1020"
-                  BorderBrush="#D3283650"
-              BorderThickness="1"
-                  CornerRadius="14"
-                  BoxShadow="0 14 34 0 #54000000"
-              ClipToBounds="True">
-            <ctrl:DataPreviewPanel Name="PreviewPanel"
-                   DataContext="{Binding DataPreview}"/>
-          </Border>
-
       <!-- ╠═ LEFT: Floating Sidebar ═══════════════════════════════════════════╣ -->
       <Border x:Name="LeftSidebarHost"
               Grid.Column="0"
               Margin="8,8,0,8"
-              Background="#C2101523"
-              BorderBrush="#B0273247"
+              Background="{StaticResource MacroBg1Brush}"
+              BorderBrush="{StaticResource MacroBorderSubtleBrush}"
               BorderThickness="1"
               CornerRadius="12"
-              BoxShadow="0 8 24 0 #26000000"
+              BoxShadow="{StaticResource PanelShadow}"
               ClipToBounds="True">
         <Grid>
           <ctrl:SidebarControl DataContext="{Binding Sidebar}"/>
-          <Button Classes="sidebar-toggle-fab"
-                  HorizontalAlignment="Right"
-                  VerticalAlignment="Center"
-                  Margin="0,0,6,0"
-                  Click="LeftSidebarHideBtn_Click"
-                  ToolTip.Tip="Fechar barra lateral esquerda"
-                  Content="">
-            <mi:MaterialIcon Kind="ChevronLeft" Width="14" Height="14"/>
-          </Button>
         </Grid>
       </Border>
 
+      <Button x:Name="LeftSidebarHideBtn"
+              Grid.Column="0"
+              Classes="sidebar-toggle-fab"
+              HorizontalAlignment="Right"
+              VerticalAlignment="Center"
+              ZIndex="10"
+              Margin="0,8,-12,8"
+              Click="LeftSidebarHideBtn_Click"
+              ToolTip.Tip="{Binding [sidebar.left.close], Source={x:Static loc:LocalizationService.Instance}}"
+              Content="">
+        <mi:MaterialIcon Kind="ChevronLeft" Width="12" Height="12"/>
+      </Button>
+
       <!-- Vertical splitters (floating over canvas background) -->
-      <GridSplitter Grid.Column="1" Width="8" VerticalAlignment="Stretch"
-                    Margin="0,8,0,8"
+      <GridSplitter Grid.Column="1" Width="3" VerticalAlignment="Stretch"
+                    Margin="0"
                     ResizeDirection="Columns" Cursor="SizeWestEast" Name="LeftSplitter"
                     />
-      <GridSplitter Grid.Column="3" Width="8" VerticalAlignment="Stretch"
-                    Margin="0,8,0,8"
+      <GridSplitter Grid.Column="3" Width="3" VerticalAlignment="Stretch"
+                    Margin="0"
                     ResizeDirection="Columns" Cursor="SizeWestEast" Name="RightSplitter"
                     />
 
@@ -454,71 +636,83 @@
             <Border x:Name="RightSidebarHost"
               Grid.Column="4"
               Margin="0,8,8,8"
-              Background="#C2101523"
-              BorderBrush="#B0273247"
+              Background="{StaticResource MacroBg1Brush}"
+              BorderBrush="{StaticResource MacroBorderSubtleBrush}"
               BorderThickness="1"
               CornerRadius="12"
-              BoxShadow="0 8 24 0 #26000000"
+              BoxShadow="{StaticResource PanelShadow}"
               ClipToBounds="True">
         <Grid>
           <ctrl:PropertyPanelControl DataContext="{Binding PropertyPanel}"
                    Name="PropPanel"/>
-          <Button Classes="sidebar-toggle-fab"
-            HorizontalAlignment="Left"
-            VerticalAlignment="Center"
-            Margin="6,0,0,0"
-            Click="RightSidebarHideBtn_Click"
-            ToolTip.Tip="Fechar barra lateral direita"
-            Content="">
-            <mi:MaterialIcon Kind="ChevronRight" Width="14" Height="14"/>
-          </Button>
         </Grid>
       </Border>
+
+      <Button x:Name="RightSidebarHideBtn"
+              Grid.Column="4"
+              Classes="sidebar-toggle-fab"
+              HorizontalAlignment="Left"
+              VerticalAlignment="Center"
+              ZIndex="10"
+              Margin="-12,8,0,8"
+              Click="RightSidebarHideBtn_Click"
+              ToolTip.Tip="{Binding [sidebar.right.close], Source={x:Static loc:LocalizationService.Instance}}"
+              Content="">
+        <mi:MaterialIcon Kind="ChevronRight" Width="12" Height="12"/>
+      </Button>
 
       <!-- Reopen rails (real drawer borders when collapsed) -->
       <Border x:Name="LeftSidebarRail"
               Grid.Column="0"
               Margin="8,8,0,8"
-              Background="#8A101523"
-              BorderBrush="#B0273247"
+              Background="{StaticResource MacroBg1Brush}"
+              BorderBrush="{StaticResource MacroBorderSubtleBrush}"
               BorderThickness="1"
               CornerRadius="12"
               IsVisible="False"
               ClipToBounds="True">
-        <Button x:Name="LeftSidebarShowBtn"
-                Classes="sidebar-toggle-fab"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                Margin="0"
-                IsVisible="False"
-                Click="LeftSidebarShowBtn_Click"
-                ToolTip.Tip="Reabrir barra lateral esquerda"
-                Content="">
-          <mi:MaterialIcon Kind="ChevronRight" Width="14" Height="14"/>
-        </Button>
+        <Grid/>
       </Border>
+
+      <Button x:Name="LeftSidebarShowBtn"
+              Grid.Column="0"
+              Classes="sidebar-toggle-fab"
+              HorizontalAlignment="Right"
+              VerticalAlignment="Center"
+              ZIndex="10"
+              Margin="0,8,-12,8"
+              IsVisible="False"
+              Click="LeftSidebarShowBtn_Click"
+              ToolTip.Tip="{Binding [sidebar.left.open], Source={x:Static loc:LocalizationService.Instance}}"
+              Content="">
+        <mi:MaterialIcon Kind="ChevronRight" Width="12" Height="12"/>
+      </Button>
 
       <Border x:Name="RightSidebarRail"
               Grid.Column="4"
               Margin="0,8,8,8"
-              Background="#8A101523"
-              BorderBrush="#B0273247"
+              Background="{StaticResource MacroBg1Brush}"
+              BorderBrush="{StaticResource MacroBorderSubtleBrush}"
               BorderThickness="1"
               CornerRadius="12"
               IsVisible="False"
               ClipToBounds="True">
-        <Button x:Name="RightSidebarShowBtn"
-                Classes="sidebar-toggle-fab"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                Margin="0"
-                IsVisible="False"
-                Click="RightSidebarShowBtn_Click"
-                ToolTip.Tip="Reabrir barra lateral direita"
-                Content="">
-          <mi:MaterialIcon Kind="ChevronLeft" Width="14" Height="14"/>
-        </Button>
+        <Grid/>
       </Border>
+
+      <Button x:Name="RightSidebarShowBtn"
+              Grid.Column="4"
+              Classes="sidebar-toggle-fab"
+              HorizontalAlignment="Left"
+              VerticalAlignment="Center"
+              ZIndex="10"
+              Margin="-12,8,0,8"
+              IsVisible="False"
+              Click="RightSidebarShowBtn_Click"
+              ToolTip.Tip="{Binding [sidebar.right.open], Source={x:Static loc:LocalizationService.Instance}}"
+              Content="">
+        <mi:MaterialIcon Kind="ChevronLeft" Width="12" Height="12"/>
+      </Button>
 
     </Grid>
 
@@ -526,7 +720,7 @@
     <Border Grid.Row="4" Background="{StaticResource MacroBg1Brush}"
           BorderBrush="{StaticResource MacroBorderSubtleBrush}" BorderThickness="0,1,0,0" Padding="12,0">
 
-      <Grid ColumnDefinitions="*,Auto">
+      <Grid ColumnDefinitions="*,Auto,Auto">
         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
 
           <StackPanel Orientation="Horizontal" Spacing="4">
@@ -556,69 +750,53 @@
           </StackPanel>
         </StackPanel>
 
-        <TextBlock Grid.Column="1" FontSize="10" Foreground="{StaticResource TextMutedBrush}"
+        <StackPanel Grid.Column="1"
+                    Orientation="Horizontal"
+                    Spacing="4"
+                    VerticalAlignment="Center"
+                    Margin="0,0,12,0">
+          <Button Classes="tb"
+                  Command="{Binding ZoomOutCommand}"
+                  Width="22"
+                  Height="20"
+                  Padding="0"
+                  HorizontalContentAlignment="Center"
+                  ToolTip.Tip="{Binding [tooltip.zoomOut], Source={x:Static loc:LocalizationService.Instance}}"
+                  AutomationProperties.Name="{Binding [zoom.out], Source={x:Static loc:LocalizationService.Instance}}">
+            <mi:MaterialIcon Kind="MagnifyMinus" Width="12" Height="12"/>
+          </Button>
+          <Border Background="{StaticResource MacroBg2Brush}"
+                  CornerRadius="4"
+                  Padding="6,2"
+                  VerticalAlignment="Center">
+            <TextBlock Text="{Binding ZoomPercent}"
+                       FontSize="10"
+                       Foreground="{StaticResource TextMutedBrush}"/>
+          </Border>
+          <Button Classes="tb"
+                  Command="{Binding ZoomInCommand}"
+                  Width="22"
+                  Height="20"
+                  Padding="0"
+                  HorizontalContentAlignment="Center"
+                  ToolTip.Tip="{Binding [tooltip.zoomIn], Source={x:Static loc:LocalizationService.Instance}}"
+                  AutomationProperties.Name="{Binding [zoom.in], Source={x:Static loc:LocalizationService.Instance}}">
+            <mi:MaterialIcon Kind="MagnifyPlus" Width="12" Height="12"/>
+          </Button>
+        </StackPanel>
+
+        <TextBlock Grid.Column="2" FontSize="10" Foreground="{StaticResource TextMutedBrush}"
                    VerticalAlignment="Center"
                    Text="{Binding [status.shortcuts], Source={x:Static loc:LocalizationService.Instance}}"/>
       </Grid>
     </Border>
 
-    <Panel Grid.RowSpan="5" ZIndex="80">
-      <Border IsVisible="{Binding Toasts.IsVisible}"
-              HorizontalAlignment="Right"
-              VerticalAlignment="Top"
-              Margin="0,52,16,0"
-              Padding="10"
-              Width="420"
-              ZIndex="81"
-              Background="{StaticResource MacroBg1Brush}"
-              BorderBrush="{Binding Toasts.AccentColor}"
-              BorderThickness="1"
-              CornerRadius="{StaticResource StartRadiusCard}"
-              IsHitTestVisible="True">
-        <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
-          <TextBlock Grid.Row="0" Grid.Column="0"
-                     Text="{Binding Toasts.SeverityIcon}"
-                     Foreground="{Binding Toasts.AccentColor}"
-                     FontWeight="Bold"
-                     Margin="0,0,8,0"
-                     VerticalAlignment="Top"/>
-
-          <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
-            <TextBlock Text="{Binding Toasts.SeverityLabel}"
-                       FontSize="11"
-                       FontWeight="SemiBold"
-                       Foreground="{Binding Toasts.AccentColor}"/>
-            <TextBlock Text="{Binding Toasts.Message}"
-                       TextWrapping="Wrap"
-                       FontSize="12"
-                       Foreground="{StaticResource TextPrimaryBrush}"/>
-          </StackPanel>
-
-          <Button Grid.Row="0" Grid.Column="2"
-                  Command="{Binding Toasts.DismissCommand}"
-                  Background="Transparent"
-                  BorderThickness="0"
-              Foreground="{StaticResource TextSecondaryBrush}"
-                  Padding="2"
-                  VerticalAlignment="Top"
-                  Cursor="Hand">
-            <TextBlock Text="✕" FontSize="11"/>
-          </Button>
-
-          <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
-            <Button Command="{Binding Toasts.ShowDetailsCommand}"
-                    IsVisible="{Binding Toasts.HasDetails}"
-                    Classes="secondary"
-                    CornerRadius="{StaticResource StartRadiusButton}"
-                    Padding="8,4"
-                    FontSize="11"
-                    Cursor="Hand"
-                    Content="Detalhes"/>
-          </StackPanel>
-        </Grid>
-      </Border>
+    <Panel Grid.RowSpan="5" ZIndex="80" x:CompileBindings="False">
+      <ctrl:BottomSheetToast ZIndex="81"
+                             DataContext="{Binding Toasts}"/>
 
             <Border IsVisible="{Binding Toasts.IsDetailsOpen}"
+              DataContext="{Binding DataContext, ElementName=RootWindow}"
               Background="{StaticResource MacroScrimBrush}"
               ZIndex="82"
               IsHitTestVisible="True"
@@ -655,7 +833,7 @@
               <TextBlock Text="{Binding Toasts.Details}"
                          TextWrapping="Wrap"
                          Foreground="{StaticResource TextPrimaryBrush}"
-                         FontFamily="Consolas,monospace"
+                         FontFamily="{StaticResource MonoFont}"
                          FontSize="12"/>
             </ScrollViewer>
 
@@ -665,11 +843,14 @@
                       CornerRadius="{StaticResource StartRadiusButton}"
                       Padding="12,6"
                       Cursor="Hand"
-                      Content="Fechar"/>
+                      Content="{Binding [common.close], Source={x:Static loc:LocalizationService.Instance}}"/>
             </StackPanel>
           </Grid>
         </Border>
       </Border>
+
+      <ctrl:ManualJoinDialog DataContext="{Binding ManualJoinDialog}"
+                             ZIndex="83"/>
 
       <Border IsVisible="{Binding ConnectionManager.IsClearCanvasPromptVisible}"
               Background="{StaticResource MacroScrimBrush}"
@@ -686,14 +867,14 @@
           PointerPressed="ClearCanvasPromptDialog_PointerPressed">
           <Grid RowDefinitions="Auto,Auto,Auto">
             <TextBlock Grid.Row="0"
-                       Text="Conexão concluída"
+                       Text="{Binding [connection.completedTitle], Source={x:Static loc:LocalizationService.Instance}}"
                        FontSize="16"
                        FontWeight="SemiBold"
                        Foreground="{StaticResource TextPrimaryBrush}"/>
 
             <TextBlock Grid.Row="1"
                        Margin="0,10,0,0"
-                       Text="Deseja limpar o canvas atual para começar com a nova conexão?"
+                       Text="{Binding [connection.clearCanvasPrompt], Source={x:Static loc:LocalizationService.Instance}}"
                        TextWrapping="Wrap"
                        FontSize="12"
                        Foreground="{StaticResource TextSecondaryBrush}"/>
@@ -708,14 +889,14 @@
                       CornerRadius="{StaticResource StartRadiusButton}"
                       Padding="12,6"
                       Cursor="Hand"
-                      Content="Manter"/>
+                      Content="{Binding [common.keep], Source={x:Static loc:LocalizationService.Instance}}"/>
 
               <Button Command="{Binding ConnectionManager.ClearCanvasAfterConnectCommand}"
                       Classes="info"
                       CornerRadius="{StaticResource StartRadiusButton}"
                       Padding="12,6"
                       Cursor="Hand"
-                      Content="Limpar"/>
+                      Content="{Binding [common.clear], Source={x:Static loc:LocalizationService.Instance}}"/>
             </StackPanel>
           </Grid>
         </Border>
@@ -737,6 +918,8 @@
                                      Name="ConnectionManagerOverlay"/>
     </Panel>
 
+    <shell:OutputPreviewModalControl DataContext="{Binding OutputPreview}"/>
+
     <Border IsVisible="{Binding IsSettingsVisible}"
             Background="{StaticResource MacroScrimBrush}"
             ZIndex="60"
@@ -748,34 +931,34 @@
               MaxWidth="1180"
               MinWidth="900"
               MinHeight="620"
-              Background="#EE0B1020"
-              BorderBrush="#D22B3855"
+              Background="{StaticResource MacroBg1Brush}"
+              BorderBrush="{StaticResource MacroBorderSubtleBrush}"
               BorderThickness="1"
               CornerRadius="16"
               Padding="0"
-              BoxShadow="0 18 44 0 #66000000"
+              BoxShadow="{StaticResource PanelShadow}"
               ClipToBounds="True"
               PointerPressed="SettingsDialog_PointerPressed">
         <Grid ColumnDefinitions="280,*">
           <Border Grid.Column="0"
-                  Background="#D9121A2A"
-                  BorderBrush="#AA273247"
+                  Background="{StaticResource MacroBg2Brush}"
+                  BorderBrush="{StaticResource MacroBorderSubtleBrush}"
                   BorderThickness="0,0,1,0"
                   Padding="18">
             <StackPanel Spacing="12">
-              <TextBlock Text="Settings"
+              <TextBlock Text="{Binding [settings.section.default.title], Source={x:Static loc:LocalizationService.Instance}}"
                          FontSize="34"
                          FontWeight="SemiBold"
                          Foreground="{StaticResource TextPrimaryBrush}"/>
 
-              <Border Background="#85253147"
-                      BorderBrush="#AA3D4B67"
+              <Border Background="{StaticResource MacroBg3Brush}"
+                      BorderBrush="{StaticResource MacroBorderSubtleBrush}"
                       BorderThickness="1"
                       CornerRadius="10"
                       Padding="10,8">
                 <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
                   <mi:MaterialIcon Grid.Column="0" Kind="CogOutline" Width="14" Height="14" Foreground="{StaticResource AccentBlueBrush}"/>
-                  <TextBlock Grid.Column="1" Text="General" Margin="8,0,0,0" Foreground="{StaticResource TextPrimaryBrush}" FontWeight="SemiBold"/>
+                  <TextBlock Grid.Column="1" Text="{Binding [settings.general], Source={x:Static loc:LocalizationService.Instance}}" Margin="8,0,0,0" Foreground="{StaticResource TextPrimaryBrush}" FontWeight="SemiBold"/>
                   <mi:MaterialIcon Grid.Column="2" Kind="ChevronDown" Width="14" Height="14" Foreground="{StaticResource TextSecondaryBrush}"/>
                 </Grid>
               </Border>
@@ -785,42 +968,42 @@
                   Classes.active="{Binding IsLanguageRegionSectionSelected}"
                   Click="SettingsNavBtn_Click"
                   Tag="LanguageRegion"
-                  Content="Language &amp; Region"/>
+                  Content="{Binding [settings.section.languageRegion.title], Source={x:Static loc:LocalizationService.Instance}}"/>
                 <Button Classes="settings-nav"
                   Classes.active="{Binding IsAppearanceSectionSelected}"
                   Click="SettingsNavBtn_Click"
                   Tag="Appearance"
-                  Content="Appearance"/>
+                  Content="{Binding [settings.nav.appearance], Source={x:Static loc:LocalizationService.Instance}}"/>
                 <Button Classes="settings-nav"
                   Classes.active="{Binding IsDateTimeSectionSelected}"
                   Click="SettingsNavBtn_Click"
                   Tag="DateTime"
-                  Content="Date &amp; Time"/>
+                  Content="{Binding [settings.section.dateTime.title], Source={x:Static loc:LocalizationService.Instance}}"/>
                 <Button Classes="settings-nav"
                   Classes.active="{Binding IsKeyboardShortcutsSectionSelected}"
                   Click="SettingsNavBtn_Click"
                   Tag="KeyboardShortcuts"
-                  Content="Keyboard Shortcuts"/>
+                  Content="{Binding [settings.section.keyboard.title], Source={x:Static loc:LocalizationService.Instance}}"/>
               </StackPanel>
 
-              <Border Height="1" Background="#44344355" Margin="0,4"/>
+              <Border Height="1" Background="{StaticResource MacroBorderSubtleBrush}" Margin="0,4"/>
 
               <StackPanel Spacing="10">
                 <Button Classes="settings-nav"
                   Classes.active="{Binding IsPrivacySectionSelected}"
                   Click="SettingsNavBtn_Click"
                   Tag="Privacy"
-                  Content="Privacy"/>
+                  Content="{Binding [settings.section.privacy.title], Source={x:Static loc:LocalizationService.Instance}}"/>
                 <Button Classes="settings-nav"
                   Classes.active="{Binding IsNotificationSectionSelected}"
                   Click="SettingsNavBtn_Click"
                   Tag="Notification"
-                  Content="Notification"/>
+                  Content="{Binding [settings.section.notification.title], Source={x:Static loc:LocalizationService.Instance}}"/>
                 <Button Classes="settings-nav"
                   Classes.active="{Binding IsAccessibilitySectionSelected}"
                   Click="SettingsNavBtn_Click"
                   Tag="Accessibility"
-                  Content="Accessibility"/>
+                  Content="{Binding [settings.section.accessibility.title], Source={x:Static loc:LocalizationService.Instance}}"/>
               </StackPanel>
             </StackPanel>
           </Border>
@@ -855,15 +1038,16 @@
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
               <StackPanel Spacing="14">
                 <StackPanel Spacing="8" IsVisible="{Binding IsAppearanceSectionSelected}">
-                  <TextBlock Text="Theme Mode"
+                  <TextBlock Text="{Binding [settings.theme.mode], Source={x:Static loc:LocalizationService.Instance}}"
+                             IsVisible="{Binding IsAppearanceSectionSelected}"
                              FontSize="14"
                              FontWeight="SemiBold"
                              Foreground="{StaticResource TextPrimaryBrush}"/>
                   <Grid ColumnDefinitions="*,*,*">
-                    <Border Grid.Column="0" Background="#8D161F31" BorderBrush="#FF4F5EFF" BorderThickness="1" CornerRadius="12" Padding="10">
+                    <Border Grid.Column="0" Background="{StaticResource MacroBg3Brush}" BorderBrush="{StaticResource BorderActiveBrush}" BorderThickness="1" CornerRadius="12" Padding="10">
                       <StackPanel Spacing="8">
-                        <Border Height="64" CornerRadius="8" Background="#F4F6FA"/>
-                        <Button Content="Light Mode"
+                        <Border Height="64" CornerRadius="8" Background="{StaticResource BtnPrimaryFgBrush}"/>
+                        <Button Content="{Binding [settings.theme.light], Source={x:Static loc:LocalizationService.Instance}}"
                                 Classes="secondary"
                                 Click="SettingsThemeLightBtn_Click"
                                 HorizontalAlignment="Stretch"
@@ -872,10 +1056,10 @@
                       </StackPanel>
                     </Border>
 
-                    <Border Grid.Column="1" Margin="10,0,0,0" Background="#8A101523" BorderBrush="#AA273247" BorderThickness="1" CornerRadius="12" Padding="10">
+                    <Border Grid.Column="1" Margin="10,0,0,0" Background="{StaticResource MacroBg1Brush}" BorderBrush="{StaticResource MacroBorderSubtleBrush}" BorderThickness="1" CornerRadius="12" Padding="10">
                       <StackPanel Spacing="8">
-                        <Border Height="64" CornerRadius="8" Background="#1B2536"/>
-                        <Button Content="Dark Mode"
+                        <Border Height="64" CornerRadius="8" Background="{StaticResource Surface2Brush}"/>
+                        <Button Content="{Binding [settings.theme.dark], Source={x:Static loc:LocalizationService.Instance}}"
                                 Classes="secondary"
                                 Click="SettingsThemeDarkBtn_Click"
                                 HorizontalAlignment="Stretch"
@@ -884,10 +1068,10 @@
                       </StackPanel>
                     </Border>
 
-                    <Border Grid.Column="2" Margin="10,0,0,0" Background="#8A101523" BorderBrush="#AA273247" BorderThickness="1" CornerRadius="12" Padding="10">
+                    <Border Grid.Column="2" Margin="10,0,0,0" Background="{StaticResource MacroBg1Brush}" BorderBrush="{StaticResource MacroBorderSubtleBrush}" BorderThickness="1" CornerRadius="12" Padding="10">
                       <StackPanel Spacing="8">
-                        <Border Height="64" CornerRadius="8" Background="#2B3443"/>
-                        <TextBlock Text="System Preferences"
+                        <Border Height="64" CornerRadius="8" Background="{StaticResource Surface3Brush}"/>
+                        <TextBlock Text="{Binding [settings.theme.system], Source={x:Static loc:LocalizationService.Instance}}"
                                    FontSize="12"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    HorizontalAlignment="Center"/>
@@ -896,16 +1080,16 @@
                   </Grid>
                 </StackPanel>
 
-                <Border Height="1" Background="#44344355" IsVisible="{Binding IsAppearanceSectionSelected}"/>
+                <Border Height="1" Background="{StaticResource MacroBorderSubtleBrush}" IsVisible="{Binding IsAppearanceSectionSelected}"/>
 
                 <StackPanel Spacing="8" IsVisible="{Binding IsAppearanceSectionSelected}">
                   <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
                     <StackPanel Grid.Column="0" Spacing="2">
-                      <TextBlock Text="Grid Snap"
+                      <TextBlock Text="{Binding [settings.gridSnap.title], Source={x:Static loc:LocalizationService.Instance}}"
                                  FontSize="14"
                                  FontWeight="SemiBold"
                                  Foreground="{StaticResource TextPrimaryBrush}"/>
-                      <TextBlock Text="Controla o snap dos nós no canvas."
+                      <TextBlock Text="{Binding [settings.gridSnap.subtitle], Source={x:Static loc:LocalizationService.Instance}}"
                                  FontSize="11"
                                  Foreground="{StaticResource TextSecondaryBrush}"/>
                     </StackPanel>
@@ -923,57 +1107,63 @@
                   </Grid>
                 </StackPanel>
 
-                <Border Height="1" Background="#44344355" IsVisible="{Binding IsAppearanceSectionSelected}"/>
+                <Border Height="1" Background="{StaticResource MacroBorderSubtleBrush}" IsVisible="{Binding IsAppearanceSectionSelected}"/>
 
                 <StackPanel Spacing="8" IsVisible="{Binding IsLanguageRegionSectionSelected}">
                   <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
                     <StackPanel Grid.Column="0" Spacing="2">
-                      <TextBlock Text="Language &amp; Region"
+                      <TextBlock Text="{Binding [settings.section.languageRegion.title], Source={x:Static loc:LocalizationService.Instance}}"
                                  FontSize="14"
                                  FontWeight="SemiBold"
                                  Foreground="{StaticResource TextPrimaryBrush}"/>
-                      <TextBlock Text="Toggle between PT-BR and EN-US."
+                      <TextBlock Text="{Binding [settings.language.subtitle], Source={x:Static loc:LocalizationService.Instance}}"
                                  FontSize="11"
                                  Foreground="{StaticResource TextSecondaryBrush}"/>
                     </StackPanel>
-                    <Button Grid.Column="1"
-                            Content="Alternar idioma"
-                            Classes="secondary"
-                            Click="SettingsToggleLanguageBtn_Click"
-                            Padding="10,6"
-                            CornerRadius="8"/>
+                    <ComboBox Grid.Column="1"
+                              x:Name="SettingsLanguageCombo"
+                              Classes="param-combo"
+                              Width="220"
+                              SelectionChanged="SettingsLanguageCombo_SelectionChanged">
+                      <ComboBoxItem Tag="pt-BR" Content="{Binding [settings.language.option.ptBR], Source={x:Static loc:LocalizationService.Instance}}"/>
+                      <ComboBoxItem Tag="en-US" Content="{Binding [settings.language.option.enUS], Source={x:Static loc:LocalizationService.Instance}}"/>
+                      <ComboBoxItem Tag="es-ES" Content="{Binding [settings.language.option.esES], Source={x:Static loc:LocalizationService.Instance}}"/>
+                      <ComboBoxItem Tag="ru-RU" Content="{Binding [settings.language.option.ruRU], Source={x:Static loc:LocalizationService.Instance}}"/>
+                      <ComboBoxItem Tag="ja-JP" Content="{Binding [settings.language.option.jaJP], Source={x:Static loc:LocalizationService.Instance}}"/>
+                      <ComboBoxItem Tag="zh-TW" Content="{Binding [settings.language.option.zhTW], Source={x:Static loc:LocalizationService.Instance}}"/>
+                    </ComboBox>
                   </Grid>
                 </StackPanel>
 
-                <Border Height="1" Background="#44344355" IsVisible="{Binding IsAppearanceSectionSelected}"/>
+                <Border Height="1" Background="{StaticResource MacroBorderSubtleBrush}" IsVisible="{Binding IsAppearanceSectionSelected}"/>
 
                 <StackPanel Spacing="8" IsVisible="{Binding IsAppearanceSectionSelected}">
-                  <TextBlock Text="Theme JSON"
+                  <TextBlock Text="{Binding [settings.themeJson.title], Source={x:Static loc:LocalizationService.Instance}}"
                              FontSize="14"
                              FontWeight="SemiBold"
                              Foreground="{StaticResource TextPrimaryBrush}"/>
-                  <TextBlock Text="Paste your theme JSON, apply and persist instantly."
+                  <TextBlock Text="{Binding [settings.themeJson.subtitle], Source={x:Static loc:LocalizationService.Instance}}"
                              FontSize="11"
                              Foreground="{StaticResource TextSecondaryBrush}"/>
 
                   <TextBox x:Name="SettingsThemeJsonTextBox"
                            AcceptsReturn="True"
                            TextWrapping="Wrap"
-                           FontFamily="Consolas,monospace"
+                           FontFamily="{StaticResource MonoFont}"
                            FontSize="11"
                            MinHeight="140"
                            MaxHeight="260"/>
 
                   <Grid ColumnDefinitions="Auto,Auto,*,Auto" VerticalAlignment="Center">
                     <Button Grid.Column="0"
-                            Content="Aplicar JSON"
+                            Content="{Binding [settings.themeJson.apply], Source={x:Static loc:LocalizationService.Instance}}"
                             Classes="info"
                             Click="SettingsApplyThemeJsonBtn_Click"
                             Padding="10,6"
                             CornerRadius="8"/>
                     <Button Grid.Column="1"
                             Margin="8,0,0,0"
-                            Content="Restaurar tema padrão"
+                            Content="{Binding [settings.themeJson.restoreDefault], Source={x:Static loc:LocalizationService.Instance}}"
                             Classes="secondary"
                             Click="SettingsRestoreDefaultThemeBtn_Click"
                             Padding="10,6"
@@ -987,7 +1177,7 @@
                                Text=""/>
                     <Button Grid.Column="3"
                             Margin="8,0,0,0"
-                            Content="Fechar"
+                            Content="{Binding [common.close], Source={x:Static loc:LocalizationService.Instance}}"
                             Classes="secondary"
                             Click="SettingsCloseBtn_Click"
                             Padding="10,6"
@@ -995,57 +1185,57 @@
                   </Grid>
                 </StackPanel>
 
-                <Border Height="1" Background="#44344355" IsVisible="{Binding IsDateTimeSectionSelected}"/>
+                <Border Height="1" Background="{StaticResource MacroBorderSubtleBrush}" IsVisible="{Binding IsDateTimeSectionSelected}"/>
                 <StackPanel Spacing="6" IsVisible="{Binding IsDateTimeSectionSelected}">
-                  <TextBlock Text="Date &amp; Time"
+                  <TextBlock Text="{Binding [settings.section.dateTime.title], Source={x:Static loc:LocalizationService.Instance}}"
                              FontSize="14"
                              FontWeight="SemiBold"
                              Foreground="{StaticResource TextPrimaryBrush}"/>
-                  <TextBlock Text="Trabalho em progresso."
+                  <TextBlock Text="{Binding [settings.section.wip.subtitle], Source={x:Static loc:LocalizationService.Instance}}"
                              FontSize="11"
                              Foreground="{StaticResource TextSecondaryBrush}"/>
                 </StackPanel>
 
-                <Border Height="1" Background="#44344355" IsVisible="{Binding IsKeyboardShortcutsSectionSelected}"/>
+                <Border Height="1" Background="{StaticResource MacroBorderSubtleBrush}" IsVisible="{Binding IsKeyboardShortcutsSectionSelected}"/>
                 <StackPanel Spacing="6" IsVisible="{Binding IsKeyboardShortcutsSectionSelected}">
-                  <TextBlock Text="Keyboard Shortcuts"
+                  <TextBlock Text="{Binding [settings.section.keyboard.title], Source={x:Static loc:LocalizationService.Instance}}"
                              FontSize="14"
                              FontWeight="SemiBold"
                              Foreground="{StaticResource TextPrimaryBrush}"/>
-                  <TextBlock Text="Trabalho em progresso."
+                  <TextBlock Text="{Binding [settings.section.wip.subtitle], Source={x:Static loc:LocalizationService.Instance}}"
                              FontSize="11"
                              Foreground="{StaticResource TextSecondaryBrush}"/>
                 </StackPanel>
 
-                <Border Height="1" Background="#44344355" IsVisible="{Binding IsPrivacySectionSelected}"/>
+                <Border Height="1" Background="{StaticResource MacroBorderSubtleBrush}" IsVisible="{Binding IsPrivacySectionSelected}"/>
                 <StackPanel Spacing="6" IsVisible="{Binding IsPrivacySectionSelected}">
-                  <TextBlock Text="Privacy"
+                  <TextBlock Text="{Binding [settings.section.privacy.title], Source={x:Static loc:LocalizationService.Instance}}"
                              FontSize="14"
                              FontWeight="SemiBold"
                              Foreground="{StaticResource TextPrimaryBrush}"/>
-                  <TextBlock Text="Trabalho em progresso."
+                  <TextBlock Text="{Binding [settings.section.wip.subtitle], Source={x:Static loc:LocalizationService.Instance}}"
                              FontSize="11"
                              Foreground="{StaticResource TextSecondaryBrush}"/>
                 </StackPanel>
 
-                <Border Height="1" Background="#44344355" IsVisible="{Binding IsNotificationSectionSelected}"/>
+                <Border Height="1" Background="{StaticResource MacroBorderSubtleBrush}" IsVisible="{Binding IsNotificationSectionSelected}"/>
                 <StackPanel Spacing="6" IsVisible="{Binding IsNotificationSectionSelected}">
-                  <TextBlock Text="Notification"
+                  <TextBlock Text="{Binding [settings.section.notification.title], Source={x:Static loc:LocalizationService.Instance}}"
                              FontSize="14"
                              FontWeight="SemiBold"
                              Foreground="{StaticResource TextPrimaryBrush}"/>
-                  <TextBlock Text="Trabalho em progresso."
+                  <TextBlock Text="{Binding [settings.section.wip.subtitle], Source={x:Static loc:LocalizationService.Instance}}"
                              FontSize="11"
                              Foreground="{StaticResource TextSecondaryBrush}"/>
                 </StackPanel>
 
-                <Border Height="1" Background="#44344355" IsVisible="{Binding IsAccessibilitySectionSelected}"/>
+                <Border Height="1" Background="{StaticResource MacroBorderSubtleBrush}" IsVisible="{Binding IsAccessibilitySectionSelected}"/>
                 <StackPanel Spacing="6" IsVisible="{Binding IsAccessibilitySectionSelected}">
-                  <TextBlock Text="Accessibility"
+                  <TextBlock Text="{Binding [settings.section.accessibility.title], Source={x:Static loc:LocalizationService.Instance}}"
                              FontSize="14"
                              FontWeight="SemiBold"
                              Foreground="{StaticResource TextPrimaryBrush}"/>
-                  <TextBlock Text="Trabalho em progresso."
+                  <TextBlock Text="{Binding [settings.section.wip.subtitle], Source={x:Static loc:LocalizationService.Instance}}"
                              FontSize="11"
                              Foreground="{StaticResource TextSecondaryBrush}"/>
                 </StackPanel>

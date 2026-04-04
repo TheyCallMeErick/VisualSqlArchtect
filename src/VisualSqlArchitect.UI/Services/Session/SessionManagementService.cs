@@ -2,6 +2,7 @@ using System.IO;
 using Avalonia.Controls;
 using VisualSqlArchitect.Nodes;
 using VisualSqlArchitect.UI.Controls;
+using VisualSqlArchitect.UI.Services.Localization;
 using VisualSqlArchitect.UI.Serialization;
 using VisualSqlArchitect.UI.ViewModels;
 
@@ -11,10 +12,11 @@ namespace VisualSqlArchitect.UI.Services;
 /// Manages auto-save scheduling and session restoration.
 /// Handles debounced saves, session file cleanup, and corruption detection.
 /// </summary>
-public class SessionManagementService(Window window, CanvasViewModel vm)
+public class SessionManagementService(Window window, CanvasViewModel vm, CanvasViewModel? ddlVm = null)
 {
     private readonly Window _window = window;
     private readonly CanvasViewModel _vm = vm;
+    private readonly CanvasViewModel? _ddlVm = ddlVm;
     private readonly object _autoSaveLock = new();  // Synchronization for _autoSaveCts
     private CancellationTokenSource? _autoSaveCts;
 
@@ -89,7 +91,7 @@ public class SessionManagementService(Window window, CanvasViewModel vm)
         try
         {
             Directory.CreateDirectory(AppDataDir);
-            string json = CanvasSerializer.Serialize(_vm);
+            string json = CanvasSerializer.SerializeWorkspace(_vm, _ddlVm);
             await File.WriteAllTextAsync(SessionTmp, json);
             File.Move(SessionTmp, SessionFile, overwrite: true);
         }
@@ -118,11 +120,15 @@ public class SessionManagementService(Window window, CanvasViewModel vm)
             CanvasLoadResult result = await CanvasSerializer.LoadFromFileAsync(
                 SessionFile,
                 _vm,
+                _ddlVm,
                 ColumnLookup
             );
             if (!result.Success)
             {
-                _vm.DataPreview.ShowError($"Restore failed: {result.Error}", null);
+                _vm.DataPreview.ShowError(
+                    string.Format(L("session.restore.failedWithReason", "Restore failed: {0}"), result.Error),
+                    null
+                );
                 try
                 {
                     File.Delete(SessionFile);
@@ -137,25 +143,28 @@ public class SessionManagementService(Window window, CanvasViewModel vm)
             _window.FindControl<InfiniteCanvas>("TheCanvas")?.InvalidateWires();
             if (result.Warnings is { Count: > 0 })
                 _vm.NotifyWarning(
-                    "Session restored with warnings.",
+                    L("session.restore.successWithWarnings", "Session restored with warnings."),
                     $"{SessionFile}{Environment.NewLine}{Environment.NewLine}{string.Join(Environment.NewLine, result.Warnings)}"
                 );
             else
-                _vm.NotifySuccess("Session restored successfully.", SessionFile);
+                _vm.NotifySuccess(L("session.restore.success", "Session restored successfully."), SessionFile);
 
             // Surface migration warnings as diagnostics
             if (result.Warnings is { Count: > 0 })
                 foreach (string w in result.Warnings)
                     _vm.Diagnostics.AddWarning(
-                        area: "Canvas Migration",
-                        message: $"Session restore: {w}",
-                        recommendation: "Review diagnostics and save the canvas to persist the migrated schema.",
+                        area: L("diagnostics.canvasMigration", "Canvas Migration"),
+                        message: string.Format(L("diagnostics.canvasMigration.sessionRestoreWarning", "Session restore: {0}"), w),
+                        recommendation: L("diagnostics.recommendation.saveMigratedSchema", "Review diagnostics and save the canvas to persist the migrated schema."),
                         openPanel: true
                     );
         }
         catch (Exception ex)
         {
-            _vm.DataPreview.ShowError($"Restore failed: {ex.Message}", ex);
+            _vm.DataPreview.ShowError(
+                string.Format(L("session.restore.failedWithReason", "Restore failed: {0}"), ex.Message),
+                ex
+            );
             // Session corrupted — delete it
             try
             {
@@ -179,5 +188,11 @@ public class SessionManagementService(Window window, CanvasViewModel vm)
         catch
         { /* ignore */
         }
+    }
+
+    private static string L(string key, string fallback)
+    {
+        string value = LocalizationService.Instance[key];
+        return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
     }
 }

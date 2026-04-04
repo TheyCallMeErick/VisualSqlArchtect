@@ -1,3 +1,5 @@
+﻿using VisualSqlArchitect.UI.Services.Canvas.AutoJoin;
+using VisualSqlArchitect.UI.Services.Explain;
 using Avalonia;
 using VisualSqlArchitect.Nodes;
 using VisualSqlArchitect.UI.ViewModels;
@@ -50,4 +52,17 @@ public class NodeViewModelResourceCacheTests
 
         Assert.Same(b1, b2);
     }
+
+    [Fact]
+    public void NodeBorderBrush_UsesHighlightBrush_WhenIsHighlighted()
+    {
+        var node = new NodeViewModel("public.orders", [("id", PinDataType.Number)], new Point(0, 0));
+        var defaultBrush = node.NodeBorderBrush;
+
+        node.IsHighlighted = true;
+
+        Assert.NotSame(defaultBrush, node.NodeBorderBrush);
+    }
 }
+
+

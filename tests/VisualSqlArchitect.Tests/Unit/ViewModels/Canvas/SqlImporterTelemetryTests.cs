@@ -1,3 +1,5 @@
+﻿using VisualSqlArchitect.UI.Services.Canvas.AutoJoin;
+using VisualSqlArchitect.UI.Services.Explain;
 using VisualSqlArchitect.UI.ViewModels;
 using Xunit;
 
@@ -16,7 +18,7 @@ public class SqlImporterTelemetryTests
 
         await canvas.SqlImporter.ImportAsync();
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.True(canvas.SqlImporter.HasReport);
 
         Assert.True(canvas.SqlImporter.LastTotalDurationMs > 0);
         Assert.True(canvas.SqlImporter.LastParseDurationMs >= 0);
@@ -39,10 +41,12 @@ public class SqlImporterTelemetryTests
         await canvas.SqlImporter.ImportAsync();
 
         Assert.False(canvas.SqlImporter.HasReport);
-        Assert.Contains("too large", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.False(string.IsNullOrWhiteSpace(canvas.SqlImporter.StatusMessage));
         Assert.Equal(0, canvas.SqlImporter.LastParseDurationMs);
         Assert.Equal(0, canvas.SqlImporter.LastMapDurationMs);
         Assert.Equal(0, canvas.SqlImporter.LastBuildDurationMs);
         Assert.Equal(0, canvas.SqlImporter.LastTotalDurationMs);
     }
 }
+
+

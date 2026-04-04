@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Media;
 using VisualSqlArchitect.Nodes;
+using VisualSqlArchitect.Nodes.PinTypes;
 
 namespace VisualSqlArchitect.UI.ViewModels;
 
@@ -10,6 +11,7 @@ namespace VisualSqlArchitect.UI.ViewModels;
 /// </summary>
 public sealed class PinViewModel(PinDescriptor d, NodeViewModel owner) : ViewModelBase
 {
+    private const int ColumnSetPreviewLimit = 6;
     private Point _absolutePosition;
     private bool _hasAbsolutePosition;
     private bool _isHovered,
@@ -50,6 +52,26 @@ public sealed class PinViewModel(PinDescriptor d, NodeViewModel owner) : ViewMod
     public ColumnRefMeta? ColumnRefMeta { get; } = d.ColumnRefMeta;
 
     public ColumnSetMeta? ColumnSetMeta { get; } = d.ColumnSetMeta;
+
+    public IReadOnlyList<ColumnSetPreviewItem> ColumnSetPreviewItems { get; } =
+        BuildColumnSetPreviewItems(d.ColumnSetMeta);
+
+    public bool HasColumnSetPreview => ColumnSetPreviewItems.Count > 0;
+
+    public bool HasColumnSetPreviewOverflow =>
+        ColumnSetMeta is { Columns.Count: > ColumnSetPreviewLimit };
+
+    public string ColumnSetPreviewOverflowLabel
+    {
+        get
+        {
+            if (ColumnSetMeta is null)
+                return string.Empty;
+
+            int remaining = ColumnSetMeta.Columns.Count - ColumnSetPreviewItems.Count;
+            return remaining > 0 ? $"+{remaining} more" : string.Empty;
+        }
+    }
 
     /// <summary>
     /// Reference to the parent node that owns this pin.
@@ -102,21 +124,7 @@ public sealed class PinViewModel(PinDescriptor d, NodeViewModel owner) : ViewMod
     public Color PinColor =>
         Owner.Type == NodeType.ResultOutput && Name == "having"
             ? Color.Parse("#FBBF24")
-            : EffectiveDataType switch
-            {
-                PinDataType.Text => Color.Parse("#60A5FA"),
-                PinDataType.Integer => Color.Parse("#34D399"),
-                PinDataType.Decimal => Color.Parse("#86EFAC"),
-                PinDataType.Number => Color.Parse("#4ADE80"),
-                PinDataType.Boolean => Color.Parse("#FCD34D"),
-                PinDataType.DateTime => Color.Parse("#38BDF8"),
-                PinDataType.Json => Color.Parse("#818CF8"),
-                PinDataType.ColumnRef => Color.Parse("#FB923C"),
-                PinDataType.ColumnSet => Color.Parse("#FBBF24"),
-                PinDataType.RowSet => Color.Parse("#F472B6"),
-                PinDataType.Expression => Color.Parse("#6B7280"),
-                _ => Color.Parse("#94A3B8"),
-            };
+            : Color.Parse(PinTypeRegistry.GetType(EffectiveDataType).VisualColorHex);
 
     /// <summary>
     /// Solid color brush for rendering this pin.
@@ -294,8 +302,15 @@ public sealed class PinViewModel(PinDescriptor d, NodeViewModel owner) : ViewMod
         var src = other.Direction == PinDirection.Output ? other.EffectiveDataType : EffectiveDataType;
         var dst = other.Direction == PinDirection.Output ? EffectiveDataType : other.EffectiveDataType;
 
+        // DDL and query pin families never connect to each other.
+        if (!PinTypeRegistry.GetType(dst).CanReceiveFrom(PinTypeRegistry.GetType(src)))
+            return false;
+
         if (IsStructuralMismatch(src, dst))
             return false;
+
+        if (IsWildcardProjectionToColumnInput(other, src, dst))
+            return true;
 
         if (src == PinDataType.ColumnRef && dst == PinDataType.ColumnRef)
         {
@@ -342,6 +357,27 @@ public sealed class PinViewModel(PinDescriptor d, NodeViewModel owner) : ViewMod
     private static PinDataType? ResolveColumnScalarType(PinViewModel pin) =>
         pin.ColumnRefMeta?.ScalarType ?? pin.ExpectedColumnScalarType;
 
+    private bool IsWildcardProjectionToColumnInput(PinViewModel other, PinDataType src, PinDataType dst)
+    {
+        if (src != PinDataType.ColumnSet || dst != PinDataType.ColumnRef)
+            return false;
+
+        PinViewModel sourcePin = other.Direction == PinDirection.Output ? other : this;
+        PinViewModel destinationPin = other.Direction == PinDirection.Output ? this : other;
+
+        if (sourcePin.Owner.Type != NodeType.TableSource
+            || !sourcePin.Name.Equals("*", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (destinationPin.Owner.Type is not (NodeType.ColumnList or NodeType.ColumnSetBuilder))
+            return false;
+
+        return destinationPin.Name.Equals("columns", StringComparison.OrdinalIgnoreCase)
+            || destinationPin.Name.Equals("metadata", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string BuildRowSetPreview(NodeViewModel owner)
     {
         var schemaPins = owner.OutputPins
@@ -380,8 +416,40 @@ public sealed class PinViewModel(PinDescriptor d, NodeViewModel owner) : ViewMod
             PinDataType.Json => "JSON",
             PinDataType.ColumnSet => "SET",
             PinDataType.RowSet => "ROWS",
+            PinDataType.TableDef => "TBL",
+            PinDataType.ViewDef => "VIEW",
+            PinDataType.ColumnDef => "COL",
+            PinDataType.Constraint => "CON",
+            PinDataType.IndexDef => "IDX",
+            PinDataType.TypeDef => "TYPE",
+            PinDataType.SequenceDef => "SEQ",
+            PinDataType.AlterOp => "ALT",
             PinDataType.Expression => "SQL",
             _ => type.ToString().ToUpperInvariant(),
         };
 
+    private static IReadOnlyList<ColumnSetPreviewItem> BuildColumnSetPreviewItems(ColumnSetMeta? meta)
+    {
+        if (meta is not { Columns.Count: > 0 })
+            return [];
+
+        return meta.Columns
+            .Take(ColumnSetPreviewLimit)
+            .Select(c => new ColumnSetPreviewItem(c.ColumnName, c.ScalarType, GetScalarTypeLabel(c.ScalarType), c.IsNullable))
+            .ToList();
+    }
+
+}
+
+public sealed class ColumnSetPreviewItem(
+    string columnName,
+    PinDataType scalarType,
+    string scalarLabel,
+    bool isNullable)
+{
+    public string ColumnName { get; } = columnName;
+    public PinDataType ScalarType { get; } = scalarType;
+    public string ScalarLabel { get; } = scalarLabel;
+    public bool IsNullable { get; } = isNullable;
+    public string NullabilityLabel => IsNullable ? "NULL" : "NOT NULL";
 }

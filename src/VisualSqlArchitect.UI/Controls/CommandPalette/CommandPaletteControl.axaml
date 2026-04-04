@@ -62,7 +62,7 @@
                    CaretBrush="#60A5FA"
                    Foreground="#E8EAED"
                    Name="SearchInput"
-                   AutomationProperties.Name="Command search">
+                   AutomationProperties.Name="{Binding [commandPalette.search], Source={x:Static loc:LocalizationService.Instance}}">
             <TextBox.Styles>
               <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
                 <Setter Property="BorderBrush" Value="Transparent"/>
@@ -76,7 +76,7 @@
                   CornerRadius="4"
                   Padding="5,2"
                   VerticalAlignment="Center">
-            <TextBlock Text="Ctrl+K"
+            <TextBlock Text="{Binding [commandPalette.shortcut], Source={x:Static loc:LocalizationService.Instance}}"
                        FontSize="10"
                        Foreground="#4A5568"/>
           </Border>
@@ -125,7 +125,7 @@
                     <TextBlock Text="{Binding Shortcut}"
                                FontSize="10"
                                Foreground="#4A5568"
-                               FontFamily="Consolas,Monospace"/>
+                               FontFamily="{StaticResource MonoFont}"/>
                   </Border>
                 </Grid>
               </Border>
@@ -163,7 +163,7 @@
           </StackPanel>
           <StackPanel Orientation="Horizontal" Spacing="4">
             <Border Background="#1E2335" CornerRadius="3" Padding="4,1">
-              <TextBlock Text="Esc" FontSize="10" Foreground="#4A5568"/>
+              <TextBlock Text="{Binding [common.esc], Source={x:Static loc:LocalizationService.Instance}}" FontSize="10" Foreground="#4A5568"/>
             </Border>
               <TextBlock Text="{Binding [common.close], Source={x:Static loc:LocalizationService.Instance}}" FontSize="10" Foreground="#4A5568" VerticalAlignment="Center"/>
           </StackPanel>

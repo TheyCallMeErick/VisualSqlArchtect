@@ -1,3 +1,5 @@
+﻿using VisualSqlArchitect.UI.Services.Canvas.AutoJoin;
+using VisualSqlArchitect.UI.Services.Explain;
 using System.Collections.ObjectModel;
 using Avalonia;
 using VisualSqlArchitect.Nodes;
@@ -55,3 +57,5 @@ public class SelectionManagerCanExecuteTests
         Assert.True(manager.DistributeHCommand.CanExecute(null));
     }
 }
+
+

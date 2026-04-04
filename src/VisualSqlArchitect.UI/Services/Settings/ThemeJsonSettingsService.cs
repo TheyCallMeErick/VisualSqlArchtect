@@ -1,4 +1,5 @@
 using System.Text.Json;
+using VisualSqlArchitect.UI.Services.Localization;
 using VisualSqlArchitect.UI.Services.Theming;
 
 namespace VisualSqlArchitect.UI.Services.Settings;
@@ -34,7 +35,10 @@ public sealed class ThemeJsonSettingsService
         if (File.Exists(path))
             return File.ReadAllText(path);
 
-        return "{\n  \"meta\": { \"name\": \"Custom Theme\" },\n  \"colors\": {\n    \"macroBg0\": \"#0B1020\",\n    \"textPrimary\": \"#E8EAED\",\n    \"textSecondary\": \"#8B95A8\"\n  }\n}";
+        return L(
+            "themeJson.editor.template",
+            "{\n  \"meta\": { \"name\": \"Custom Theme\" },\n  \"colors\": {\n    \"macroBg0\": \"#0B1020\",\n    \"textPrimary\": \"#E8EAED\",\n    \"textSecondary\": \"#8B95A8\"\n  }\n}"
+        );
     }
 
     public ThemeJsonOperationResult ApplyAndPersist(string rawJson)
@@ -44,7 +48,7 @@ public sealed class ThemeJsonSettingsService
             return new ThemeJsonOperationResult
             {
                 Success = false,
-                Message = "Cole um JSON de tema antes de aplicar.",
+                Message = L("themeJson.error.pasteBeforeApply", "Cole um JSON de tema antes de aplicar."),
             };
         }
 
@@ -58,7 +62,7 @@ public sealed class ThemeJsonSettingsService
             return new ThemeJsonOperationResult
             {
                 Success = false,
-                Message = $"JSON invalido: {ex.Message}",
+                Message = string.Format(L("themeJson.error.invalidJson", "JSON invalido: {0}"), ex.Message),
             };
         }
 
@@ -67,7 +71,7 @@ public sealed class ThemeJsonSettingsService
             return new ThemeJsonOperationResult
             {
                 Success = false,
-                Message = "JSON invalido: payload vazio.",
+                Message = L("themeJson.error.emptyPayload", "JSON invalido: payload vazio."),
             };
         }
 
@@ -77,7 +81,10 @@ public sealed class ThemeJsonSettingsService
             return new ThemeJsonOperationResult
             {
                 Success = false,
-                Message = $"Tema invalido: {string.Join(" | ", validation.Errors)}",
+                Message = string.Format(
+                    L("themeJson.error.invalidTheme", "Tema invalido: {0}"),
+                    string.Join(" | ", validation.Errors)
+                ),
             };
         }
 
@@ -98,7 +105,10 @@ public sealed class ThemeJsonSettingsService
             return new ThemeJsonOperationResult
             {
                 Success = false,
-                Message = $"Tema aplicado, mas falhou ao salvar: {ex.Message}",
+                Message = string.Format(
+                    L("themeJson.error.appliedButSaveFailed", "Tema aplicado, mas falhou ao salvar: {0}"),
+                    ex.Message
+                ),
                 AppliedTokenCount = applied,
                 Warnings = mapped.Warnings,
             };
@@ -107,7 +117,7 @@ public sealed class ThemeJsonSettingsService
         return new ThemeJsonOperationResult
         {
             Success = true,
-            Message = "Tema JSON aplicado e salvo.",
+            Message = L("themeJson.success.appliedAndSaved", "Tema JSON aplicado e salvo."),
             AppliedTokenCount = applied,
             Warnings = mapped.Warnings,
         };
@@ -124,7 +134,10 @@ public sealed class ThemeJsonSettingsService
             return new ThemeJsonOperationResult
             {
                 Success = true,
-                Message = "Tema personalizado removido. Reinicie o app para voltar totalmente ao tema padrao.",
+                Message = L(
+                    "themeJson.success.customRemoved",
+                    "Tema personalizado removido. Reinicie o app para voltar totalmente ao tema padrao."
+                ),
             };
         }
         catch (Exception ex)
@@ -132,8 +145,17 @@ public sealed class ThemeJsonSettingsService
             return new ThemeJsonOperationResult
             {
                 Success = false,
-                Message = $"Falha ao restaurar tema padrao: {ex.Message}",
+                Message = string.Format(
+                    L("themeJson.error.restoreDefaultFailed", "Falha ao restaurar tema padrao: {0}"),
+                    ex.Message
+                ),
             };
         }
+    }
+
+    private static string L(string key, string fallback)
+    {
+        string value = LocalizationService.Instance[key];
+        return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
     }
 }

@@ -1,13 +1,14 @@
-using Avalonia;
+﻿
 using System.Text.RegularExpressions;
+using Avalonia;
 using VisualSqlArchitect.Core;
 using VisualSqlArchitect.Nodes;
 using VisualSqlArchitect.UI.Serialization;
 using VisualSqlArchitect.UI.ViewModels;
-using VisualSqlArchitect.UI.ViewModels.QueryPreview.Services;
+using VisualSqlArchitect.UI.Services.QueryPreview;
+using static VisualSqlArchitect.Tests.Unit.ViewModels.QueryPreview.QueryPreviewTestNodeFactory;
 
 namespace VisualSqlArchitect.Tests.Unit.ViewModels.QueryPreview;
-
 public class QueryGraphBuilderCteTests
 {
     [Fact]
@@ -131,7 +132,6 @@ public class QueryGraphBuilderCteTests
 
         NodeViewModel cteSource = Node(NodeType.CteSource);
         cteSource.Parameters["cte_name"] = "dangling_cte";
-
         NodeViewModel mainColumnList = Node(NodeType.ColumnList);
         NodeViewModel mainResult = Node(NodeType.ResultOutput);
         Connect(canvas, cteSource, "result", mainColumnList, "columns");
@@ -177,7 +177,6 @@ public class QueryGraphBuilderCteTests
         canvas.Nodes.Add(cteSource);
         canvas.Nodes.Add(mainColumnList);
         canvas.Nodes.Add(mainResult);
-
         var sut = new QueryGraphBuilder(canvas, DatabaseProvider.Postgres);
 
         (string sql, List<string> errors) = sut.BuildSql();
@@ -638,26 +637,8 @@ public class QueryGraphBuilderCteTests
         var subgraph = new SavedCteSubgraph(nodes, connections, "result1");
         return System.Text.Json.JsonSerializer.Serialize(subgraph);
     }
-
-    private static NodeViewModel Node(NodeType type) =>
-        new(NodeDefinitionRegistry.Get(type), new Point(0, 0));
-
-    private static NodeViewModel Table(string tableName, params string[] columns) =>
-        new(tableName, columns.Select(c => (c, PinDataType.Number)), new Point(0, 0));
-
-    private static void Connect(
-        CanvasViewModel canvas,
-        NodeViewModel fromNode,
-        string fromPin,
-        NodeViewModel toNode,
-        string toPin)
-    {
-        PinViewModel from = fromNode.OutputPins.First(p => p.Name == fromPin);
-        PinViewModel to = toNode.InputPins.First(p => p.Name == toPin);
-
-        canvas.Connections.Add(new ConnectionViewModel(from, from.AbsolutePosition, to.AbsolutePosition)
-        {
-            ToPin = to,
-        });
-    }
 }
+
+
+
+

@@ -1,3 +1,5 @@
+using VisualSqlArchitect.UI.Services.Localization;
+
 namespace VisualSqlArchitect.UI.ViewModels;
 
 public sealed class ToastCenterViewModel : ViewModelBase
@@ -9,6 +11,7 @@ public sealed class ToastCenterViewModel : ViewModelBase
     private EToastSeverity _severity;
     private int _version;
     private CancellationTokenSource? _autoHideCts;
+    private Action? _detailsAction;
 
     public bool IsVisible
     {
@@ -35,10 +38,12 @@ public sealed class ToastCenterViewModel : ViewModelBase
         {
             Set(ref _details, value);
             RaisePropertyChanged(nameof(HasDetails));
+            RaisePropertyChanged(nameof(HasDetailsAction));
         }
     }
 
-    public bool HasDetails => !string.IsNullOrWhiteSpace(_details);
+    public bool HasDetails => !string.IsNullOrWhiteSpace(_details) || _detailsAction is not null;
+    public bool HasDetailsAction => _detailsAction is not null;
 
     public EToastSeverity Severity
     {
@@ -55,9 +60,9 @@ public sealed class ToastCenterViewModel : ViewModelBase
 
     public string SeverityLabel => _severity switch
     {
-        EToastSeverity.Success => "Success",
-        EToastSeverity.Warning => "Warning",
-        _ => "Error",
+        EToastSeverity.Success => L("toast.severity.success", "Success"),
+        EToastSeverity.Warning => L("toast.severity.warning", "Warning"),
+        _ => L("toast.severity.error", "Error"),
     };
 
     public string SeverityIcon => _severity switch
@@ -76,9 +81,9 @@ public sealed class ToastCenterViewModel : ViewModelBase
 
     public string DetailsTitle => _severity switch
     {
-        EToastSeverity.Success => "Success Details",
-        EToastSeverity.Warning => "Warning Details",
-        _ => "Error Details",
+        EToastSeverity.Success => L("toast.details.success", "Success Details"),
+        EToastSeverity.Warning => L("toast.details.warning", "Warning Details"),
+        _ => L("toast.details.error", "Error Details"),
     };
 
     public RelayCommand DismissCommand { get; }
@@ -88,20 +93,20 @@ public sealed class ToastCenterViewModel : ViewModelBase
     public ToastCenterViewModel()
     {
         DismissCommand = new RelayCommand(Dismiss);
-        ShowDetailsCommand = new RelayCommand(OpenDetails, () => HasDetails);
+        ShowDetailsCommand = new RelayCommand(OpenDetails, () => HasDetails || HasDetailsAction);
         CloseDetailsCommand = new RelayCommand(() => IsDetailsOpen = false);
     }
 
     public void ShowSuccess(string message, string? details = null) =>
-        Show(EToastSeverity.Success, message, details);
+        Show(EToastSeverity.Success, message, details, null);
 
     public void ShowError(string message, string? details = null) =>
-        Show(EToastSeverity.Error, message, details);
+        Show(EToastSeverity.Error, message, details, null);
 
-    public void ShowWarning(string message, string? details = null) =>
-        Show(EToastSeverity.Warning, message, details);
+    public void ShowWarning(string message, string? details = null, Action? onDetails = null) =>
+        Show(EToastSeverity.Warning, message, details, onDetails);
 
-    private void Show(EToastSeverity severity, string message, string? details)
+    private void Show(EToastSeverity severity, string message, string? details, Action? onDetails)
     {
         _version++;
         CancelAutoHide();
@@ -109,6 +114,9 @@ public sealed class ToastCenterViewModel : ViewModelBase
         Severity = severity;
         Message = message;
         Details = details;
+        _detailsAction = onDetails;
+        RaisePropertyChanged(nameof(HasDetails));
+        RaisePropertyChanged(nameof(HasDetailsAction));
         IsDetailsOpen = false;
         IsVisible = true;
 
@@ -120,10 +128,19 @@ public sealed class ToastCenterViewModel : ViewModelBase
     {
         CancelAutoHide();
         IsVisible = false;
+        _detailsAction = null;
+        RaisePropertyChanged(nameof(HasDetails));
+        RaisePropertyChanged(nameof(HasDetailsAction));
     }
 
     private void OpenDetails()
     {
+        if (_detailsAction is not null)
+        {
+            _detailsAction.Invoke();
+            return;
+        }
+
         if (!HasDetails)
             return;
 
@@ -160,5 +177,11 @@ public sealed class ToastCenterViewModel : ViewModelBase
         _autoHideCts?.Cancel();
         _autoHideCts?.Dispose();
         _autoHideCts = null;
+    }
+
+    private static string L(string key, string fallback)
+    {
+        string value = LocalizationService.Instance[key];
+        return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
     }
 }

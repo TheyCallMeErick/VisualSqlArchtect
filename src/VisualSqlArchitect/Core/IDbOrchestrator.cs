@@ -81,6 +81,20 @@ public record PreviewResult(
     long? RowsAffected = null
 );
 
+public record DdlStatementExecutionResult(
+    int StatementIndex,
+    string Sql,
+    bool Success,
+    string? ErrorMessage = null,
+    long? RowsAffected = null
+);
+
+public record DdlExecutionResult(
+    bool Success,
+    IReadOnlyList<DdlStatementExecutionResult> Statements,
+    TimeSpan? ExecutionTime = null
+);
+
 // ─── Provider Enum ────────────────────────────────────────────────────────────
 
 public enum DatabaseProvider
@@ -98,27 +112,50 @@ public enum DatabaseProvider
 /// Each provider implements this interface, keeping the canvas nodes
 /// completely agnostic of the underlying database engine.
 /// </summary>
-public interface IDbOrchestrator : IAsyncDisposable
+public interface IConnectionTester
 {
-    DatabaseProvider Provider { get; }
-    ConnectionConfig Config { get; }
-
     /// <summary>Validates the connection and returns latency metrics.</summary>
     Task<ConnectionTestResult> TestConnectionAsync(CancellationToken ct = default);
+}
 
+public interface ISchemaIntrospector
+{
     /// <summary>
     /// Introspects the database and returns a full schema snapshot
     /// including tables, columns, PKs and FK relationships.
     /// </summary>
     Task<DatabaseSchema> GetSchemaAsync(CancellationToken ct = default);
+}
 
+public interface IQueryExecutor
+{
     /// <summary>
     /// Executes a read-only query preview, capped at <paramref name="maxRows"/>.
     /// Wraps the query in a transaction that is always rolled back.
     /// </summary>
     Task<PreviewResult> ExecutePreviewAsync(
         string sql,
-        int maxRows = 200,
+        int maxRows = PreviewExecutionOptions.UseConfiguredDefault,
         CancellationToken ct = default
     );
+}
+
+public interface IDdlExecutor
+{
+    /// <summary>
+    /// Executes DDL statements and returns a per-statement result summary.
+    /// When <paramref name="stopOnError"/> is true, execution stops at the first failing statement.
+    /// </summary>
+    Task<DdlExecutionResult> ExecuteDdlAsync(
+        string sql,
+        bool stopOnError = true,
+        CancellationToken ct = default
+    );
+}
+
+public interface IDbOrchestrator
+    : IConnectionTester, ISchemaIntrospector, IQueryExecutor, IDdlExecutor, IAsyncDisposable
+{
+    DatabaseProvider Provider { get; }
+    ConnectionConfig Config { get; }
 }

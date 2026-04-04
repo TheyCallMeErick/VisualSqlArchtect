@@ -113,6 +113,259 @@ public sealed class PostgresDialect : ISqlDialect
     public string QuoteIdentifier(string identifier) =>
         $"\"{identifier.Replace("\"", "\"\"")}\"";
 
+    public string EmitCreateTableColumn(
+        string columnName,
+        string dataType,
+        bool isNullable,
+        string? defaultExpression = null,
+        string? columnComment = null
+    )
+    {
+        _ = columnComment;
+        string quotedName = QuoteIdentifier(columnName);
+        string sqlType = string.IsNullOrWhiteSpace(dataType) ? "integer" : dataType.Trim();
+        string nullability = isNullable ? "NULL" : "NOT NULL";
+
+        if (string.IsNullOrWhiteSpace(defaultExpression))
+            return $"{quotedName} {sqlType} {nullability}";
+
+        return $"{quotedName} {sqlType} {nullability} DEFAULT {defaultExpression.Trim()}";
+    }
+
+    public string EmitPrimaryKeyConstraint(string? constraintName, IReadOnlyList<string> columns)
+    {
+        if (columns.Count == 0)
+            throw new InvalidOperationException("PRIMARY KEY requires at least one column.");
+
+        string columnList = string.Join(", ", columns.Select(QuoteIdentifier));
+        string prefix = string.IsNullOrWhiteSpace(constraintName)
+            ? "PRIMARY KEY"
+            : $"CONSTRAINT {QuoteIdentifier(constraintName.Trim())} PRIMARY KEY";
+
+        return $"{prefix} ({columnList})";
+    }
+
+    public string EmitUniqueConstraint(string? constraintName, IReadOnlyList<string> columns)
+    {
+        if (columns.Count == 0)
+            throw new InvalidOperationException("UNIQUE requires at least one column.");
+
+        string columnList = string.Join(", ", columns.Select(QuoteIdentifier));
+        string prefix = string.IsNullOrWhiteSpace(constraintName)
+            ? "UNIQUE"
+            : $"CONSTRAINT {QuoteIdentifier(constraintName.Trim())} UNIQUE";
+
+        return $"{prefix} ({columnList})";
+    }
+
+    public string EmitCheckConstraint(string? constraintName, string expression)
+    {
+        if (string.IsNullOrWhiteSpace(expression))
+            throw new InvalidOperationException("CHECK expression is required.");
+
+        string prefix = string.IsNullOrWhiteSpace(constraintName)
+            ? "CHECK"
+            : $"CONSTRAINT {QuoteIdentifier(constraintName.Trim())} CHECK";
+
+        return $"{prefix} ({expression.Trim()})";
+    }
+
+    public string EmitCreateTable(
+        string schemaName,
+        string tableName,
+        bool ifNotExists,
+        IReadOnlyList<string> columnFragments,
+        IReadOnlyList<string> constraintFragments,
+        string? tableComment = null
+    )
+    {
+        _ = tableComment;
+        if (columnFragments.Count == 0)
+            throw new InvalidOperationException("CREATE TABLE requires at least one column.");
+
+        string schema = string.IsNullOrWhiteSpace(schemaName) ? "public" : schemaName.Trim();
+        string table = string.IsNullOrWhiteSpace(tableName)
+            ? throw new InvalidOperationException("Table name is required.")
+            : tableName.Trim();
+
+        string qualifiedName = $"{QuoteIdentifier(schema)}.{QuoteIdentifier(table)}";
+        string body = string.Join(",\n    ", columnFragments.Concat(constraintFragments));
+        return $"CREATE TABLE {(ifNotExists ? "IF NOT EXISTS " : string.Empty)}{qualifiedName}\n(\n    {body}\n);";
+    }
+
+    public string? EmitTableComment(string schemaName, string tableName, string? comment)
+    {
+        if (string.IsNullOrWhiteSpace(comment))
+            return null;
+
+        string qualified = $"{QuoteIdentifier(NormalizeSchema(schemaName))}.{QuoteIdentifier(NormalizeName(tableName, "table"))}";
+        return $"COMMENT ON TABLE {qualified} IS {QuoteLiteral(comment)};";
+    }
+
+    public string? EmitColumnComment(string schemaName, string tableName, string columnName, string? comment)
+    {
+        if (string.IsNullOrWhiteSpace(comment))
+            return null;
+
+        string qualified = $"{QuoteIdentifier(NormalizeSchema(schemaName))}.{QuoteIdentifier(NormalizeName(tableName, "table"))}";
+        string col = QuoteIdentifier(NormalizeName(columnName, "column"));
+        return $"COMMENT ON COLUMN {qualified}.{col} IS {QuoteLiteral(comment)};";
+    }
+
+    public string EmitCreateIndex(
+        string schemaName,
+        string tableName,
+        string indexName,
+        bool isUnique,
+        IReadOnlyList<Ddl.DdlIndexKeyExpr> keyColumns,
+        IReadOnlyList<string> includeColumns,
+        bool ifNotExists
+    )
+    {
+        if (keyColumns.Count == 0)
+            throw new InvalidOperationException("CREATE INDEX requires at least one key column.");
+
+        string schema = string.IsNullOrWhiteSpace(schemaName) ? "public" : schemaName.Trim();
+        string table = string.IsNullOrWhiteSpace(tableName)
+            ? throw new InvalidOperationException("Table name is required for CREATE INDEX.")
+            : tableName.Trim();
+        string idx = string.IsNullOrWhiteSpace(indexName)
+            ? throw new InvalidOperationException("Index name is required.")
+            : indexName.Trim();
+
+        string qualifiedTable = $"{QuoteIdentifier(schema)}.{QuoteIdentifier(table)}";
+        string keyList = string.Join(", ", keyColumns.Select(k =>
+            k.IsExpression
+                ? $"({k.ExpressionSql!.Trim()})"
+                : QuoteIdentifier(k.ColumnName!)));
+        string includeClause = includeColumns.Count == 0
+            ? string.Empty
+            : $" INCLUDE ({string.Join(", ", includeColumns.Select(QuoteIdentifier))})";
+
+        return
+            $"CREATE {(isUnique ? "UNIQUE " : string.Empty)}INDEX {(ifNotExists ? "IF NOT EXISTS " : string.Empty)}{QuoteIdentifier(idx)} ON {qualifiedTable} ({keyList}){includeClause};";
+    }
+
+    public string EmitCreateView(
+        string schemaName,
+        string viewName,
+        bool orReplace,
+        bool isMaterialized,
+        string selectSql
+    )
+    {
+        string schema = string.IsNullOrWhiteSpace(schemaName) ? "public" : schemaName.Trim();
+        string view = NormalizeName(viewName, "view");
+        string body = NormalizeName(selectSql, "SELECT").Trim().TrimEnd(';');
+
+        string createKeyword = isMaterialized ? "CREATE MATERIALIZED VIEW" : "CREATE VIEW";
+        if (orReplace && !isMaterialized)
+            createKeyword = "CREATE OR REPLACE VIEW";
+
+        string qualified = $"{QuoteIdentifier(schema)}.{QuoteIdentifier(view)}";
+        return $"{createKeyword} {qualified} AS\n{body};";
+    }
+
+    public string EmitAlterView(
+        string schemaName,
+        string viewName,
+        string selectSql
+    )
+    {
+        string schema = string.IsNullOrWhiteSpace(schemaName) ? "public" : schemaName.Trim();
+        string view = NormalizeName(viewName, "view");
+        string body = NormalizeName(selectSql, "SELECT").Trim().TrimEnd(';');
+        string qualified = $"{QuoteIdentifier(schema)}.{QuoteIdentifier(view)}";
+        return $"CREATE OR REPLACE VIEW {qualified} AS\n{body};";
+    }
+
+    public string EmitAlterTableAddColumn(string schemaName, string tableName, string columnFragment)
+    {
+        string qualified = $"{QuoteIdentifier(NormalizeSchema(schemaName))}.{QuoteIdentifier(NormalizeName(tableName, "table"))}";
+        return $"ALTER TABLE {qualified} ADD COLUMN {columnFragment};";
+    }
+
+    public string EmitAlterTableDropColumn(string schemaName, string tableName, string columnName, bool ifExists)
+    {
+        string qualified = $"{QuoteIdentifier(NormalizeSchema(schemaName))}.{QuoteIdentifier(NormalizeName(tableName, "table"))}";
+        string col = QuoteIdentifier(NormalizeName(columnName, "column"));
+        return $"ALTER TABLE {qualified} DROP COLUMN {(ifExists ? "IF EXISTS " : string.Empty)}{col};";
+    }
+
+    public string EmitAlterTableRenameColumn(string schemaName, string tableName, string oldName, string newName)
+    {
+        string qualified = $"{QuoteIdentifier(NormalizeSchema(schemaName))}.{QuoteIdentifier(NormalizeName(tableName, "table"))}";
+        string oldCol = QuoteIdentifier(NormalizeName(oldName, "old column"));
+        string newCol = QuoteIdentifier(NormalizeName(newName, "new column"));
+        return $"ALTER TABLE {qualified} RENAME COLUMN {oldCol} TO {newCol};";
+    }
+
+    public string EmitAlterTableRenameTable(string schemaName, string tableName, string newName, string? newSchema)
+    {
+        string oldSchema = NormalizeSchema(schemaName);
+        string oldTable = NormalizeName(tableName, "table");
+        string targetTable = NormalizeName(newName, "new table");
+
+        string qualifiedCurrent = $"{QuoteIdentifier(oldSchema)}.{QuoteIdentifier(oldTable)}";
+        string renameSql = $"ALTER TABLE {qualifiedCurrent} RENAME TO {QuoteIdentifier(targetTable)};";
+
+        if (string.IsNullOrWhiteSpace(newSchema))
+            return renameSql;
+
+        string targetSchema = NormalizeSchema(newSchema);
+        if (string.Equals(oldSchema, targetSchema, StringComparison.OrdinalIgnoreCase))
+            return renameSql;
+
+        string qualifiedRenamed = $"{QuoteIdentifier(oldSchema)}.{QuoteIdentifier(targetTable)}";
+        string moveSql = $"ALTER TABLE {qualifiedRenamed} SET SCHEMA {QuoteIdentifier(targetSchema)};";
+        return $"{renameSql}\n{moveSql}";
+    }
+
+    public string EmitAlterTableDropTable(string schemaName, string tableName, bool ifExists)
+    {
+        string qualified = $"{QuoteIdentifier(NormalizeSchema(schemaName))}.{QuoteIdentifier(NormalizeName(tableName, "table"))}";
+        return $"DROP TABLE {(ifExists ? "IF EXISTS " : string.Empty)}{qualified};";
+    }
+
+    public string EmitAlterTableAlterColumnType(
+        string schemaName,
+        string tableName,
+        string columnName,
+        string newDataType,
+        bool isNullable
+    )
+    {
+        string qualified = $"{QuoteIdentifier(NormalizeSchema(schemaName))}.{QuoteIdentifier(NormalizeName(tableName, "table"))}";
+        string col = QuoteIdentifier(NormalizeName(columnName, "column"));
+        string dataType = NormalizeName(newDataType, "data type");
+        string setNullability = isNullable
+            ? $"ALTER TABLE {qualified} ALTER COLUMN {col} DROP NOT NULL;"
+            : $"ALTER TABLE {qualified} ALTER COLUMN {col} SET NOT NULL;";
+
+        return $"ALTER TABLE {qualified} ALTER COLUMN {col} TYPE {dataType};\n{setNullability}";
+    }
+
+    public string EmitAlterTable(
+        string schemaName,
+        string tableName,
+        IReadOnlyList<string> operationStatements,
+        bool emitSeparateStatements
+    )
+    {
+        _ = schemaName;
+        _ = tableName;
+        _ = emitSeparateStatements;
+        return string.Join("\n", operationStatements.Where(s => !string.IsNullOrWhiteSpace(s)));
+    }
+
+    private static string NormalizeSchema(string schemaName) =>
+        string.IsNullOrWhiteSpace(schemaName) ? "public" : schemaName.Trim();
+
+    private static string NormalizeName(string value, string label) =>
+        string.IsNullOrWhiteSpace(value)
+            ? throw new InvalidOperationException($"{label} is required.")
+            : value.Trim();
+
     private static string TrimTrailingSemicolon(string sql)
     {
         if (string.IsNullOrWhiteSpace(sql))
@@ -120,4 +373,7 @@ public sealed class PostgresDialect : ISqlDialect
 
         return sql.Trim().TrimEnd(';').TrimEnd();
     }
+
+    private static string QuoteLiteral(string value)
+        => $"'{value.Replace("'", "''")}'";
 }

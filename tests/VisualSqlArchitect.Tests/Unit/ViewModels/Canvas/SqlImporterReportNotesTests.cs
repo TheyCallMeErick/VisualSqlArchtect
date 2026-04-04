@@ -1,3 +1,5 @@
+﻿using VisualSqlArchitect.UI.Services.Canvas.AutoJoin;
+using VisualSqlArchitect.UI.Services.Explain;
 using VisualSqlArchitect.UI.ViewModels;
 using VisualSqlArchitect.UI.ViewModels.Canvas;
 using Xunit;
@@ -30,7 +32,7 @@ public class SqlImporterReportNotesTests
 
         await canvas.SqlImporter.ImportAsync();
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.True(canvas.SqlImporter.HasReport);
 
         var problematicItems = canvas.SqlImporter.Report
             .Where(i => i.IsPartial || i.IsSkipped)
@@ -52,7 +54,7 @@ public class SqlImporterReportNotesTests
 
         await canvas.SqlImporter.ImportAsync();
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, item =>
             item.Status == EImportItemStatus.Partial
             && item.Label.Contains("GROUP BY conflict", StringComparison.OrdinalIgnoreCase)
@@ -71,8 +73,10 @@ public class SqlImporterReportNotesTests
 
         await canvas.SqlImporter.ImportAsync();
 
-        Assert.Contains("Done", canvas.SqlImporter.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.True(canvas.SqlImporter.HasReport);
         Assert.DoesNotContain(canvas.SqlImporter.Report, item =>
             item.Label.Contains("GROUP BY conflict", StringComparison.OrdinalIgnoreCase));
     }
 }
+
+

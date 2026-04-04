@@ -1,4 +1,5 @@
 using Avalonia.Media;
+using VisualSqlArchitect.UI.Services.Localization;
 
 namespace VisualSqlArchitect.UI.Services.Theming;
 
@@ -17,12 +18,14 @@ public static class ThemeValidator
 
         if (config is null)
         {
-            result.Errors.Add("Theme config is null.");
+            result.Errors.Add(L("themeValidator.error.configNull", "Theme config is null."));
             return result;
         }
 
         if (config.Colors is null && config.Typography is null)
-            result.Warnings.Add("Theme has no colors or typography sections; nothing to apply.");
+            result.Warnings.Add(
+                L("themeValidator.warning.noSections", "Theme has no colors or typography sections; nothing to apply.")
+            );
 
         if (config.Colors is not null)
         {
@@ -53,7 +56,13 @@ public static class ThemeValidator
             return;
 
         if (!Color.TryParse(value, out _))
-            result.Warnings.Add($"{key} has invalid color '{value}'. This key will be ignored.");
+            result.Warnings.Add(
+                string.Format(
+                    L("themeValidator.warning.invalidColor", "{0} has invalid color '{1}'. This key will be ignored."),
+                    key,
+                    value
+                )
+            );
     }
 
     private static void ValidateSize(double? value, string key, ThemeValidationResult result)
@@ -62,6 +71,18 @@ public static class ThemeValidator
             return;
 
         if (value < 8 || value > 48)
-            result.Warnings.Add($"{key}={value} is out of range (8..48). This key will be ignored.");
+            result.Warnings.Add(
+                string.Format(
+                    L("themeValidator.warning.sizeOutOfRange", "{0}={1} is out of range (8..48). This key will be ignored."),
+                    key,
+                    value
+                )
+            );
+    }
+
+    private static string L(string key, string fallback)
+    {
+        string value = LocalizationService.Instance[key];
+        return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
     }
 }

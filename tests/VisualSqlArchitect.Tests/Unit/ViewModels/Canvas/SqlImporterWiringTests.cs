@@ -1,3 +1,5 @@
+﻿using VisualSqlArchitect.UI.Services.Canvas.AutoJoin;
+using VisualSqlArchitect.UI.Services.Explain;
 using VisualSqlArchitect.Nodes;
 using VisualSqlArchitect.UI.ViewModels;
 using Xunit;
@@ -32,3 +34,5 @@ public class SqlImporterWiringTests
             && c.ToPin.Name == "where");
     }
 }
+
+

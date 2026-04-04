@@ -39,4 +39,25 @@ public class LocalizationServiceTests
         // restore default
         loc.SetCulture("pt-BR");
     }
+
+    [Fact]
+    public void SetCulture_SupportsExtendedLocales()
+    {
+        var loc = LocalizationService.Instance;
+
+        Assert.True(loc.SetCulture("es-ES"));
+        Assert.Equal("es-ES", loc.CurrentCulture);
+
+        Assert.True(loc.SetCulture("ru-RU"));
+        Assert.Equal("ru-RU", loc.CurrentCulture);
+
+        Assert.True(loc.SetCulture("ja-JP"));
+        Assert.Equal("ja-JP", loc.CurrentCulture);
+
+        Assert.True(loc.SetCulture("zh-TW"));
+        Assert.Equal("zh-TW", loc.CurrentCulture);
+
+        // restore default
+        loc.SetCulture("pt-BR");
+    }
 }

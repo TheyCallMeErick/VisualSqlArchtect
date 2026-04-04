@@ -23,7 +23,7 @@ public class InfiniteCanvasWireDeletionInteractionTests
 
         Assert.Contains("if (e.KeyModifiers.HasFlag(KeyModifiers.Control))", source);
         Assert.Contains("_wires.HitTestWire(canvas, tolerance: 8)", source);
-        Assert.Contains("Header = \"Delete wire\"", source);
+        Assert.Contains("Header = L(\"context.deleteWire\", \"Delete wire\")", source);
         Assert.Contains("TryDeleteWire(wireUnderPointer)", source);
     }
 

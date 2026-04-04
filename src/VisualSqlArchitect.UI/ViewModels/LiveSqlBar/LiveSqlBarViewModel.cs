@@ -1,14 +1,16 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.ComponentModel;
 using VisualSqlArchitect.Core;
 using VisualSqlArchitect.Nodes;
 using VisualSqlArchitect.QueryEngine;
 using VisualSqlArchitect.Registry;
-using VisualSqlArchitect.UI.ViewModels.QueryPreview.Services;
+using VisualSqlArchitect.UI.Services.LiveSqlBar;
+using VisualSqlArchitect.UI.Services.QueryPreview.Models;
+using VisualSqlArchitect.UI.Services.QueryPreview;
 
 namespace VisualSqlArchitect.UI.ViewModels;
 
-// ─── Live SQL bar view model ──────────────────────────────────────────────────
+// â”€â”€â”€ Live SQL bar view model â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// <summary>
 /// Maintains a real-time SQL preview that updates every time the canvas graph
@@ -16,10 +18,10 @@ namespace VisualSqlArchitect.UI.ViewModels;
 ///
 /// The VM walks <see cref="CanvasViewModel"/> collections, compiles the graph
 /// via <see cref="QueryGeneratorService"/>, and exposes:
-///   • <see cref="RawSql"/>     — plain string for copy/paste
-///   • <see cref="Tokens"/>     — syntax-highlighted token list for the UI
-///   • <see cref="IsValid"/>    — false when the graph has errors
-///   • <see cref="ErrorHints"/> — per-error messages for the validation panel
+///   â€¢ <see cref="RawSql"/>     â€” plain string for copy/paste
+///   â€¢ <see cref="Tokens"/>     â€” syntax-highlighted token list for the UI
+///   â€¢ <see cref="IsValid"/>    â€” false when the graph has errors
+///   â€¢ <see cref="ErrorHints"/> â€” per-error messages for the validation panel
 /// </summary>
 public sealed class LiveSqlBarViewModel : ViewModelBase
 {
@@ -36,13 +38,15 @@ public sealed class LiveSqlBarViewModel : ViewModelBase
     private bool _isMutatingCommand;
     private DatabaseProvider _provider = DatabaseProvider.Postgres;
 
-    // ── Observable collections ────────────────────────────────────────────────
+    // â”€â”€ Observable collections â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     public ObservableCollection<SqlToken> Tokens { get; } = [];
     public ObservableCollection<string> ErrorHints { get; } = [];
+    public ObservableCollection<PreviewDiagnostic> Diagnostics { get; } = [];
+    public ObservableCollection<LiveSqlDiagnosticItem> DiagnosticItems { get; } = [];
     public ObservableCollection<GuardIssue> GuardIssues { get; } = [];
 
-    // ── Properties ────────────────────────────────────────────────────────────
+    // â”€â”€ Properties â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     public string RawSql
     {
@@ -107,12 +111,13 @@ public sealed class LiveSqlBarViewModel : ViewModelBase
 
     public string? BlockedReason =>
         IsMutatingCommand
-            ? "Blocked in Safe Preview Mode — SQL contains a data-mutating command (INSERT/UPDATE/DELETE/DROP/ALTER/TRUNCATE)"
+            ? "Blocked in Safe Preview Mode â€” SQL contains a data-mutating command (INSERT/UPDATE/DELETE/DROP/ALTER/TRUNCATE)"
             : null;
 
     public bool HasGuardWarning => GuardIssues.Count > 0;
+    public bool HasDiagnostics => DiagnosticItems.Count > 0;
 
-    // ── Constructor ───────────────────────────────────────────────────────────
+    // â”€â”€ Constructor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     // Tracks per-node PropertyChanged handlers so they can be unsubscribed on node removal.
     private readonly Dictionary<NodeViewModel, PropertyChangedEventHandler> _nodeHandlers = new();
@@ -128,7 +133,7 @@ public sealed class LiveSqlBarViewModel : ViewModelBase
         {
             ScheduleRecompile();
 
-            // Subscribe new nodes — skip pure visual/UI properties that don't affect SQL
+            // Subscribe new nodes â€” skip pure visual/UI properties that don't affect SQL
             if (e.NewItems is not null)
                 foreach (NodeViewModel vm in e.NewItems)
                     SubscribeNode(vm);
@@ -167,7 +172,7 @@ public sealed class LiveSqlBarViewModel : ViewModelBase
         }
     }
 
-    // ── Debounced recompile ───────────────────────────────────────────────────
+    // â”€â”€ Debounced recompile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private CancellationTokenSource? _debounce;
 
@@ -180,7 +185,7 @@ public sealed class LiveSqlBarViewModel : ViewModelBase
             _debounce = new CancellationTokenSource();
             CancellationToken token = _debounce.Token;
 
-            // 120ms debounce — avoids recompiling on every intermediate drag step
+            // 120ms debounce â€” avoids recompiling on every intermediate drag step
             Task.Delay(120, token)
                 .ContinueWith(
                     _ =>
@@ -193,11 +198,13 @@ public sealed class LiveSqlBarViewModel : ViewModelBase
         }
     }
 
-    // ── Compilation ───────────────────────────────────────────────────────────
+    // â”€â”€ Compilation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     public void Recompile()
     {
         ErrorHints.Clear();
+        Diagnostics.Clear();
+        DiagnosticItems.Clear();
         GuardIssues.Clear();
         IsCompiling = true;
 
@@ -208,7 +215,7 @@ public sealed class LiveSqlBarViewModel : ViewModelBase
 
             _graphBuilder = new QueryGraphBuilder(_canvas, _provider);
 
-            // ── Portability pre-check ─────────────────────────────────────────
+            // â”€â”€ Portability pre-check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             List<GuardIssue> portabilityIssues = QueryValidationService.CheckPortability(
                 _canvas.Nodes.Select(n => n.Type),
                 _provider
@@ -216,14 +223,15 @@ public sealed class LiveSqlBarViewModel : ViewModelBase
             foreach (GuardIssue issue in portabilityIssues)
                 GuardIssues.Add(issue);
 
-            (string sql, List<string> errors) = _graphBuilder.BuildSql();
+            (string sql, List<PreviewDiagnostic> diagnostics) = _graphBuilder.BuildSqlWithDiagnostics();
+            List<string> errors = diagnostics.Select(d => d.Message).ToList();
 
             RawSql = sql;
             DisplaySql = FormatSqlText(sql);
             IsValid = errors.Count == 0;
             CompileError = errors.Count > 0 ? errors[0] : null;
 
-            // Detect mutating commands — block preview execution
+            // Detect mutating commands â€” block preview execution
             IsMutatingCommand = QueryValidationService.IsMutating(sql);
             RaisePropertyChanged(nameof(BlockedReason));
 
@@ -238,6 +246,19 @@ public sealed class LiveSqlBarViewModel : ViewModelBase
             foreach (string err in errors)
                 ErrorHints.Add(err);
 
+            foreach (PreviewDiagnostic diagnostic in diagnostics)
+            {
+                Diagnostics.Add(diagnostic);
+                (string? actionLabel, string? actionHint) = ResolveQuickAction(diagnostic);
+                Action<PreviewDiagnostic>? quickAction = actionHint is null
+                    ? null
+                    : _ => _canvas.Toasts.ShowWarning(actionHint);
+
+                DiagnosticItems.Add(
+                    new LiveSqlDiagnosticItem(diagnostic, FocusDiagnostic, quickAction, actionLabel)
+                );
+            }
+
             SqlSyntaxHighlighter.Tokenize(DisplaySql, Tokens);
         }
         catch (Exception ex)
@@ -248,6 +269,8 @@ public sealed class LiveSqlBarViewModel : ViewModelBase
             CompileError = ex.Message;
             IsMutatingCommand = false;
             ErrorHints.Add($"Compile error: {ex.Message}");
+            Diagnostics.Clear();
+            DiagnosticItems.Clear();
             Tokens.Clear();
         }
         finally
@@ -257,10 +280,77 @@ public sealed class LiveSqlBarViewModel : ViewModelBase
             RaisePropertyChanged(nameof(ProviderLabel));
             RaisePropertyChanged(nameof(BlockedReason));
             RaisePropertyChanged(nameof(HasGuardWarning));
+            RaisePropertyChanged(nameof(HasDiagnostics));
         }
     }
 
-    // ── Format SQL ────────────────────────────────────────────────────────────
+    private void FocusDiagnostic(PreviewDiagnostic diagnostic)
+    {
+        if (diagnostic.NodeId is null)
+            return;
+
+        _canvas.FocusNodeById(diagnostic.NodeId);
+    }
+
+    private static (string? Label, string? Hint) ResolveQuickAction(PreviewDiagnostic diagnostic)
+    {
+        if (diagnostic.Message.Contains("alias ambiguity", StringComparison.OrdinalIgnoreCase))
+        {
+            return (
+                "Definir aliases distintos",
+                "Revise este source e atribua aliases unicos no painel de propriedades para eliminar ambiguidade."
+            );
+        }
+
+        if (diagnostic.Message.Contains("without ORDER BY", StringComparison.OrdinalIgnoreCase))
+        {
+            return (
+                "Adicionar ORDER BY",
+                "Abra Result Output e configure import_order_terms/ORDER BY para paginaÃ§Ã£o determinÃ­stica."
+            );
+        }
+
+        if (diagnostic.Category == EPreviewDiagnosticCategory.Comparison)
+        {
+            return (
+                "Abrir propriedade pattern",
+                "No painel de propriedades, ajuste pattern/operandos do nÃ³ de comparaÃ§Ã£o para uma condiÃ§Ã£o vÃ¡lida."
+            );
+        }
+
+        if (diagnostic.Category == EPreviewDiagnosticCategory.Join)
+        {
+            return (
+                "Revisar JOIN",
+                "Verifique tipo de JOIN e conecte left/right (e condition quando aplicÃ¡vel) no nÃ³ de junÃ§Ã£o."
+            );
+        }
+
+        if (diagnostic.Category == EPreviewDiagnosticCategory.Predicate)
+        {
+            return (
+                "Abrir condiÃ§Ã£o",
+                "Revise os nÃ³s da cadeia WHERE/HAVING/QUALIFY e preencha os inputs obrigatÃ³rios."
+            );
+        }
+
+        if (diagnostic.Message.Contains("invalid 'path'", StringComparison.OrdinalIgnoreCase))
+        {
+            return (
+                "Abrir propriedade path",
+                "Defina um JSONPath vÃ¡lido (ex.: $.field ou $[0]) no parÃ¢metro path do nÃ³ JSON."
+            );
+        }
+
+        return (null, null);
+    }
+
+    // â”€â”€ Panel shortcuts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    public void OpenExplainPlan() => _canvas.ExplainPlan.Open();
+    public void OpenBenchmark()   => _canvas.Benchmark.Open();
+
+    // â”€â”€ Format SQL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     public void FormatSql()
     {
@@ -326,7 +416,7 @@ public sealed class LiveSqlBarViewModel : ViewModelBase
             }
         }
 
-        // Indent items in SELECT clause (comma-separated columns → one per line)
+        // Indent items in SELECT clause (comma-separated columns â†’ one per line)
         int selectEnd = sql.IndexOf("\nFROM", StringComparison.OrdinalIgnoreCase);
         if (sql.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase) && selectEnd > 0)
         {
@@ -342,3 +432,5 @@ public sealed class LiveSqlBarViewModel : ViewModelBase
         return sql;
     }
 }
+
+

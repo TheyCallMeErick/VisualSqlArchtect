@@ -11,8 +11,17 @@ namespace VisualSqlArchitect.UI.Controls;
 
 public partial class DataPreviewPanel : UserControl
 {
+    public static readonly StyledProperty<bool> ShowCloseButtonProperty =
+        AvaloniaProperty.Register<DataPreviewPanel, bool>(nameof(ShowCloseButton), true);
+
     public static readonly StyledProperty<LiveSqlBarViewModel?> LiveSqlViewModelProperty =
         AvaloniaProperty.Register<DataPreviewPanel, LiveSqlBarViewModel?>(nameof(LiveSqlViewModel));
+
+    public bool ShowCloseButton
+    {
+        get => GetValue(ShowCloseButtonProperty);
+        set => SetValue(ShowCloseButtonProperty, value);
+    }
 
     public LiveSqlBarViewModel? LiveSqlViewModel
     {

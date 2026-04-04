@@ -1,3 +1,5 @@
+﻿using VisualSqlArchitect.UI.Services.Canvas.AutoJoin;
+using VisualSqlArchitect.UI.Services.Explain;
 using Avalonia;
 using VisualSqlArchitect.Nodes;
 using VisualSqlArchitect.UI.ViewModels;
@@ -17,3 +19,5 @@ public class NodeViewModelJoinTypeSelectionTests
         Assert.False(node.Parameters.ContainsKey("type"));
     }
 }
+
+

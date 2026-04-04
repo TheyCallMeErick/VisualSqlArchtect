@@ -66,7 +66,7 @@ public sealed class DatabaseConnectionService : IDisposable
             );
 
             // Step 1: Initialize the metadata service
-            _metadataService = MetadataService.Create(config, cacheTtl: TimeSpan.FromMinutes(5));
+            _metadataService = MetadataService.Create(config);
 
             // Step 2: Fetch complete database schema
             _logger.LogInformation("[DatabaseConnectionService] Fetching database schema...");

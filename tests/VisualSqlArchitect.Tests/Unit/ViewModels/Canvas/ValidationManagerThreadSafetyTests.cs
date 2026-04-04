@@ -1,3 +1,5 @@
+﻿using VisualSqlArchitect.UI.Services.Canvas.AutoJoin;
+using VisualSqlArchitect.UI.Services.Explain;
 using VisualSqlArchitect.UI.ViewModels;
 using Xunit;
 
@@ -272,3 +274,5 @@ public class ValidationManagerThreadSafetyTests
         Assert.False(exceptionOccurred);
     }
 }
+
+

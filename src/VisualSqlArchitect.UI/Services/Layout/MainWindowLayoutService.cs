@@ -130,10 +130,10 @@ public class MainWindowLayoutService(Window window, CanvasViewModel vm) : IDispo
             if (bodyGrid is not null && bodyGrid.ColumnDefinitions.Count >= 5)
             {
                 bodyGrid.ColumnDefinitions[0].Width = new GridLength(
-                    Math.Clamp(layout.LeftWidth, 180, 400)
+                    Math.Clamp(layout.LeftWidth, 200, 420)
                 );
                 bodyGrid.ColumnDefinitions[4].Width = new GridLength(
-                    Math.Clamp(layout.RightWidth, 200, 500)
+                    Math.Clamp(layout.RightWidth, 220, 500)
                 );
             }
 

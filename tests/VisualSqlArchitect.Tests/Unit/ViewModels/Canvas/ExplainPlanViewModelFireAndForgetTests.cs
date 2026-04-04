@@ -1,3 +1,5 @@
+﻿using VisualSqlArchitect.UI.Services.Canvas.AutoJoin;
+using VisualSqlArchitect.UI.Services.Explain;
 using Xunit;
 using VisualSqlArchitect.UI.ViewModels.Canvas;
 using System.Reflection;
@@ -7,7 +9,7 @@ namespace VisualSqlArchitect.Tests.Unit.ViewModels.Canvas;
 /// <summary>
 /// Regression tests for ExplainPlanViewModel fire-and-forget exception handling.
 ///
-/// Problem (FRAGILITY_REPORT §8): <c>_ = RunExplainAsync()</c> was called without a
+/// Problem (FRAGILITY_REPORT Â§8): <c>_ = RunExplainAsync()</c> was called without a
 /// wrapping try/catch in the fire-and-forget context. Any exception propagating after
 /// the first await would become an unhandled exception and crash the app.
 ///
@@ -20,7 +22,7 @@ namespace VisualSqlArchitect.Tests.Unit.ViewModels.Canvas;
 /// </summary>
 public class ExplainPlanViewModelFireAndForgetTests
 {
-    // ── Infrastructure helpers ────────────────────────────────────────────────
+    // â”€â”€ Infrastructure helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private static MethodInfo? GetMethod(string name, BindingFlags flags) =>
         typeof(ExplainPlanViewModel).GetMethod(name, flags);
@@ -28,12 +30,12 @@ public class ExplainPlanViewModelFireAndForgetTests
     private static PropertyInfo? GetProp(string name) =>
         typeof(ExplainPlanViewModel).GetProperty(name);
 
-    // ── Safe wrapper existence ────────────────────────────────────────────────
+    // â”€â”€ Safe wrapper existence â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public void SafeWrapper_Exists_AsPrivateMethod()
     {
-        // RunExplainAsyncSafe is an internal implementation detail — must be private.
+        // RunExplainAsyncSafe is an internal implementation detail â€” must be private.
         var method = GetMethod("RunExplainAsyncSafe",
             BindingFlags.NonPublic | BindingFlags.Instance);
 
@@ -62,7 +64,7 @@ public class ExplainPlanViewModelFireAndForgetTests
         Assert.True(isAsync, "RunExplainAsyncSafe must be async to properly catch exceptions");
     }
 
-    // ── Public RunExplainAsync ─────────────────────────────────────────────────
+    // â”€â”€ Public RunExplainAsync â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public void RunExplainAsync_IsPublic()
@@ -85,7 +87,7 @@ public class ExplainPlanViewModelFireAndForgetTests
         Assert.Equal(typeof(Task), method!.ReturnType);
     }
 
-    // ── Open() uses safe wrapper, NOT the raw method ──────────────────────────
+    // â”€â”€ Open() uses safe wrapper, NOT the raw method â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public void Open_Method_Exists_AndIsPublic()
@@ -96,7 +98,7 @@ public class ExplainPlanViewModelFireAndForgetTests
         Assert.True(method!.IsPublic);
     }
 
-    // ── Error-state properties ────────────────────────────────────────────────
+    // â”€â”€ Error-state properties â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public void ErrorMessage_Property_Exists()
@@ -116,7 +118,7 @@ public class ExplainPlanViewModelFireAndForgetTests
         Assert.True(prop!.CanRead);
     }
 
-    // ── Behavioral tests ──────────────────────────────────────────────────────
+    // â”€â”€ Behavioral tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public void ErrorMessage_InitiallyNull()
@@ -160,16 +162,16 @@ public class ExplainPlanViewModelFireAndForgetTests
         Assert.False(vm.IsVisible);
     }
 
-    // ── Regression: complete safety contract ──────────────────────────────────
+    // â”€â”€ Regression: complete safety contract â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     [Fact]
     public void RegressionTest_Complete_Exception_Safety()
     {
         // Verifies all required components for safe fire-and-forget exception handling:
-        //   1. RunExplainAsyncSafe() — private async wrapper (catches exceptions)
-        //   2. RunExplainAsync()     — public async method (callable from overlay)
-        //   3. ErrorMessage          — property updated on failure
-        //   4. IsLoading             — reset to false on failure (prevents UI hang)
+        //   1. RunExplainAsyncSafe() â€” private async wrapper (catches exceptions)
+        //   2. RunExplainAsync()     â€” public async method (callable from overlay)
+        //   3. ErrorMessage          â€” property updated on failure
+        //   4. IsLoading             â€” reset to false on failure (prevents UI hang)
 
         var type = typeof(ExplainPlanViewModel);
 
@@ -213,3 +215,5 @@ public class ExplainPlanViewModelFireAndForgetTests
             "across all await continuations");
     }
 }
+
+

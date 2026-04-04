@@ -1,4 +1,5 @@
 using Avalonia;
+using VisualSqlArchitect.Nodes;
 using VisualSqlArchitect.UI.ViewModels;
 using VisualSqlArchitect.UI.ViewModels.UndoRedo.Commands;
 
@@ -18,7 +19,10 @@ public sealed partial class InfiniteCanvas
         if (ViewModel is null)
             return;
 
-        _ = ViewModel.EnterCteEditor(node);
+        if (node.Type == NodeType.CteDefinition)
+            _ = ViewModel.EnterCteEditorAsync(node);
+        else if (node.Type == NodeType.ViewDefinition)
+            _ = ViewModel.EnterViewEditorAsync(node);
     }
 
     private void OnNodeDragStarted(object? s, (NodeViewModel Node, Point Pos) a)
@@ -105,6 +109,7 @@ public sealed partial class InfiniteCanvas
         }
 
         SyncWires();
+        UpdateWireInsertPreview(_dragNode);
 
         // Only recalculate guides when the node has moved enough (avoids O(n) every frame)
         double gdx = newX - _lastGuideCheckPosition.X;
@@ -209,6 +214,22 @@ public sealed partial class InfiniteCanvas
             else
             {
                 Log("    No position change or _dragNode/ViewModel is null");
+            }
+
+            if (_dragNode is not null && TryInsertNodeOnWire(_dragNode))
+            {
+                Log("    Node inserted on wire using modifier-assisted drop");
+                SyncWires();
+                InvalidateArrange();
+            }
+
+            if (ViewModel is not null)
+            {
+                CanvasHoverHighlighter.ClearHover(ViewModel);
+                SetWireInsertPreviewPins(null, null);
+                SetWireInsertPreviewInvalidWire(null);
+                _hoveredPin = null;
+                _hoveredWire = null;
             }
 
             _guides.ClearGuides();

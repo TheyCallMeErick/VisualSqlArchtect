@@ -1,4 +1,6 @@
-using System.Reflection;
+﻿using VisualSqlArchitect.UI.Services.ConnectionManager;
+using VisualSqlArchitect.UI.Services.Benchmark;
+using Microsoft.Extensions.Logging.Abstractions;
 using VisualSqlArchitect.UI.ViewModels;
 using Xunit;
 
@@ -7,43 +9,58 @@ namespace VisualSqlArchitect.Tests.Unit.ViewModels;
 public class ConnectionManagerFireAndForgetSafetyTests
 {
     [Fact]
-    public async Task ExecuteFireAndForgetSafeAsync_CatchesUnhandledExceptions()
+    public async Task FireAndForgetSafetyExecutor_CatchesUnhandledExceptions()
     {
-        var vm = new ConnectionManagerViewModel();
-        MethodInfo method = typeof(ConnectionManagerViewModel)
-            .GetMethod("ExecuteFireAndForgetSafeAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var executor = new FireAndForgetSafetyExecutor(NullLogger.Instance);
 
         Func<Task> throwing = () => Task.FromException(new InvalidOperationException("boom"));
 
-        Task task = (Task)method.Invoke(vm, [throwing, "unit-test-op"])!;
+        Task task = executor.ExecuteSafeAsync(throwing, "unit-test-op");
         await task;
 
         Assert.True(task.IsCompletedSuccessfully);
     }
 
     [Fact]
-    public async Task ExecuteFireAndForgetSafeAsync_IgnoresOperationCanceled()
+    public async Task FireAndForgetSafetyExecutor_IgnoresOperationCanceled()
     {
-        var vm = new ConnectionManagerViewModel();
-        MethodInfo method = typeof(ConnectionManagerViewModel)
-            .GetMethod("ExecuteFireAndForgetSafeAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var executor = new FireAndForgetSafetyExecutor(NullLogger.Instance);
 
         Func<Task> canceled = () => Task.FromCanceled(new CancellationToken(canceled: true));
 
-        Task task = (Task)method.Invoke(vm, [canceled, "unit-test-op"])!;
+        Task task = executor.ExecuteSafeAsync(canceled, "unit-test-op");
         await task;
 
         Assert.True(task.IsCompletedSuccessfully);
     }
 
     [Fact]
-    public void ConnectionManager_HasSafeStarterMethodsForFireAndForgetFlows()
+    public void ConnectionManager_RefreshHealthCommand_UsesSafeExecutor()
     {
-        Type t = typeof(ConnectionManagerViewModel);
+        var fake = new FakeFireAndForgetSafetyExecutor();
+        var vm = new ConnectionManagerViewModel(fireAndForgetSafetyExecutor: fake)
+        {
+            ActiveProfileId = "p-1"
+        };
 
-        Assert.NotNull(t.GetMethod("StartTestConnectionSafe", BindingFlags.Instance | BindingFlags.NonPublic));
-        Assert.NotNull(t.GetMethod("StartRefreshHealthSafe", BindingFlags.Instance | BindingFlags.NonPublic));
-        Assert.NotNull(t.GetMethod("StartLoadDatabaseTablesSafe", BindingFlags.Instance | BindingFlags.NonPublic));
-        Assert.NotNull(t.GetMethod("StartHealthMonitorLoopSafe", BindingFlags.Instance | BindingFlags.NonPublic));
+        vm.RefreshHealthCommand.Execute(null);
+
+        Assert.True(fake.CallCount >= 2);
+        Assert.Contains("refresh health", fake.OperationNames);
+    }
+
+    private sealed class FakeFireAndForgetSafetyExecutor : IFireAndForgetSafetyExecutor
+    {
+        public int CallCount { get; private set; }
+        public List<string> OperationNames { get; } = [];
+
+        public Task ExecuteSafeAsync(Func<Task> operation, string operationName)
+        {
+            CallCount++;
+            OperationNames.Add(operationName);
+            return Task.CompletedTask;
+        }
     }
 }
+
+

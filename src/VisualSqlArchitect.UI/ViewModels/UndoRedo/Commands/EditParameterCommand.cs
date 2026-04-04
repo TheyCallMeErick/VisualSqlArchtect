@@ -35,6 +35,7 @@ public sealed class EditParameterCommand(
         else
             _node.Parameters[_paramName] = _newValue;
         _node.RaiseParameterChanged(_paramName);
+        canvas.NotifyNodeParameterChanged(_node, _paramName);
     }
 
     public void Undo(CanvasViewModel canvas)
@@ -44,5 +45,6 @@ public sealed class EditParameterCommand(
         else
             _node.Parameters[_paramName] = _oldValue;
         _node.RaiseParameterChanged(_paramName);
+        canvas.NotifyNodeParameterChanged(_node, _paramName);
     }
 }

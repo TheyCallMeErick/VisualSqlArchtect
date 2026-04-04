@@ -3,14 +3,19 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Styling;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using VisualSqlArchitect.UI.Services.Settings;
 using VisualSqlArchitect.UI.Services.Theming;
 using VisualSqlArchitect.UI.ViewModels;
+using VisualSqlArchitect.UI.ViewModels.Validation.Conventions;
+using VisualSqlArchitect.UI.ViewModels.Validation.Conventions.Implementations;
 
 namespace VisualSqlArchitect.UI;
 
 public partial class App : Application
 {
+    private static readonly ILogger<App> _logger = NullLogger<App>.Instance;
     private IServiceProvider? _services;
 
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
@@ -33,6 +38,11 @@ public partial class App : Application
         var services = new ServiceCollection();
 
         services.AddVisualSqlArchitect();
+        services.AddSingleton<IAliasConvention, SnakeCaseConvention>();
+        services.AddSingleton<IAliasConvention, CamelCaseConvention>();
+        services.AddSingleton<IAliasConvention, PascalCaseConvention>();
+        services.AddSingleton<IAliasConvention, ScreamingSnakeCaseConvention>();
+        services.AddSingleton<IAliasConventionRegistry, AliasConventionRegistry>();
         services.AddSingleton<ThemeJsonSettingsService>();
         services.AddTransient<ShellViewModel>();
         services.AddTransient<MainWindow>();
@@ -61,28 +71,28 @@ public partial class App : Application
 
         if (load.Status != ThemeLoadStatus.Loaded || load.Config is null)
         {
-            Console.WriteLine($"[Theme] fallback: {load.Status} - {load.Message}");
+            _logger.LogWarning("Theme fallback: {Status} - {Message}", load.Status, load.Message);
             return;
         }
 
         ThemeValidationResult validation = ThemeValidator.Validate(load.Config);
         foreach (string error in validation.Errors)
-            Console.WriteLine($"[Theme] error: {error}");
+            _logger.LogError("Theme validation error: {Error}", error);
         foreach (string warning in validation.Warnings)
-            Console.WriteLine($"[Theme] warning: {warning}");
+            _logger.LogWarning("Theme validation warning: {Warning}", warning);
 
         if (!validation.IsValid)
         {
-            Console.WriteLine("[Theme] fallback: invalid configuration.");
+            _logger.LogWarning("Theme fallback: invalid configuration");
             return;
         }
 
         ThemeTokenMapResult mapped = ThemeTokenMapper.Map(load.Config);
         foreach (string warning in mapped.Warnings)
-            Console.WriteLine($"[Theme] warning: {warning}");
+            _logger.LogWarning("Theme mapping warning: {Warning}", warning);
 
         int applied = ThemeRuntimeApplier.ApplyToCurrentApplication(mapped.TokenOverrides);
-        Console.WriteLine($"[Theme] loaded: applied {applied} token override(s) from {path}");
+        _logger.LogInformation("Theme loaded: applied {AppliedCount} token override(s) from {Path}", applied, path);
     }
 }
 
@@ -98,6 +108,5 @@ internal static class Program
         AppBuilder
             .Configure<App>()
             .UsePlatformDetect()
-            .WithInterFont() // Avalonia.Fonts.Inter
             .LogToTrace();
 }

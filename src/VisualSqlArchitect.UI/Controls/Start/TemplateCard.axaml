@@ -1,8 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:vm="using:VisualSqlArchitect.UI.ViewModels"
+             xmlns:startmodels="using:VisualSqlArchitect.UI.Services.Start.Models"
              x:Class="VisualSqlArchitect.UI.Controls.Start.TemplateCard"
-             x:DataType="vm:StartTemplateItem">
+             x:DataType="startmodels:StartTemplateItem">
 
   <Grid RowDefinitions="Auto,Auto,*">
     <TextBlock Text="{Binding Name}"
