@@ -16,7 +16,14 @@ public sealed class SqlEditorTabState
     public IReadOnlyList<SqlEditorResultTab> ResultTabs { get; set; } = [];
     public int SelectedResultTabIndex { get; set; } = -1;
     public int ResultTabCounter { get; set; }
+    public HashSet<string> HiddenResultColumns { get; set; } = [];
+    public List<string> HiddenResultColumnsHistory { get; set; } = [];
+    public string ResultGridFilterText { get; set; } = string.Empty;
+    public bool IsResultGridFilterHydratedFromSettings { get; set; }
+    public string? ResultGridSortColumn { get; set; }
+    public bool ResultGridSortAscending { get; set; } = true;
     public IReadOnlyList<SqlEditorHistoryEntry> ExecutionHistory { get; set; } = [];
+    public SqlEditorHistoryEntry? SelectedExecutionHistoryEntry { get; set; }
     public SqlEditorExecutionTelemetry ExecutionTelemetry { get; set; } = SqlEditorExecutionTelemetry.Empty();
     public ICommand? CloseCommand { get; set; }
 }

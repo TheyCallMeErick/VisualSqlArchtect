@@ -37,7 +37,8 @@
                        Foreground="{StaticResource TextPrimaryBrush}"/>
       </Border>
 
-        <Border VerticalAlignment="Bottom"
+        <Border x:Name="ResultsSheetHost"
+          VerticalAlignment="Bottom"
                 Margin="14"
                 IsVisible="{Binding ShouldShowResultsSheet}"
                 Height="{Binding ResultsSheetHeight}"
@@ -57,11 +58,17 @@
           <Grid RowDefinitions="Auto,*">
             <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="10,8,10,6">
               <Border Grid.Column="0"
+                      x:Name="ResultsResizeGrip"
                       Width="38"
                       Height="4"
                       CornerRadius="{StaticResource RadiusPill}"
                       VerticalAlignment="Center"
-                      Background="{StaticResource BorderSubtleBrush}"/>
+                      Background="{StaticResource BorderSubtleBrush}"
+                      Cursor="SizeNorthSouth"
+                      PointerPressed="ResultsResizeGrip_OnPointerPressed"
+                      PointerMoved="ResultsResizeGrip_OnPointerMoved"
+                      PointerReleased="ResultsResizeGrip_OnPointerReleased"
+                      PointerCaptureLost="ResultsResizeGrip_OnPointerCaptureLost"/>
 
               <TextBlock Grid.Column="1"
                          Text="Resultados"
