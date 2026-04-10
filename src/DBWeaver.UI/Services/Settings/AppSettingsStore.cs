@@ -8,6 +8,8 @@ public sealed class AppSettings
 {
     public string ThemeVariant { get; set; } = "Dark";
     public ShortcutSettingsSection Shortcuts { get; set; } = new();
+    public double SqlEditorResultsSheetHeight { get; set; } = 260;
+    public Dictionary<string, string> SqlEditorResultFiltersByTab { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 public static class AppSettingsStore
@@ -41,6 +43,7 @@ public static class AppSettingsStore
             settings.Shortcuts.Overrides ??= [];
             if (settings.Shortcuts.Version <= 0)
                 settings.Shortcuts.Version = 1;
+            settings.SqlEditorResultFiltersByTab ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             return settings;
         }
         catch (Exception ex) when (ex is IOException or JsonException or InvalidOperationException)
@@ -75,6 +78,47 @@ public static class AppSettingsStore
     {
         AppSettings settings = Load();
         settings.ThemeVariant = string.IsNullOrWhiteSpace(variant) ? "Dark" : variant;
+        Save(settings);
+    }
+
+    public static double LoadSqlEditorResultsSheetHeight(double fallback = 260)
+    {
+        AppSettings settings = Load();
+        if (settings.SqlEditorResultsSheetHeight <= 0)
+            return fallback;
+
+        return settings.SqlEditorResultsSheetHeight;
+    }
+
+    public static void SaveSqlEditorResultsSheetHeight(double height)
+    {
+        if (height <= 0)
+            return;
+
+        AppSettings settings = Load();
+        settings.SqlEditorResultsSheetHeight = height;
+        Save(settings);
+    }
+
+    public static string LoadSqlEditorResultFilter(string tabKey)
+    {
+        if (string.IsNullOrWhiteSpace(tabKey))
+            return string.Empty;
+
+        AppSettings settings = Load();
+        return settings.SqlEditorResultFiltersByTab.TryGetValue(tabKey, out string? filter)
+            ? filter ?? string.Empty
+            : string.Empty;
+    }
+
+    public static void SaveSqlEditorResultFilter(string tabKey, string filter)
+    {
+        if (string.IsNullOrWhiteSpace(tabKey))
+            return;
+
+        AppSettings settings = Load();
+        settings.SqlEditorResultFiltersByTab ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        settings.SqlEditorResultFiltersByTab[tabKey] = filter ?? string.Empty;
         Save(settings);
     }
 }

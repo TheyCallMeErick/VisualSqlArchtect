@@ -1,6 +1,7 @@
 using DBWeaver.Core;
 using DBWeaver.Metadata;
 using DBWeaver.UI.Services.Localization;
+using DBWeaver.UI.Services.Settings;
 using DBWeaver.UI.Services.SqlEditor;
 using DBWeaver.UI.ViewModels;
 using System.Data;
@@ -11,6 +12,9 @@ namespace DBWeaver.UI.ViewModels;
 
 public sealed class SqlEditorViewModel : ViewModelBase
 {
+    private const double MinResultsSheetHeight = 160;
+    private const double MaxResultsSheetHeight = 720;
+
     private readonly SqlSelectionExtractor _selectionExtractor;
     private readonly SqlScriptStatementSplitter _statementSplitter;
     private readonly SqlEditorExecutionService _executionService;
@@ -33,8 +37,11 @@ public sealed class SqlEditorViewModel : ViewModelBase
     private bool _hasExecutionError;
     private string _executionStatusText;
     private string? _executionDetailText;
+    private string _historySearchText = string.Empty;
+    private bool _isHistoryClearConfirmationPending;
     private bool _isResultsSheetOpen;
     private double _resultsSheetHeight;
+    private double _preferredResultsSheetHeight;
     private MutationGuardResult? _pendingMutationGuard;
     private SqlMutationDiffPreview? _pendingMutationDiff;
     private string? _pendingMutationSql;
@@ -79,8 +86,10 @@ public sealed class SqlEditorViewModel : ViewModelBase
         _completionProvider = completionProvider ?? new SqlCompletionProvider();
         _metadataResolver = metadataResolver ?? (() => null);
         _executionStatusText = L("sqlEditor.status.ready", "Ready.");
+        _preferredResultsSheetHeight = ClampResultsSheetHeight(AppSettingsStore.LoadSqlEditorResultsSheetHeight());
         Tabs = new SqlEditorTabManagerViewModel(_localization);
         Tabs.Initialize(initialProvider, initialConnectionProfileId);
+        TryHydrateResultFilterForTab(Tabs.GetActiveTab(), force: true);
         NewTabCommand = new RelayCommand(
             AddNewTab,
             () => !IsExecuting);
@@ -105,6 +114,9 @@ public sealed class SqlEditorViewModel : ViewModelBase
         OpenConnectionSwitcherCommand = new RelayCommand(
             OpenConnectionSwitcher,
             () => AvailableConnectionProfiles.Count > 0);
+        ExecuteHistoryEntryCommand = new RelayCommand<SqlEditorHistoryEntry>(
+            entry => _ = ExecuteHistoryEntryAsync(entry),
+            entry => !IsExecuting && entry is not null && !string.IsNullOrWhiteSpace(entry.Sql));
         CloseResultsSheetCommand = new RelayCommand(
             CloseResultsSheet,
             () => IsResultsSheetOpen);
@@ -132,6 +144,7 @@ public sealed class SqlEditorViewModel : ViewModelBase
     public ICommand ConfirmPendingMutationCommand { get; }
     public ICommand CancelPendingMutationCommand { get; }
     public ICommand OpenConnectionSwitcherCommand { get; }
+    public ICommand ExecuteHistoryEntryCommand { get; }
     public ICommand CloseResultsSheetCommand { get; }
     public IReadOnlyList<DatabaseProvider> AvailableProviders { get; } = Enum.GetValues<DatabaseProvider>();
     public DatabaseProvider ActiveTabProvider
@@ -239,7 +252,7 @@ public sealed class SqlEditorViewModel : ViewModelBase
             if (!Set(ref _isResultsSheetOpen, value))
                 return;
 
-            ResultsSheetHeight = value ? 260 : 0;
+            ResultsSheetHeight = value ? _preferredResultsSheetHeight : 0;
             RaisePropertyChanged(nameof(ShouldShowResultsSheet));
             NotifyCommands();
         }
@@ -255,8 +268,218 @@ public sealed class SqlEditorViewModel : ViewModelBase
         get => _resultsSheetHeight;
         private set => Set(ref _resultsSheetHeight, value);
     }
+
+    public void SetResultsSheetHeight(double height)
+    {
+        if (!IsResultsSheetOpen)
+            return;
+
+        double bounded = ClampResultsSheetHeight(height);
+        ResultsSheetHeight = bounded;
+        _preferredResultsSheetHeight = bounded;
+    }
+
+    public void PersistResultsSheetHeightPreference()
+    {
+        AppSettingsStore.SaveSqlEditorResultsSheetHeight(_preferredResultsSheetHeight);
+    }
+
+    public bool IsResultColumnHidden(string columnName)
+    {
+        if (string.IsNullOrWhiteSpace(columnName))
+            return false;
+
+        return ActiveTab.HiddenResultColumns.Contains(columnName);
+    }
+
+    public void HideResultColumn(string columnName)
+    {
+        if (string.IsNullOrWhiteSpace(columnName))
+            return;
+
+        if (ActiveTab.HiddenResultColumns.Contains(columnName))
+            return;
+
+        ActiveTab.HiddenResultColumns.Add(columnName);
+        ActiveTab.HiddenResultColumnsHistory.Add(columnName);
+        RaiseSqlPanelPropertiesChanged();
+    }
+
+    public void ShowAllResultColumns()
+    {
+        if (ActiveTab.HiddenResultColumns.Count == 0)
+            return;
+
+        ActiveTab.HiddenResultColumns.Clear();
+        ActiveTab.HiddenResultColumnsHistory.Clear();
+        RaiseSqlPanelPropertiesChanged();
+    }
+
+    public bool HasHiddenResultColumns => ActiveTab.HiddenResultColumns.Count > 0;
+    public int HiddenResultColumnsCount => ActiveTab.HiddenResultColumns.Count;
+    public string ShowAllColumnsButtonText => string.Format(
+        L("sqlEditor.results.showAllColumns", "Mostrar colunas ({0})"),
+        HiddenResultColumnsCount);
+    public bool HasHiddenColumnUndo => ActiveTab.HiddenResultColumnsHistory.Count > 0;
+    public string UndoHiddenColumnButtonText => L("sqlEditor.results.undoHidden", "Desfazer ocultar");
+
+    public bool UndoLastHiddenResultColumn()
+    {
+        if (!HasHiddenColumnUndo)
+            return false;
+
+        for (int i = ActiveTab.HiddenResultColumnsHistory.Count - 1; i >= 0; i--)
+        {
+            string columnName = ActiveTab.HiddenResultColumnsHistory[i];
+            ActiveTab.HiddenResultColumnsHistory.RemoveAt(i);
+            if (!ActiveTab.HiddenResultColumns.Contains(columnName))
+                continue;
+
+            ActiveTab.HiddenResultColumns.Remove(columnName);
+            RaiseSqlPanelPropertiesChanged();
+            return true;
+        }
+
+        RaiseSqlPanelPropertiesChanged();
+        return false;
+    }
+
+    public string ResultGridFilterText
+    {
+        get => ActiveTab.ResultGridFilterText;
+        set
+        {
+            string normalized = value ?? string.Empty;
+            if (string.Equals(ActiveTab.ResultGridFilterText, normalized, StringComparison.Ordinal))
+                return;
+
+            ActiveTab.ResultGridFilterText = normalized;
+            PersistResultGridFilterForTab(ActiveTab);
+            RaiseSqlPanelPropertiesChanged();
+        }
+    }
+
+    public string? ResultGridSortColumn => ActiveTab.ResultGridSortColumn;
+    public bool ResultGridSortAscending => ActiveTab.ResultGridSortAscending;
+
+    public void SetResultGridSort(string? column, bool ascending)
+    {
+        ActiveTab.ResultGridSortColumn = string.IsNullOrWhiteSpace(column) ? null : column;
+        ActiveTab.ResultGridSortAscending = ascending;
+        RaiseSqlPanelPropertiesChanged();
+    }
+
     public bool HasExecutionHistory => ExecutionHistory.Count > 0;
     public bool IsExecutionHistoryEmpty => !HasExecutionHistory;
+    public string HistorySearchText
+    {
+        get => _historySearchText;
+        set
+        {
+            string normalized = value ?? string.Empty;
+            if (!Set(ref _historySearchText, normalized))
+                return;
+
+            if (_isHistoryClearConfirmationPending)
+                _isHistoryClearConfirmationPending = false;
+
+            EnsureHistorySelection();
+
+            RaisePropertyChanged(nameof(FilteredExecutionHistory));
+            RaisePropertyChanged(nameof(HasFilteredExecutionHistory));
+            RaisePropertyChanged(nameof(IsFilteredExecutionHistoryEmpty));
+            RaisePropertyChanged(nameof(HasHistorySearchNoResults));
+            RaisePropertyChanged(nameof(HistoryFilterSummaryText));
+            RaisePropertyChanged(nameof(SelectedExecutionHistoryEntry));
+            RaisePropertyChanged(nameof(HasPendingHistoryClearConfirmation));
+            RaisePropertyChanged(nameof(ClearHistoryButtonText));
+        }
+    }
+    public IReadOnlyList<SqlEditorHistoryEntry> FilteredExecutionHistory
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(HistorySearchText))
+                return ExecutionHistory;
+
+            string needle = HistorySearchText.Trim();
+            return ExecutionHistory
+                .Where(entry => entry.Sql.Contains(needle, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+    }
+    public bool HasFilteredExecutionHistory => FilteredExecutionHistory.Count > 0;
+    public bool IsFilteredExecutionHistoryEmpty => !HasFilteredExecutionHistory;
+    public SqlEditorHistoryEntry? SelectedExecutionHistoryEntry
+    {
+        get => ActiveTab.SelectedExecutionHistoryEntry;
+        set
+        {
+            if (ReferenceEquals(ActiveTab.SelectedExecutionHistoryEntry, value))
+                return;
+
+            ActiveTab.SelectedExecutionHistoryEntry = value;
+            RaisePropertyChanged(nameof(SelectedExecutionHistoryEntry));
+        }
+    }
+
+    public void SelectNextHistoryEntry()
+    {
+        IReadOnlyList<SqlEditorHistoryEntry> items = FilteredExecutionHistory;
+        if (items.Count == 0)
+            return;
+
+        int current = ResolveHistorySelectionIndex(items, SelectedExecutionHistoryEntry);
+        int next = current < 0 ? 0 : Math.Min(current + 1, items.Count - 1);
+        SelectedExecutionHistoryEntry = items[next];
+    }
+
+    public void SelectPreviousHistoryEntry()
+    {
+        IReadOnlyList<SqlEditorHistoryEntry> items = FilteredExecutionHistory;
+        if (items.Count == 0)
+            return;
+
+        int current = ResolveHistorySelectionIndex(items, SelectedExecutionHistoryEntry);
+        int previous = current <= 0 ? 0 : current - 1;
+        SelectedExecutionHistoryEntry = items[previous];
+    }
+
+    public Task<SqlEditorResultSet?> ExecuteSelectedHistoryEntryAsync(int maxRows = 1000)
+    {
+        SqlEditorHistoryEntry? target = SelectedExecutionHistoryEntry ?? FilteredExecutionHistory.FirstOrDefault();
+        return ExecuteHistoryEntryAsync(target, maxRows);
+    }
+
+    public bool HasHistorySearchNoResults =>
+        HasExecutionHistory
+        && !string.IsNullOrWhiteSpace(HistorySearchText)
+        && IsFilteredExecutionHistoryEmpty;
+    public string HistoryFilterSummaryText
+    {
+        get
+        {
+            int total = ExecutionHistory.Count;
+            if (total == 0)
+                return L("sqlEditor.history.count.none", "0 items");
+
+            int filtered = FilteredExecutionHistory.Count;
+            if (string.IsNullOrWhiteSpace(HistorySearchText))
+                return string.Format(
+                    L("sqlEditor.history.count.total", "{0} items"),
+                    total);
+
+            return string.Format(
+                L("sqlEditor.history.count.filtered", "{0} of {1} items"),
+                filtered,
+                total);
+        }
+    }
+    public bool HasPendingHistoryClearConfirmation => _isHistoryClearConfirmationPending;
+    public string ClearHistoryButtonText =>
+        HasPendingHistoryClearConfirmation
+            ? L("sqlEditor.history.clear.confirm", "Confirm clear")
+            : L("sqlEditor.history.clear", "Clear history");
     public string HistoryEmptyText => L("sqlEditor.history.empty", "Execute a query to start your history.");
     public string MessagesEmptyText => L("sqlEditor.messages.empty", "Messages will appear here after execution.");
     public IReadOnlyList<SqlEditorSchemaTableItem> SchemaTables => BuildSchemaTables();
@@ -565,6 +788,87 @@ public sealed class SqlEditorViewModel : ViewModelBase
             ExecutionStatusText = L("sqlEditor.status.canceling", "Canceling execution...");
     }
 
+    public async Task<SqlEditorResultSet?> ExecuteHistoryEntryAsync(SqlEditorHistoryEntry? entry, int maxRows = 1000)
+    {
+        if (entry is null || string.IsNullOrWhiteSpace(entry.Sql))
+            return null;
+
+        ActiveTab.SqlText = entry.Sql;
+        ActiveTab.IsDirty = true;
+        RaiseTabStateChanged();
+
+        _executionCts?.Cancel();
+        _executionCts?.Dispose();
+        _executionCts = new CancellationTokenSource();
+        IsExecuting = true;
+        NotifyCommands();
+        HasExecutionError = false;
+        ExecutionStatusText = L("sqlEditor.status.executingHistory", "Executing history statement...");
+        ExecutionDetailText = null;
+
+        try
+        {
+            SqlEditorResultSet result = await ExecuteSqlAsync(entry.Sql, maxRows, enforceMutationGuard: true);
+
+            if (!result.Success && string.Equals(result.ErrorMessage, MutationConfirmationRequiredError(), StringComparison.Ordinal))
+                return result;
+
+            StoreResult(result);
+            OpenResultsSheet();
+            UpdateExecutionTelemetry([result]);
+            UpdateExecutionFeedback(result);
+            RaiseSqlPanelPropertiesChanged();
+            return result;
+        }
+        finally
+        {
+            IsExecuting = false;
+            NotifyCommands();
+        }
+    }
+
+    public void UseHistoryEntryInEditor(SqlEditorHistoryEntry? entry)
+    {
+        if (entry is null || string.IsNullOrWhiteSpace(entry.Sql))
+            return;
+
+        ActiveTab.SqlText = entry.Sql;
+        ActiveTab.IsDirty = true;
+        ExecutionStatusText = L("sqlEditor.status.historyLoaded", "History statement loaded into editor.");
+        ExecutionDetailText = null;
+        HasExecutionError = false;
+        RaiseTabStateChanged();
+    }
+
+    public bool RequestClearExecutionHistory()
+    {
+        if (!HasExecutionHistory)
+            return false;
+
+        if (!HasPendingHistoryClearConfirmation)
+        {
+            _isHistoryClearConfirmationPending = true;
+            RaisePropertyChanged(nameof(HasPendingHistoryClearConfirmation));
+            RaisePropertyChanged(nameof(ClearHistoryButtonText));
+            PublishStatus(
+                L("sqlEditor.status.historyClearConfirm", "Click clear again to confirm history removal."),
+                null,
+                false);
+            return false;
+        }
+
+        ActiveTab.ExecutionHistory = [];
+        ActiveTab.SelectedExecutionHistoryEntry = null;
+        _isHistoryClearConfirmationPending = false;
+        HistorySearchText = string.Empty;
+        PublishStatus(
+            L("sqlEditor.status.historyCleared", "Execution history cleared."),
+            null,
+            false);
+        RaiseSqlPanelPropertiesChanged();
+        return true;
+    }
+
     public async Task<SqlEditorResultSet?> ConfirmPendingMutationAsync(int maxRows = 1000)
     {
         if (!HasPendingMutationConfirmation || string.IsNullOrWhiteSpace(_pendingMutationSql))
@@ -681,6 +985,7 @@ public sealed class SqlEditorViewModel : ViewModelBase
 
         (CloseResultsSheetCommand as RelayCommand)?.NotifyCanExecuteChanged();
         (OpenConnectionSwitcherCommand as RelayCommand)?.NotifyCanExecuteChanged();
+        (ExecuteHistoryEntryCommand as RelayCommand<SqlEditorHistoryEntry>)?.NotifyCanExecuteChanged();
     }
 
     private void RaiseSqlPanelPropertiesChanged()
@@ -772,9 +1077,21 @@ public sealed class SqlEditorViewModel : ViewModelBase
 
     private void StoreResult(SqlEditorResultSet result)
     {
+        _isHistoryClearConfirmationPending = false;
         _resultStateService.AppendResult(ActiveTab, result);
+        SelectedExecutionHistoryEntry = ActiveTab.ExecutionHistory.FirstOrDefault();
         RaisePropertyChanged(nameof(CanExportReport));
         RaisePropertyChanged(nameof(ShouldShowResultsSheet));
+        RaisePropertyChanged(nameof(FilteredExecutionHistory));
+        RaisePropertyChanged(nameof(HasFilteredExecutionHistory));
+        RaisePropertyChanged(nameof(IsFilteredExecutionHistoryEmpty));
+        RaisePropertyChanged(nameof(HasHistorySearchNoResults));
+        RaisePropertyChanged(nameof(HistoryFilterSummaryText));
+        RaisePropertyChanged(nameof(HasHiddenColumnUndo));
+        RaisePropertyChanged(nameof(UndoHiddenColumnButtonText));
+        RaisePropertyChanged(nameof(SelectedExecutionHistoryEntry));
+        RaisePropertyChanged(nameof(HasPendingHistoryClearConfirmation));
+        RaisePropertyChanged(nameof(ClearHistoryButtonText));
     }
 
     private void UpdateExecutionTelemetry(IReadOnlyList<SqlEditorResultSet> results)
@@ -787,7 +1104,8 @@ public sealed class SqlEditorViewModel : ViewModelBase
 
     private void AddNewTab()
     {
-        Tabs.AddNewTab();
+        SqlEditorTabState tab = Tabs.AddNewTab();
+        TryHydrateResultFilterForTab(tab, force: true);
         RaiseTabStateChanged();
     }
 
@@ -836,12 +1154,21 @@ public sealed class SqlEditorViewModel : ViewModelBase
 
     private void RaiseTabStateChanged()
     {
+        _isHistoryClearConfirmationPending = false;
+        TryHydrateResultFilterForTab(ActiveTab);
+        EnsureHistorySelection();
         SyncTabCommands();
         SyncDialectFromConnection();
         _propertyChangePublisher.PublishTabStateChanges(RaisePropertyChanged);
         RaiseSqlPanelPropertiesChanged();
         RaisePropertyChanged(nameof(CanExportReport));
         RaisePropertyChanged(nameof(ShouldShowResultsSheet));
+        RaisePropertyChanged(nameof(HasHiddenColumnUndo));
+        RaisePropertyChanged(nameof(UndoHiddenColumnButtonText));
+        RaisePropertyChanged(nameof(SelectedExecutionHistoryEntry));
+        RaisePropertyChanged(nameof(HasPendingHistoryClearConfirmation));
+        RaisePropertyChanged(nameof(ClearHistoryButtonText));
+        RaisePropertyChanged(nameof(HistoryFilterSummaryText));
         NotifyCommands();
     }
 
@@ -950,5 +1277,64 @@ public sealed class SqlEditorViewModel : ViewModelBase
     {
         string value = _localization[key];
         return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
+    }
+
+    private static double ClampResultsSheetHeight(double height)
+    {
+        return Math.Clamp(height, MinResultsSheetHeight, MaxResultsSheetHeight);
+    }
+
+    private void TryHydrateResultFilterForTab(SqlEditorTabState tab, bool force = false)
+    {
+        if (!force && tab.IsResultGridFilterHydratedFromSettings)
+            return;
+
+        string tabKey = BuildTabFilterSettingsKey(tab);
+        string persistedFilter = AppSettingsStore.LoadSqlEditorResultFilter(tabKey);
+        tab.ResultGridFilterText = persistedFilter;
+        tab.IsResultGridFilterHydratedFromSettings = true;
+    }
+
+    private void PersistResultGridFilterForTab(SqlEditorTabState tab)
+    {
+        string tabKey = BuildTabFilterSettingsKey(tab);
+        AppSettingsStore.SaveSqlEditorResultFilter(tabKey, tab.ResultGridFilterText);
+    }
+
+    private static string BuildTabFilterSettingsKey(SqlEditorTabState tab)
+    {
+        string anchor = !string.IsNullOrWhiteSpace(tab.FilePath)
+            ? tab.FilePath
+            : tab.FallbackTitle;
+        return $"{tab.Provider}::{anchor}";
+    }
+
+    private void EnsureHistorySelection()
+    {
+        if (FilteredExecutionHistory.Count == 0)
+        {
+            SelectedExecutionHistoryEntry = null;
+            return;
+        }
+
+        if (SelectedExecutionHistoryEntry is null || !FilteredExecutionHistory.Contains(SelectedExecutionHistoryEntry))
+            SelectedExecutionHistoryEntry = FilteredExecutionHistory[0];
+    }
+
+    private static int ResolveHistorySelectionIndex(
+        IReadOnlyList<SqlEditorHistoryEntry> history,
+        SqlEditorHistoryEntry? selected)
+    {
+        if (selected is null)
+            return -1;
+
+        for (int i = 0; i < history.Count; i++)
+        {
+            SqlEditorHistoryEntry item = history[i];
+            if (item == selected)
+                return i;
+        }
+
+        return -1;
     }
 }

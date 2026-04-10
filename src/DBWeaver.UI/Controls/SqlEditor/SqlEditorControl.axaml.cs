@@ -24,10 +24,18 @@ namespace DBWeaver.UI.Controls.SqlEditor;
 [ExcludeFromCodeCoverage]
 public partial class SqlEditorControl : UserControl
 {
+    private const double ResultsSheetMinHeight = 160;
+    private const double ResultsSheetMaxHeightFallback = 720;
+
     private TextEditor? _editor;
+    private Border? _resultsSheetHost;
+    private Border? _resultsResizeGrip;
     private SqlEditorViewModel? _vm;
     private CompletionWindow? _completionWindow;
     private readonly SqlEditorReportExportService _reportExportService = new();
+    private bool _isResizingResultsSheet;
+    private Point _resizeStartPointerPosition;
+    private double _resizeStartHeight;
 
     public SqlEditorControl()
     {
@@ -41,6 +49,8 @@ public partial class SqlEditorControl : UserControl
     private void ConfigureTextEditor()
     {
         _editor = this.FindControl<TextEditor>("SqlTextEditor");
+        _resultsSheetHost = this.FindControl<Border>("ResultsSheetHost");
+        _resultsResizeGrip = this.FindControl<Border>("ResultsResizeGrip");
         if (_editor is null)
             return;
 
@@ -513,6 +523,68 @@ public partial class SqlEditorControl : UserControl
             beforeCaret,
             @"\b(SELECT|FROM|JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|INNER\s+JOIN|FULL\s+JOIN|WHERE|ON|GROUP\s+BY|ORDER\s+BY)\s*$",
             RegexOptions.IgnoreCase);
+    }
+
+    private void ResultsResizeGrip_OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (_vm is null || _resultsResizeGrip is null)
+            return;
+
+        PointerPointProperties properties = e.GetCurrentPoint(_resultsResizeGrip).Properties;
+        if (!properties.IsLeftButtonPressed)
+            return;
+
+        _isResizingResultsSheet = true;
+        _resizeStartPointerPosition = e.GetPosition(this);
+        _resizeStartHeight = Math.Max(ResultsSheetMinHeight, _vm.ResultsSheetHeight);
+        e.Pointer.Capture(_resultsResizeGrip);
+        e.Handled = true;
+    }
+
+    private void ResultsResizeGrip_OnPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (!_isResizingResultsSheet || _vm is null)
+            return;
+
+        Point current = e.GetPosition(this);
+        double deltaY = _resizeStartPointerPosition.Y - current.Y;
+        double maxHeight = ResolveResultsSheetMaxHeight();
+        double target = Math.Clamp(_resizeStartHeight + deltaY, ResultsSheetMinHeight, maxHeight);
+        _vm.SetResultsSheetHeight(target);
+        e.Handled = true;
+    }
+
+    private void ResultsResizeGrip_OnPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        EndResultsResize(e.Pointer);
+        e.Handled = true;
+    }
+
+    private void ResultsResizeGrip_OnPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
+    {
+        EndResultsResize(null);
+    }
+
+    private void EndResultsResize(IPointer? pointer)
+    {
+        if (!_isResizingResultsSheet)
+            return;
+
+        _isResizingResultsSheet = false;
+        pointer?.Capture(null);
+        _vm?.PersistResultsSheetHeightPreference();
+    }
+
+    private double ResolveResultsSheetMaxHeight()
+    {
+        if (_resultsSheetHost?.Parent is not Control parent || parent.Bounds.Height <= 0)
+            return ResultsSheetMaxHeightFallback;
+
+        double available = parent.Bounds.Height - 80;
+        if (available < ResultsSheetMinHeight)
+            return ResultsSheetMinHeight;
+
+        return available;
     }
 
     private static int? ResolveTabShortcutIndex(Key key, KeyModifiers modifiers)

@@ -3,6 +3,7 @@
              xmlns:vm="using:DBWeaver.UI.ViewModels"
              xmlns:mi="using:Material.Icons.Avalonia"
              x:Class="DBWeaver.UI.Controls.SqlEditor.SqlEditorRightSidebarControl"
+             x:Name="Root"
              x:DataType="vm:SqlEditorViewModel">
   <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                 VerticalScrollBarVisibility="Auto"
@@ -80,10 +81,60 @@
                      FontSize="{StaticResource FontSizeCaption}"
                      TextWrapping="Wrap"/>
 
-          <ItemsControl ItemsSource="{Binding ExecutionHistory}"
-                        IsVisible="{Binding HasExecutionHistory}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="vm:SqlEditorHistoryEntry">
+            <Grid ColumnDefinitions="*,Auto"
+              IsVisible="{Binding HasExecutionHistory}">
+            <TextBox Grid.Column="0"
+                 x:Name="HistorySearchTextBox"
+                 Watermark="Buscar no historico"
+                 Text="{Binding HistorySearchText}"
+                 FontSize="{StaticResource FontSizeCaption}"
+                 Background="{StaticResource Bg1Brush}"
+                 Foreground="{StaticResource TextPrimaryBrush}"
+                 BorderBrush="{StaticResource BorderSubtleBrush}"
+                 KeyDown="HistorySearchTextBox_KeyDown"/>
+            <Button Grid.Column="1"
+                Content="Limpar"
+                Padding="10,2"
+                MinHeight="24"
+                FontSize="{StaticResource FontSizeCaption}"
+                Click="ClearHistorySearchButton_Click"/>
+            </Grid>
+
+              <TextBlock Text="Setas percorrem o historico, Enter executa selecionado, Esc limpa a busca."
+                 IsVisible="{Binding HasExecutionHistory}"
+                 Foreground="{StaticResource TextMutedBrush}"
+                 FontSize="{StaticResource FontSizeCaption}"
+                 TextWrapping="Wrap"/>
+
+            <Grid ColumnDefinitions="*,Auto"
+              IsVisible="{Binding HasExecutionHistory}">
+            <TextBlock Grid.Column="0"
+                   Text="{Binding HistoryFilterSummaryText}"
+                   Foreground="{StaticResource TextMutedBrush}"
+                   FontSize="{StaticResource FontSizeCaption}"
+                   VerticalAlignment="Center"/>
+            <Button Grid.Column="1"
+                Content="{Binding ClearHistoryButtonText}"
+                Padding="10,2"
+                MinHeight="24"
+                FontSize="{StaticResource FontSizeCaption}"
+                Click="ClearHistoryButton_Click"/>
+            </Grid>
+
+          <TextBlock Text="Nenhum item encontrado para a busca."
+                     IsVisible="{Binding HasHistorySearchNoResults}"
+                     Foreground="{StaticResource TextSecondaryBrush}"
+                     FontSize="{StaticResource FontSizeCaption}"
+                     TextWrapping="Wrap"/>
+
+          <ListBox ItemsSource="{Binding FilteredExecutionHistory}"
+                   IsVisible="{Binding HasFilteredExecutionHistory}"
+                   SelectedItem="{Binding SelectedExecutionHistoryEntry}"
+                   Background="Transparent"
+                   BorderThickness="0"
+                   Padding="0">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
                 <Border Margin="0,0,0,6"
                         Padding="8"
                         Background="{StaticResource Bg1Brush}"
@@ -101,11 +152,31 @@
                                MaxHeight="64"
                                TextTrimming="CharacterEllipsis"
                                Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <Button Content="Usar"
+                            HorizontalAlignment="Left"
+                            Padding="10,2"
+                            MinHeight="24"
+                            FontSize="{StaticResource FontSizeCaption}"
+                            Click="HistoryUseButton_Click"/>
+                          <Button Content="Copiar"
+                            HorizontalAlignment="Left"
+                            Padding="10,2"
+                            MinHeight="24"
+                            FontSize="{StaticResource FontSizeCaption}"
+                            Click="HistoryCopyButton_Click"/>
+                          <Button Content="Executar"
+                            HorizontalAlignment="Left"
+                            Padding="10,2"
+                            MinHeight="24"
+                            FontSize="{StaticResource FontSizeCaption}"
+                            Click="HistoryRunButton_Click"/>
+                        </StackPanel>
                   </StackPanel>
                 </Border>
               </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
+            </ListBox.ItemTemplate>
+          </ListBox>
         </StackPanel>
       </Border>
     </StackPanel>
