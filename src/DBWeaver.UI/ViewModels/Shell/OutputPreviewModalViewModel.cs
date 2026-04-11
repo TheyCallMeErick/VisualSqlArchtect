@@ -1,3 +1,6 @@
+using System.ComponentModel;
+using DBWeaver.Core;
+using DBWeaver.UI.ViewModels;
 using DBWeaver.UI.ViewModels.Canvas;
 
 namespace DBWeaver.UI.ViewModels;
@@ -8,6 +11,8 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
     {
         Query,
         Ddl,
+        SqlBenchmark,
+        SqlExplain,
         Unavailable,
     }
 
@@ -18,20 +23,24 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
     }
 
     private bool _isVisible;
-    private EOutputPreviewMode _mode = EOutputPreviewMode.Query;
+    private EOutputPreviewMode _mode = EOutputPreviewMode.Unavailable;
     private EOutputPreviewTab _activeTab = EOutputPreviewTab.Primary;
-    private DataPreviewViewModel? _queryDataPreview;
-    private LiveSqlBarViewModel? _queryLiveSql;
     private AppDiagnosticsViewModel? _diagnostics;
+    private string _querySqlText = string.Empty;
+    private string _queryProviderLabel = string.Empty;
     private string _ddlSqlText = string.Empty;
     private string _ddlProviderLabel = string.Empty;
     private string _title = "Preview";
     private string _primaryTabLabel = "Preview";
     private string _unavailableMessage = "Preview is unavailable for this document.";
+    private BenchmarkViewModel? _benchmarkTool;
+    private ExplainPlanViewModel? _explainPlanTool;
+    private PropertyChangedEventHandler? _benchmarkToolPropertyChanged;
+    private PropertyChangedEventHandler? _explainPlanToolPropertyChanged;
 
     public OutputPreviewModalViewModel()
     {
-        CloseCommand = new RelayCommand(() => IsVisible = false);
+        CloseCommand = new RelayCommand(Close);
         ShowPrimaryTabCommand = new RelayCommand(() => ActiveTab = EOutputPreviewTab.Primary);
         ShowDiagnosticsTabCommand = new RelayCommand(() => ActiveTab = EOutputPreviewTab.Diagnostics);
     }
@@ -54,8 +63,10 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
             if (!Set(ref _mode, value))
                 return;
 
-            RaisePropertyChanged(nameof(IsQueryMode));
             RaisePropertyChanged(nameof(IsDdlMode));
+            RaisePropertyChanged(nameof(IsQueryMode));
+            RaisePropertyChanged(nameof(IsSqlBenchmarkMode));
+            RaisePropertyChanged(nameof(IsSqlExplainMode));
             RaisePropertyChanged(nameof(IsUnavailableMode));
             RaisePropertyChanged(nameof(Title));
             RaisePropertyChanged(nameof(PrimaryTabLabel));
@@ -64,12 +75,17 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
             RaisePropertyChanged(nameof(ShowDiagnosticsContent));
             RaisePropertyChanged(nameof(ShowQueryPrimaryContent));
             RaisePropertyChanged(nameof(ShowDdlPrimaryContent));
+            RaisePropertyChanged(nameof(ShowSqlBenchmarkPrimaryContent));
+            RaisePropertyChanged(nameof(ShowSqlExplainPrimaryContent));
             RaisePropertyChanged(nameof(ShowUnavailablePrimaryContent));
+            RaisePropertyChanged(nameof(ShowShellCard));
         }
     }
 
     public bool IsQueryMode => Mode == EOutputPreviewMode.Query;
     public bool IsDdlMode => Mode == EOutputPreviewMode.Ddl;
+    public bool IsSqlBenchmarkMode => Mode == EOutputPreviewMode.SqlBenchmark;
+    public bool IsSqlExplainMode => Mode == EOutputPreviewMode.SqlExplain;
     public bool IsUnavailableMode => Mode == EOutputPreviewMode.Unavailable;
 
     public EOutputPreviewTab ActiveTab
@@ -84,7 +100,10 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
             RaisePropertyChanged(nameof(ShowDiagnosticsContent));
             RaisePropertyChanged(nameof(ShowQueryPrimaryContent));
             RaisePropertyChanged(nameof(ShowDdlPrimaryContent));
+            RaisePropertyChanged(nameof(ShowSqlBenchmarkPrimaryContent));
+            RaisePropertyChanged(nameof(ShowSqlExplainPrimaryContent));
             RaisePropertyChanged(nameof(ShowUnavailablePrimaryContent));
+            RaisePropertyChanged(nameof(ShowShellCard));
         }
     }
 
@@ -104,19 +123,10 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
     public bool ShowDiagnosticsContent => HasDiagnostics && ActiveTab == EOutputPreviewTab.Diagnostics;
     public bool ShowQueryPrimaryContent => IsQueryMode && ShowPrimaryContent;
     public bool ShowDdlPrimaryContent => IsDdlMode && ShowPrimaryContent;
+    public bool ShowSqlBenchmarkPrimaryContent => IsSqlBenchmarkMode && ShowPrimaryContent;
+    public bool ShowSqlExplainPrimaryContent => IsSqlExplainMode && ShowPrimaryContent;
     public bool ShowUnavailablePrimaryContent => IsUnavailableMode && ShowPrimaryContent;
-
-    public DataPreviewViewModel? QueryDataPreview
-    {
-        get => _queryDataPreview;
-        private set => Set(ref _queryDataPreview, value);
-    }
-
-    public LiveSqlBarViewModel? QueryLiveSql
-    {
-        get => _queryLiveSql;
-        private set => Set(ref _queryLiveSql, value);
-    }
+    public bool ShowShellCard => !(ShowSqlBenchmarkPrimaryContent || ShowSqlExplainPrimaryContent);
 
     public AppDiagnosticsViewModel? Diagnostics
     {
@@ -132,6 +142,24 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
     }
 
     public bool HasDiagnostics => Diagnostics is not null;
+
+    public string QuerySqlText
+    {
+        get => _querySqlText;
+        private set
+        {
+            if (!Set(ref _querySqlText, value))
+                return;
+
+            RaisePropertyChanged(nameof(HasQuerySql));
+        }
+    }
+
+    public string QueryProviderLabel
+    {
+        get => _queryProviderLabel;
+        private set => Set(ref _queryProviderLabel, value);
+    }
 
     public string DdlSqlText
     {
@@ -151,6 +179,18 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
         private set => Set(ref _ddlProviderLabel, value);
     }
 
+    public BenchmarkViewModel? BenchmarkTool
+    {
+        get => _benchmarkTool;
+        private set => Set(ref _benchmarkTool, value);
+    }
+
+    public ExplainPlanViewModel? ExplainPlanTool
+    {
+        get => _explainPlanTool;
+        private set => Set(ref _explainPlanTool, value);
+    }
+
     public string UnavailableMessage
     {
         get => _unavailableMessage;
@@ -158,15 +198,21 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
     }
 
     public bool HasDdlSql => !string.IsNullOrWhiteSpace(DdlSqlText);
+    public bool HasQuerySql => !string.IsNullOrWhiteSpace(QuerySqlText);
 
-    public void OpenForQuery(CanvasViewModel canvas)
+    public void OpenForQuery(CanvasViewModel canvas, LiveSqlBarViewModel liveSql, string providerLabel)
     {
+        UnwireToolHandlers();
         Mode = EOutputPreviewMode.Query;
-        Title = "Preview";
-        PrimaryTabLabel = "Preview";
-        QueryDataPreview = canvas.DataPreview;
-        QueryLiveSql = canvas.LiveSql;
+        Title = "SQL Preview";
+        PrimaryTabLabel = "SQL";
         Diagnostics = canvas.Diagnostics;
+        QuerySqlText = BuildQueryPreviewText(liveSql);
+        QueryProviderLabel = providerLabel;
+        DdlSqlText = string.Empty;
+        DdlProviderLabel = string.Empty;
+        BenchmarkTool = null;
+        ExplainPlanTool = null;
         ActiveTab = EOutputPreviewTab.Primary;
         IsVisible = true;
         Diagnostics?.RunChecksCommand.Execute(null);
@@ -174,14 +220,17 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
 
     public void OpenForDdl(CanvasViewModel canvas, LiveDdlBarViewModel liveDdl, string providerLabel)
     {
+        UnwireToolHandlers();
         Mode = EOutputPreviewMode.Ddl;
         Title = "SQL DDL Preview";
         PrimaryTabLabel = "SQL DDL";
-        QueryDataPreview = null;
-        QueryLiveSql = null;
         Diagnostics = canvas.Diagnostics;
+        QuerySqlText = string.Empty;
+        QueryProviderLabel = string.Empty;
         DdlSqlText = BuildDdlPreviewText(liveDdl);
         DdlProviderLabel = providerLabel;
+        BenchmarkTool = null;
+        ExplainPlanTool = null;
         ActiveTab = EOutputPreviewTab.Primary;
         IsVisible = true;
         Diagnostics?.RunChecksCommand.Execute(null);
@@ -189,19 +238,82 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
 
     public void OpenUnavailable(string title, string primaryTabLabel, string unavailableMessage)
     {
+        UnwireToolHandlers();
         Mode = EOutputPreviewMode.Unavailable;
         Title = string.IsNullOrWhiteSpace(title) ? "Preview" : title;
         PrimaryTabLabel = string.IsNullOrWhiteSpace(primaryTabLabel) ? "Preview" : primaryTabLabel;
         UnavailableMessage = string.IsNullOrWhiteSpace(unavailableMessage)
             ? "Preview is unavailable for this document."
             : unavailableMessage;
-        QueryDataPreview = null;
-        QueryLiveSql = null;
         Diagnostics = null;
+        QuerySqlText = string.Empty;
+        QueryProviderLabel = string.Empty;
         DdlSqlText = string.Empty;
         DdlProviderLabel = string.Empty;
+        BenchmarkTool = null;
+        ExplainPlanTool = null;
         ActiveTab = EOutputPreviewTab.Primary;
         IsVisible = true;
+    }
+
+    public void OpenForSqlBenchmark(CanvasViewModel canvas, string sql, ConnectionConfig? connectionConfig)
+    {
+        UnwireToolHandlers();
+        BenchmarkViewModel benchmark = canvas.Benchmark;
+        benchmark.OpenForSql(sql, connectionConfig);
+        WireBenchmarkHandler(benchmark);
+
+        Mode = EOutputPreviewMode.SqlBenchmark;
+        Title = "SQL Benchmark";
+        PrimaryTabLabel = "Benchmark";
+        Diagnostics = null;
+        QuerySqlText = string.Empty;
+        QueryProviderLabel = string.Empty;
+        DdlSqlText = string.Empty;
+        DdlProviderLabel = string.Empty;
+        BenchmarkTool = benchmark;
+        ExplainPlanTool = null;
+        ActiveTab = EOutputPreviewTab.Primary;
+        IsVisible = true;
+    }
+
+    public void OpenForSqlExplain(
+        CanvasViewModel canvas,
+        string sql,
+        DatabaseProvider provider,
+        ConnectionConfig? connectionConfig)
+    {
+        UnwireToolHandlers();
+        ExplainPlanViewModel explain = canvas.ExplainPlan;
+        explain.OpenForSql(sql, provider, connectionConfig);
+        WireExplainHandler(explain);
+
+        Mode = EOutputPreviewMode.SqlExplain;
+        Title = "SQL Explain";
+        PrimaryTabLabel = "Explain";
+        Diagnostics = null;
+        QuerySqlText = string.Empty;
+        QueryProviderLabel = string.Empty;
+        DdlSqlText = string.Empty;
+        DdlProviderLabel = string.Empty;
+        BenchmarkTool = null;
+        ExplainPlanTool = explain;
+        ActiveTab = EOutputPreviewTab.Primary;
+        IsVisible = true;
+    }
+
+    public void Close()
+    {
+        if (BenchmarkTool is not null)
+            BenchmarkTool.Close();
+
+        if (ExplainPlanTool is not null)
+            ExplainPlanTool.Close();
+
+        UnwireToolHandlers();
+        BenchmarkTool = null;
+        ExplainPlanTool = null;
+        IsVisible = false;
     }
 
     private static string BuildDdlPreviewText(LiveDdlBarViewModel liveDdl)
@@ -210,5 +322,45 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
             return liveDdl.RawSql;
 
         return string.Empty;
+    }
+
+    private static string BuildQueryPreviewText(LiveSqlBarViewModel liveSql)
+    {
+        if (!string.IsNullOrWhiteSpace(liveSql.RawSql))
+            return liveSql.RawSql;
+
+        return string.Empty;
+    }
+
+    private void WireBenchmarkHandler(BenchmarkViewModel benchmark)
+    {
+        _benchmarkToolPropertyChanged = (_, e) =>
+        {
+            if (e.PropertyName == nameof(BenchmarkViewModel.IsVisible) && !benchmark.IsVisible)
+                IsVisible = false;
+        };
+        benchmark.PropertyChanged += _benchmarkToolPropertyChanged;
+    }
+
+    private void WireExplainHandler(ExplainPlanViewModel explain)
+    {
+        _explainPlanToolPropertyChanged = (_, e) =>
+        {
+            if (e.PropertyName == nameof(ExplainPlanViewModel.IsVisible) && !explain.IsVisible)
+                IsVisible = false;
+        };
+        explain.PropertyChanged += _explainPlanToolPropertyChanged;
+    }
+
+    private void UnwireToolHandlers()
+    {
+        if (BenchmarkTool is not null && _benchmarkToolPropertyChanged is not null)
+            BenchmarkTool.PropertyChanged -= _benchmarkToolPropertyChanged;
+
+        if (ExplainPlanTool is not null && _explainPlanToolPropertyChanged is not null)
+            ExplainPlanTool.PropertyChanged -= _explainPlanToolPropertyChanged;
+
+        _benchmarkToolPropertyChanged = null;
+        _explainPlanToolPropertyChanged = null;
     }
 }

@@ -24,6 +24,9 @@ public sealed class SqlEditorTabBarTemplateRegressionTests
         Assert.Contains("Text=\"{Binding ManyTabsWarningText}\"", xaml);
         Assert.Contains("Text=\"●\"", xaml);
         Assert.Contains("IsVisible=\"{Binding IsDirty}\"", xaml);
+        Assert.Contains("PointerPressed=\"TabChip_OnPointerPressed\"", xaml);
+        Assert.Contains("PointerEntered=\"TabChip_OnPointerEntered\"", xaml);
+        Assert.Contains("PointerReleased=\"TabChip_OnPointerReleased\"", xaml);
         Assert.DoesNotContain("x:CompileBindings=\"False\"", xaml);
     }
 

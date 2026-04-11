@@ -249,7 +249,7 @@ public sealed class ShellViewModel : ViewModelBase
         ActiveConnectionManager?.IsVisible == true;
 
     public bool IsOutputPreviewModalVisible =>
-        IsDiagramOverlayLayerVisible && OutputPreview.IsVisible;
+        IsCanvasVisible && OutputPreview.IsVisible;
 
     public CanvasViewModel? ActiveCanvas =>
         ActiveWorkspaceDocument?.DocumentViewModel as CanvasViewModel;

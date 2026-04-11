@@ -26,6 +26,42 @@
       <Setter Property="MinHeight" Value="24"/>
       <Setter Property="FontSize" Value="{StaticResource FontSizeCaption}"/>
     </Style>
+    <Style Selector="Button.sql-tool-action">
+      <Setter Property="MinHeight" Value="24"/>
+      <Setter Property="Padding" Value="10,2"/>
+      <Setter Property="FontSize" Value="{StaticResource FontSizeCaption}"/>
+      <Setter Property="CornerRadius" Value="{StaticResource RadiusSM}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.12"/>
+          <BrushTransition Property="Foreground" Duration="0:0:0.12"/>
+          <BrushTransition Property="BorderBrush" Duration="0:0:0.12"/>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.12"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.sql-tool-action:pointerover">
+      <Setter Property="RenderTransform" Value="scale(1.03)"/>
+    </Style>
+    <Style Selector="Button.sql-tool-action:pressed">
+      <Setter Property="RenderTransform" Value="scale(0.98)"/>
+    </Style>
+    <Style Selector="Button.sql-tool-action.explain">
+      <Setter Property="Background" Value="{StaticResource BtnInfoBgBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource AccentPrimaryBrush}"/>
+      <Setter Property="Foreground" Value="{StaticResource BtnInfoFgBrush}"/>
+    </Style>
+    <Style Selector="Button.sql-tool-action.explain:pointerover">
+      <Setter Property="Background" Value="{StaticResource PanelActiveBrush}"/>
+      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+    </Style>
+    <Style Selector="Button.sql-tool-action.benchmark">
+      <Setter Property="Background" Value="{StaticResource BtnWarningBgBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource StatusWarningBrush}"/>
+      <Setter Property="Foreground" Value="{StaticResource BtnWarningFgBrush}"/>
+    </Style>
   </UserControl.Styles>
   <Grid RowDefinitions="Auto,Auto,*,Auto"
         ClipToBounds="True">
@@ -185,7 +221,7 @@
             BorderBrush="{StaticResource BorderSubtleBrush}"
             BorderThickness="0,1,0,0"
             Padding="10,6">
-      <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto,Auto"
+      <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
             VerticalAlignment="Center">
         <Button Grid.Column="0"
                 Classes="sql-primary-runstop"
@@ -195,7 +231,41 @@
                 ToolTip.Tip="{Binding ExecuteOrCancelTooltipText}"
                 Click="ExecuteOrCancelPrimaryButton_Click"/>
 
-        <ProgressBar Grid.Column="1"
+        <Button Grid.Column="1"
+                Classes="sql-tool-action explain"
+                Margin="0,0,8,0"
+                IsEnabled="{Binding IsExplainRunning, Converter={x:Static BoolConverters.Not}}"
+                Click="ExplainButton_Click">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <mi:MaterialIcon Kind="TableSearch" Width="12" Height="12" VerticalAlignment="Center"/>
+            <TextBlock Text="Explain" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+
+        <Button Grid.Column="2"
+                Classes="sql-tool-action benchmark"
+                Margin="0,0,10,0"
+                IsEnabled="{Binding IsBenchmarkRunning, Converter={x:Static BoolConverters.Not}}"
+                Click="BenchmarkButton_Click">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <mi:MaterialIcon Kind="TimerOutline" Width="12" Height="12" VerticalAlignment="Center"/>
+            <TextBlock Text="Benchmark" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+
+        <Button Grid.Column="3"
+                Classes="sql-primary-runstop"
+                Margin="0,0,8,0"
+                Content="Executar tudo"
+                Click="ExecuteAllButton_Click"/>
+
+        <Button Grid.Column="4"
+                Classes="sql-primary-runstop"
+                Margin="0,0,10,0"
+                Content="Formatar SQL"
+                Click="FormatSqlButton_Click"/>
+
+        <ProgressBar Grid.Column="5"
                      IsIndeterminate="True"
                      Width="72"
                      Height="3"
@@ -203,7 +273,7 @@
                      VerticalAlignment="Center"
                      IsVisible="{Binding IsExecuting}"/>
 
-        <TextBlock Grid.Column="2"
+        <TextBlock Grid.Column="6"
                    Margin="0,0,10,0"
                    Classes.exec-status="True"
                    Classes.error="{Binding HasExecutionError}"
@@ -212,14 +282,41 @@
                    Text="{Binding ExecutionStatusText}"
                    TextTrimming="CharacterEllipsis"/>
 
-        <TextBlock Grid.Column="3"
+        <TextBlock Grid.Column="7"
+                   Margin="0,0,10,0"
+                   VerticalAlignment="Center"
+                   FontSize="{StaticResource FontSizeCaption}"
+                   Foreground="{StaticResource TextSecondaryBrush}"
+                   IsVisible="{Binding HasSignatureHelp}"
+                   Text="{Binding SignatureHelpText}"
+                   TextTrimming="CharacterEllipsis"/>
+
+        <TextBlock Grid.Column="8"
+                   Margin="0,0,10,0"
+                   VerticalAlignment="Center"
+                   FontSize="{StaticResource FontSizeCaption}"
+                   Foreground="{StaticResource TextSecondaryBrush}"
+                   IsVisible="{Binding HasHoverDocumentation}"
+                   Text="{Binding HoverDocumentationText}"
+                   TextTrimming="CharacterEllipsis"/>
+
+        <TextBlock Grid.Column="9"
                    Margin="0,0,10,0"
                    VerticalAlignment="Center"
                    FontSize="{StaticResource FontSizeCaption}"
                    Foreground="{StaticResource TextSecondaryBrush}"
                    Text="{Binding ResultSummaryText}"/>
 
-        <Button Grid.Column="4"
+        <Button Grid.Column="10"
+                Margin="0,0,10,0"
+                IsVisible="{Binding CanReopenResultsSheet}"
+                Command="{Binding ReopenResultsSheetCommand}"
+                Padding="10,2"
+                MinHeight="24"
+                FontSize="{StaticResource FontSizeCaption}"
+                Content="{Binding RestoreResultsButtonText}"/>
+
+        <Button Grid.Column="11"
                 Margin="0,0,10,0"
                 Background="Transparent"
                 BorderBrush="Transparent"
@@ -233,7 +330,7 @@
                      Text="{Binding CursorPositionText}"/>
         </Button>
 
-        <Button Grid.Column="5"
+        <Button Grid.Column="12"
                 Margin="0,0,10,0"
                 Background="Transparent"
                 BorderBrush="Transparent"
@@ -246,7 +343,7 @@
                      Text="{Binding ActiveProviderStatusText}"/>
         </Button>
 
-        <TextBlock Grid.Column="6"
+        <TextBlock Grid.Column="13"
                    Margin="0,0,10,0"
                    VerticalAlignment="Center"
                    FontSize="{StaticResource FontSizeCaption}"

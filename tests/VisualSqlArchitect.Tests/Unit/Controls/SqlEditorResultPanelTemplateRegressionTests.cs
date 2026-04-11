@@ -17,6 +17,7 @@ public sealed class SqlEditorResultPanelTemplateRegressionTests
         Assert.Contains("IsVisible=\"{Binding HasResultRows}\"", xaml);
         Assert.Contains("AutoGenerateColumns=\"False\"", xaml);
         Assert.Contains("x:Name=\"ResultGrid\"", xaml);
+        Assert.Contains("CanUserReorderColumns=\"True\"", xaml);
     }
 
     [Fact]
@@ -29,6 +30,14 @@ public sealed class SqlEditorResultPanelTemplateRegressionTests
         Assert.Contains("expandCell", source);
         Assert.Contains("DoubleTapped", source);
         Assert.Contains("SqlEditorCellExpandDialogWindow", source);
+        Assert.Contains("ColumnReordered", source);
+        Assert.Contains("OnResultGridColumnReordered", source);
+        Assert.Contains("SetResultColumnPinned", source);
+        Assert.Contains("BuildDisplayColumns", source);
+        Assert.Contains("CellEditEnding", source);
+        Assert.Contains("CellEditEnded", source);
+        Assert.Contains("EvaluateInlineEditEligibility", source);
+        Assert.Contains("SqlInlineUpdateStatementBuilder.Build", source);
     }
 
     private static string ReadXaml()

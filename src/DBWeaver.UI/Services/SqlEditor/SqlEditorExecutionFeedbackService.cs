@@ -26,7 +26,7 @@ public sealed class SqlEditorExecutionFeedbackService
             };
         }
 
-        if (string.Equals(result.ErrorMessage, L("sqlEditor.error.executionCanceled", "SQL execution was canceled."), StringComparison.Ordinal))
+        if (IsCancellationMessage(result.ErrorMessage))
         {
             return new SqlEditorExecutionFeedback
             {
@@ -48,6 +48,19 @@ public sealed class SqlEditorExecutionFeedbackService
     {
         string value = _localization[key];
         return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
+    }
+
+    private bool IsCancellationMessage(string? errorMessage)
+    {
+        if (string.IsNullOrWhiteSpace(errorMessage))
+            return false;
+
+        string expected = L("sqlEditor.error.executionCanceled", "SQL execution was canceled.");
+        if (string.Equals(errorMessage, expected, StringComparison.Ordinal))
+            return true;
+
+        return errorMessage.Contains("cancel", StringComparison.OrdinalIgnoreCase)
+            || errorMessage.Contains("cancelad", StringComparison.OrdinalIgnoreCase);
     }
 }
 

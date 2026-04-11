@@ -731,28 +731,26 @@ public partial class MainWindow
     {
         switch (CurrentShell.ActivePreviewContract.Kind)
         {
-            case WorkspaceDocumentPreviewKind.Ddl:
-            {
-                CanvasViewModel ddlCanvas = PrepareDdlPreviewCanvas();
-                LiveDdlBarViewModel liveDdl = ddlCanvas.LiveDdl
-                    ?? throw new InvalidOperationException(
-                        L("error.mainWindow.ddlPreviewUnavailable", "Preview DDL indisponivel para o canvas atual.")
-                    );
-                CurrentShell.OutputPreview.OpenForDdl(ddlCanvas, liveDdl, ddlCanvas.Provider.ToString());
-                return;
-            }
             case WorkspaceDocumentPreviewKind.Query:
             {
-                CanvasViewModel queryCanvas = CurrentShell.ActiveQueryCanvasDocument
-                    ?? CurrentShell.EnsureCanvas(
-                        isDdlModeActiveResolver: () => CurrentShell.IsDdlDocumentPageActive,
-                        importDdlTableAction: (table, position) => ImportSingleTableToDdl(table, position));
-
-                queryCanvas.DataPreview.IsVisible = true;
-                CurrentShell.OutputPreview.OpenForQuery(queryCanvas);
+                CanvasViewModel queryCanvas = CurrentShell.ActiveQueryCanvasDocument ?? CurrentShell.Canvas
+                    ?? throw new InvalidOperationException(
+                        L("error.mainWindow.queryPreviewUnavailable", "Preview SQL indisponivel para o canvas Query atual."));
+                LiveSqlBarViewModel liveSql = queryCanvas.LiveSql
+                    ?? throw new InvalidOperationException(
+                        L("error.mainWindow.queryPreviewUnavailable", "Preview SQL indisponivel para o canvas Query atual."));
+                liveSql.Recompile();
+                CurrentShell.OutputPreview.OpenForQuery(queryCanvas, liveSql, liveSql.ProviderLabel);
                 await Task.CompletedTask;
                 return;
             }
+
+            case WorkspaceDocumentPreviewKind.Ddl:
+            {
+                await ViewDdlSqlAsync();
+                return;
+            }
+
             default:
             {
                 var contract = CurrentShell.ActivePreviewContract;

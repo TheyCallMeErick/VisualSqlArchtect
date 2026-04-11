@@ -22,6 +22,10 @@ public sealed class SqlEditorControlTemplateRegressionTests
         Assert.Contains("Command=\"{Binding CloseResultsSheetCommand}\"", xaml);
         Assert.Contains("<ctrl:MutationConfirmDialog", xaml);
         Assert.Contains("Text=\"{Binding ExecutionStatusText}\"", xaml);
+        Assert.Contains("Text=\"{Binding SignatureHelpText}\"", xaml);
+        Assert.Contains("IsVisible=\"{Binding HasSignatureHelp}\"", xaml);
+        Assert.Contains("Text=\"{Binding HoverDocumentationText}\"", xaml);
+        Assert.Contains("IsVisible=\"{Binding HasHoverDocumentation}\"", xaml);
         Assert.Contains("Text=\"{Binding ResultSummaryText}\"", xaml);
         Assert.Contains("IsVisible=\"{Binding IsExecuting}\"", xaml);
         Assert.Contains("IsVisible=\"{Binding HasPendingMutationConfirmation}\"", xaml);
@@ -74,6 +78,14 @@ public sealed class SqlEditorControlTemplateRegressionTests
         Assert.Contains("RunBenchmarkAsync", source);
         Assert.Contains("SqlExecutionStatementHighlightRenderer", source);
         Assert.Contains("RefreshExecutionStatementHighlight", source);
+        Assert.Contains("Key.Tab", source);
+        Assert.Contains("TryAdvanceSnippetTabStop", source);
+        Assert.Contains("SqlEditorSnippetTabStopSessionStore", source);
+        Assert.Contains("UpdateSignatureHelpFromCaret", source);
+        Assert.Contains("_vm.UpdateSignatureHelp", source);
+        Assert.Contains("PointerMoved += OnEditorPointerMoved", source);
+        Assert.Contains("OnHoverDocsDebounceTick", source);
+        Assert.Contains("_vm.UpdateHoverDocumentation", source);
     }
 
     private static string ReadSqlEditorControlXaml()

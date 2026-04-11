@@ -55,6 +55,9 @@ public sealed class ExplainPlanViewModel : ViewModelBase
     private int _openRequestToken;
     private string _sql = "";
     private DatabaseProvider _provider = DatabaseProvider.Postgres;
+    private string? _sqlOverride;
+    private DatabaseProvider? _providerOverride;
+    private ConnectionConfig? _connectionConfigOverride;
     private string? _errorMessage;
     private CancellationTokenSource? _runCancellationTokenSource;
     private int _runGeneration;
@@ -378,13 +381,28 @@ public sealed class ExplainPlanViewModel : ViewModelBase
 
     public void Open()
     {
-        Sql      = _canvas.LiveSql.RawSql;
+        ClearOverrides();
+        Sql = _canvas.LiveSql.RawSql;
         Provider = _canvas.LiveSql.Provider;
         IsVisible = true;
         OpenRequestToken++;
         UpdateSimulationFlag();
 
         // Auto-run on open with explicit exception handling
+        _ = RunExplainAsyncSafe();
+    }
+
+    public void OpenForSql(string sql, DatabaseProvider provider, ConnectionConfig? connectionConfig)
+    {
+        _sqlOverride = sql?.Trim();
+        _providerOverride = provider;
+        _connectionConfigOverride = connectionConfig;
+        Sql = string.IsNullOrWhiteSpace(_sqlOverride) ? string.Empty : _sqlOverride;
+        Provider = provider;
+        IsVisible = true;
+        OpenRequestToken++;
+        UpdateSimulationFlag();
+
         _ = RunExplainAsyncSafe();
     }
 
@@ -411,6 +429,7 @@ public sealed class ExplainPlanViewModel : ViewModelBase
     {
         CancelActiveRun();
         IsVisible = false;
+        ClearOverrides();
         SelectedStep = null;
         HighlightedTableName = null;
         SelectedSnapshotA = null;
@@ -437,8 +456,8 @@ public sealed class ExplainPlanViewModel : ViewModelBase
         CancellationToken runCancellationToken = _runCancellationTokenSource?.Token ?? CancellationToken.None;
 
         // Refresh in case SQL/provider changed since Open() or previous run.
-        Sql = _canvas.LiveSql.RawSql;
-        Provider = _canvas.LiveSql.Provider;
+        Sql = ResolveSql();
+        Provider = ResolveProvider();
 
         if (string.IsNullOrWhiteSpace(_sql))
         {
@@ -500,7 +519,7 @@ public sealed class ExplainPlanViewModel : ViewModelBase
             ExplainResult result = await _explainExecutor.RunAsync(
                 _sql,
                 _provider,
-                _canvas.ActiveConnectionConfig,
+                ResolveConnectionConfig(),
                 new ExplainOptions(
                     IncludeAnalyze: IncludeAnalyze,
                     IncludeBuffers: IncludeBuffers,
@@ -601,8 +620,37 @@ public sealed class ExplainPlanViewModel : ViewModelBase
 
     private void UpdateSimulationFlag()
     {
-        DatabaseProvider provider = _canvas.ActiveConnectionConfig?.Provider ?? _canvas.LiveSql.Provider;
-        IsSimulated = _executionModeEvaluator.IsSimulated(provider, _canvas.ActiveConnectionConfig);
+        ConnectionConfig? connectionConfig = ResolveConnectionConfig();
+        DatabaseProvider provider = connectionConfig?.Provider ?? ResolveProvider();
+        IsSimulated = _executionModeEvaluator.IsSimulated(provider, connectionConfig);
+    }
+
+    private string ResolveSql()
+    {
+        if (!string.IsNullOrWhiteSpace(_sqlOverride))
+            return _sqlOverride;
+
+        return _canvas.LiveSql.RawSql;
+    }
+
+    private DatabaseProvider ResolveProvider()
+    {
+        if (_providerOverride.HasValue)
+            return _providerOverride.Value;
+
+        return _canvas.LiveSql.Provider;
+    }
+
+    private ConnectionConfig? ResolveConnectionConfig()
+    {
+        return _connectionConfigOverride ?? _canvas.ActiveConnectionConfig;
+    }
+
+    private void ClearOverrides()
+    {
+        _sqlOverride = null;
+        _providerOverride = null;
+        _connectionConfigOverride = null;
     }
 
     private void SelectStep(ExplainStep? step)

@@ -161,6 +161,100 @@ public sealed class SqlEditorViewModelTests
     }
 
     [Fact]
+    public void ReorderTabs_WhenIdsAreValid_ReordersAndPreservesActiveTab()
+    {
+        var sut = new SqlEditorViewModel();
+        string firstId = sut.ActiveTab.Id;
+        sut.NewTabCommand.Execute(null);
+        string secondId = sut.ActiveTab.Id;
+        sut.NewTabCommand.Execute(null);
+        string thirdId = sut.ActiveTab.Id;
+
+        bool moved = sut.ReorderTabs(thirdId, firstId);
+
+        Assert.True(moved);
+        Assert.Equal(thirdId, sut.EditorTabs[0].Id);
+        Assert.Equal(thirdId, sut.ActiveTab.Id);
+        Assert.Contains(sut.EditorTabs, tab => tab.Id == secondId);
+    }
+
+    [Fact]
+    public void UpdateSignatureHelp_WithKnownFunction_PopulatesStatusText()
+    {
+        var sut = new SqlEditorViewModel(DatabaseProvider.Postgres);
+        const string sql = "SELECT DATE_TRUNC('day', NOW())";
+
+        sut.UpdateSignatureHelp(sql, sql.IndexOf("NOW", StringComparison.Ordinal));
+
+        Assert.True(sut.HasSignatureHelp);
+        Assert.Contains("DATE_TRUNC", sut.SignatureHelpText, StringComparison.Ordinal);
+        Assert.Contains("[source: timestamp]", sut.SignatureHelpText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void UpdateSignatureHelp_OutsideFunction_ClearsStatusText()
+    {
+        var sut = new SqlEditorViewModel(DatabaseProvider.Postgres);
+
+        sut.UpdateSignatureHelp("SELECT * FROM public.orders", "SELECT * FROM public.orders".Length);
+
+        Assert.False(sut.HasSignatureHelp);
+        Assert.Equal(string.Empty, sut.SignatureHelpText);
+    }
+
+    [Fact]
+    public void UpdateHoverDocumentation_WithMetadata_PopulatesHoverText()
+    {
+        DbMetadata metadata = BuildMetadata("public", "orders");
+        var sut = new SqlEditorViewModel(DatabaseProvider.Postgres, metadataResolver: () => metadata);
+        const string sql = "SELECT * FROM public.orders";
+
+        sut.UpdateHoverDocumentation(sql, sql.IndexOf("public.orders", StringComparison.Ordinal) + 2);
+
+        Assert.True(sut.HasHoverDocumentation);
+        Assert.Contains("public.orders", sut.HoverDocumentationText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ClearHoverDocumentation_ClearsHoverState()
+    {
+        DbMetadata metadata = BuildMetadata("public", "orders");
+        var sut = new SqlEditorViewModel(DatabaseProvider.Postgres, metadataResolver: () => metadata);
+        const string sql = "SELECT * FROM public.orders";
+        sut.UpdateHoverDocumentation(sql, sql.IndexOf("public.orders", StringComparison.Ordinal) + 2);
+
+        sut.ClearHoverDocumentation();
+
+        Assert.False(sut.HasHoverDocumentation);
+        Assert.Equal(string.Empty, sut.HoverDocumentationText);
+    }
+
+    [Fact]
+    public void SetResultColumnPinned_TogglesPinnedState()
+    {
+        var sut = new SqlEditorViewModel();
+
+        sut.SetResultColumnPinned("id", pinned: true);
+        Assert.True(sut.IsResultColumnPinned("id"));
+
+        sut.SetResultColumnPinned("id", pinned: false);
+        Assert.False(sut.IsResultColumnPinned("id"));
+    }
+
+    [Fact]
+    public void SetResultColumnOrder_StoresDistinctNonEmptyNames()
+    {
+        var sut = new SqlEditorViewModel();
+
+        sut.SetResultColumnOrder(["id", "name", "id", "", "created_at"]);
+
+        Assert.Equal(3, sut.ActiveTab.ResultColumnOrder.Count);
+        Assert.Equal("id", sut.ActiveTab.ResultColumnOrder[0]);
+        Assert.Equal("name", sut.ActiveTab.ResultColumnOrder[1]);
+        Assert.Equal("created_at", sut.ActiveTab.ResultColumnOrder[2]);
+    }
+
+    [Fact]
     public void CloseTabCommand_DoesNotCloseLastTab()
     {
         var sut = new SqlEditorViewModel();

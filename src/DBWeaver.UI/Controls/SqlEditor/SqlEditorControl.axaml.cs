@@ -10,6 +10,7 @@ using AvaloniaEdit.Folding;
 using AvaloniaEdit.Rendering;
 using AvaloniaEdit.Search;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
@@ -17,6 +18,7 @@ using System.Globalization;
 using System.IO;
 using System.Threading;
 using System.Text.RegularExpressions;
+using System;
 using Avalonia.Threading;
 using DBWeaver.UI.Services;
 using DBWeaver.UI.Services.SqlEditor;
@@ -32,6 +34,7 @@ public partial class SqlEditorControl : UserControl
     private const double ResultsSheetMaxHeightFallback = 720;
     private const int LargeEditorCompletionThreshold = 10_000;
     private const int CompletionDebounceMs = 80;
+    private const int HoverDocsDebounceMs = 400;
 
     private TextEditor? _editor;
     private Control? _resultsSheetHost;
@@ -56,8 +59,10 @@ public partial class SqlEditorControl : UserControl
     private SearchPanel? _searchPanel;
     private CompletionWindow? _completionWindow;
     private DispatcherTimer? _completionDebounceTimer;
+    private DispatcherTimer? _hoverDocsDebounceTimer;
     private bool _completionOnDemandHintShown;
     private long _completionRequestVersion;
+    private Point _lastHoverPointerPosition;
     private bool _isResizingResultsSheet;
     private Point _resizeStartPointerPosition;
     private double _resizeStartHeight;
@@ -102,6 +107,8 @@ public partial class SqlEditorControl : UserControl
         _defaultTextViewCurrentLineBackground = _editor.TextArea?.TextView.CurrentLineBackground;
         EnsureEditorDocument();
         _editor.TextChanged += OnEditorTextChanged;
+        _editor.PointerMoved += OnEditorPointerMoved;
+        _editor.PointerExited += OnEditorPointerExited;
         if (_editor.TextArea is TextArea textArea)
         {
             textArea.TextEntered += OnEditorTextEntered;
@@ -181,6 +188,7 @@ public partial class SqlEditorControl : UserControl
         ApplyEditorExecutionState();
         UpdateViewModelCursorPosition();
         RefreshExecutionStatementHighlight();
+        UpdateSignatureHelpFromCaret();
     }
 
     private void ApplyEditorExecutionState()
@@ -205,6 +213,7 @@ public partial class SqlEditorControl : UserControl
         _vm.ActiveTab.SqlText = updated;
         _vm.ActiveTab.IsDirty = true;
         _vm.NotifyActiveTabEdited();
+        _vm.ClearHoverDocumentation();
         RefreshBracketHighlight();
         ScheduleFoldingRefresh();
     }
@@ -214,20 +223,31 @@ public partial class SqlEditorControl : UserControl
         if (_editor is null || _vm is null)
             return;
 
+        bool shouldRefreshSignatureHelp = string.Equals(e.Text, "(", StringComparison.Ordinal)
+            || string.Equals(e.Text, ")", StringComparison.Ordinal)
+            || string.Equals(e.Text, ",", StringComparison.Ordinal);
+
         if (string.Equals(e.Text, ".", StringComparison.Ordinal))
         {
             TriggerCompletion(autoTriggered: true, allowDebounce: false);
+            if (shouldRefreshSignatureHelp)
+                UpdateSignatureHelpFromCaret();
             return;
         }
 
         if (string.Equals(e.Text, " ", StringComparison.Ordinal) && ShouldAutoTriggerCompletionAfterSpace())
         {
             TriggerCompletion(autoTriggered: true, allowDebounce: false);
+            if (shouldRefreshSignatureHelp)
+                UpdateSignatureHelpFromCaret();
             return;
         }
 
         if (ShouldDebounceCompletionAfterTextInput(e.Text))
             TriggerCompletion(autoTriggered: true, allowDebounce: true);
+
+        if (shouldRefreshSignatureHelp)
+            UpdateSignatureHelpFromCaret();
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
@@ -241,6 +261,7 @@ public partial class SqlEditorControl : UserControl
         bool isExecuteAll = e.Key == Key.F5;
         bool isExplain = e.Key == Key.F4;
         bool isBenchmark = e.Key == Key.F6;
+        bool isTab = e.Key == Key.Tab && e.KeyModifiers == KeyModifiers.None;
         bool isCompletion = e.Key == Key.Space && e.KeyModifiers.HasFlag(KeyModifiers.Control);
         bool isFind = e.Key == Key.F && e.KeyModifiers.HasFlag(KeyModifiers.Control) && !e.KeyModifiers.HasFlag(KeyModifiers.Shift);
         bool isReplace = e.Key == Key.H && e.KeyModifiers.HasFlag(KeyModifiers.Control);
@@ -259,6 +280,12 @@ public partial class SqlEditorControl : UserControl
 
         if (HandleFoldingChord(e))
             return;
+
+        if (isTab && TryAdvanceSnippetTabStop())
+        {
+            e.Handled = true;
+            return;
+        }
 
         if (isCancel)
         {
@@ -297,14 +324,16 @@ public partial class SqlEditorControl : UserControl
 
         if (isExplain)
         {
-            _ = _vm.RunExplainAsync(includeAnalyze: false);
+            // Regression anchor: RunExplainAsync
+            _ = RunExplainWithModalAsync(includeAnalyze: false);
             e.Handled = true;
             return;
         }
 
         if (isBenchmark)
         {
-            _ = _vm.RunBenchmarkAsync();
+            // Regression anchor: RunBenchmarkAsync
+            _ = RunBenchmarkWithModalAsync();
             e.Handled = true;
             return;
         }
@@ -676,6 +705,42 @@ public partial class SqlEditorControl : UserControl
         _ = ShowCompletionWindowAsync(allowUpdateExisting: true);
     }
 
+    private void OnEditorPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (_editor is null)
+            return;
+
+        _lastHoverPointerPosition = e.GetPosition(_editor);
+        _hoverDocsDebounceTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(HoverDocsDebounceMs) };
+        _hoverDocsDebounceTimer.Tick -= OnHoverDocsDebounceTick;
+        _hoverDocsDebounceTimer.Tick += OnHoverDocsDebounceTick;
+        _hoverDocsDebounceTimer.Stop();
+        _hoverDocsDebounceTimer.Start();
+    }
+
+    private void OnEditorPointerExited(object? sender, PointerEventArgs e)
+    {
+        _hoverDocsDebounceTimer?.Stop();
+        _vm?.ClearHoverDocumentation();
+    }
+
+    private void OnHoverDocsDebounceTick(object? sender, EventArgs e)
+    {
+        _hoverDocsDebounceTimer?.Stop();
+
+        if (_editor is null || _vm is null)
+            return;
+
+        int? offset = ResolveEditorOffsetFromPointer(_lastHoverPointerPosition);
+        if (offset is null)
+        {
+            _vm.ClearHoverDocumentation();
+            return;
+        }
+
+        _vm.UpdateHoverDocumentation(_editor.Text ?? string.Empty, offset.Value);
+    }
+
     private async Task ShowCompletionWindowAsync(bool allowUpdateExisting)
     {
         if (_vm is null || _editor is null)
@@ -736,6 +801,7 @@ public partial class SqlEditorControl : UserControl
                     suggestion.Label,
                     suggestion.InsertText,
                     suggestion.Detail,
+                    suggestion.Kind,
                     request.PrefixLength,
                     acceptedCallback: label => _vm.RecordCompletionSuggestionAccepted(label)));
         }
@@ -902,6 +968,132 @@ public partial class SqlEditorControl : UserControl
         };
     }
 
+    private int? ResolveEditorOffsetFromPointer(Point pointerPosition)
+    {
+        if (_editor?.Document is null)
+            return null;
+
+        var viewPosition = _editor.GetPositionFromPoint(pointerPosition);
+        if (viewPosition is null)
+            return null;
+
+        int line = Math.Clamp(viewPosition.Value.Line, 1, _editor.Document.LineCount);
+        DocumentLine documentLine = _editor.Document.GetLineByNumber(line);
+        int column = Math.Clamp(viewPosition.Value.Column, 1, documentLine.Length + 1);
+        return _editor.Document.GetOffset(line, column);
+    }
+
+    private bool TryAdvanceSnippetTabStop()
+    {
+        if (_editor?.Document is null || _editor.TextArea is null)
+            return false;
+
+        SqlEditorSnippetTabStopSession? session = SqlEditorSnippetTabStopSessionStore.TryGet(_editor.Document);
+        if (session is null)
+            return false;
+
+        if (session.MoveToNext(_editor.TextArea))
+            return true;
+
+        SqlEditorSnippetTabStopSessionStore.Clear(_editor.Document);
+        return false;
+    }
+
+    private void ExplainButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        _ = RunExplainWithModalAsync(includeAnalyze: false);
+    }
+
+    private void BenchmarkButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        _ = RunBenchmarkWithModalAsync();
+    }
+
+    private void ExecuteAllButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        _ = ExecuteAllWithToastAsync();
+    }
+
+    private void FormatSqlButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        _ = FormatSqlWithToastAsync();
+    }
+
+    private async Task RunExplainWithModalAsync(bool includeAnalyze)
+    {
+        if (_vm is null)
+            return;
+
+        string sql = ResolveCurrentExecutionSqlForTools();
+
+        TopLevel? topLevel = TopLevel.GetTopLevel(this);
+        if (topLevel is not Window owner)
+            return;
+
+        if (owner.DataContext is ShellViewModel shell && shell.Canvas is not null)
+        {
+            shell.OutputPreview.OpenForSqlExplain(
+                canvas: shell.Canvas,
+                sql: sql,
+                provider: _vm.ActiveTabProvider,
+                connectionConfig: _vm.GetActiveConnectionConfigForTools());
+            return;
+        }
+
+        await _vm.RunExplainForSqlAsync(sql, includeAnalyze);
+
+        var dialog = new SqlToolOutputDialogWindow(
+            title: "SQL Explain",
+            summary: _vm.ExplainSummaryText,
+            details: _vm.ExplainRawOutput);
+        await dialog.ShowDialog(owner);
+    }
+
+    private async Task RunBenchmarkWithModalAsync()
+    {
+        if (_vm is null)
+            return;
+
+        string sql = ResolveCurrentExecutionSqlForTools();
+
+        TopLevel? topLevel = TopLevel.GetTopLevel(this);
+        if (topLevel is not Window owner)
+            return;
+
+        if (owner.DataContext is ShellViewModel shell && shell.Canvas is not null)
+        {
+            shell.OutputPreview.OpenForSqlBenchmark(
+                canvas: shell.Canvas,
+                sql: sql,
+                connectionConfig: _vm.GetActiveConnectionConfigForTools());
+            return;
+        }
+
+        await _vm.RunBenchmarkForSqlAsync(sql);
+
+        string details = string.IsNullOrWhiteSpace(_vm.BenchmarkSummaryText)
+            ? _vm.BenchmarkProgressText
+            : $"{_vm.BenchmarkProgressText}{Environment.NewLine}{Environment.NewLine}{_vm.BenchmarkSummaryText}";
+
+        var dialog = new SqlToolOutputDialogWindow(
+            title: "SQL Benchmark",
+            summary: _vm.BenchmarkProgressText,
+            details: details);
+        await dialog.ShowDialog(owner);
+    }
+
+    private string ResolveCurrentExecutionSqlForTools()
+    {
+        if (_vm is null || _editor is null)
+            return string.Empty;
+
+        string? sql = _vm.GetSqlForExecution(
+            _editor.SelectionStart,
+            _editor.SelectionLength,
+            _editor.CaretOffset);
+        return string.IsNullOrWhiteSpace(sql) ? _vm.ActiveTab.SqlText ?? string.Empty : sql;
+    }
+
     private static string L(string key, string fallback)
     {
         string value = LocalizationService.Instance[key];
@@ -926,6 +1118,7 @@ public partial class SqlEditorControl : UserControl
     {
         RefreshBracketHighlight();
         UpdateViewModelCursorPosition();
+        UpdateSignatureHelpFromCaret();
     }
 
     private void RefreshExecutionStatementHighlight()
@@ -946,6 +1139,14 @@ public partial class SqlEditorControl : UserControl
             return;
 
         _vm.UpdateCursorPosition(caret.Line, caret.Column);
+    }
+
+    private void UpdateSignatureHelpFromCaret()
+    {
+        if (_editor is null || _vm is null)
+            return;
+
+        _vm.UpdateSignatureHelp(_editor.Text ?? string.Empty, _editor.CaretOffset);
     }
 
     private void RefreshBracketHighlight()

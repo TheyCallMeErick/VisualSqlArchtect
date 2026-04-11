@@ -9,6 +9,9 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using Material.Icons;
+using Material.Icons.Avalonia;
+using DBWeaver.UI.Services.SqlEditor;
 using DBWeaver.UI.Services.Localization;
 using DBWeaver.UI.Services.SqlEditor.Reports;
 using DBWeaver.UI.ViewModels;
@@ -22,6 +25,9 @@ public partial class SqlEditorResultPanel : UserControl
     private int _lastSelectedColumnIndex = -1;
     private IBrush? _nullCellForegroundBrush;
     private readonly SqlEditorReportExportService _reportExportService = new();
+    private SqlInlineEditEligibility _inlineEditEligibility = SqlInlineEditEligibility.NotEligible;
+    private readonly Dictionary<string, int> _currentColumnIndexMap = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<object?[], PendingInlineEdit> _pendingInlineEdits = new(ObjectArrayReferenceComparer.Instance);
 
     public SqlEditorResultPanel()
     {
@@ -29,6 +35,9 @@ public partial class SqlEditorResultPanel : UserControl
         DataContextChanged += OnDataContextChanged;
         ResultGrid.KeyDown += OnResultGridKeyDown;
         ResultGrid.Sorting += OnResultGridSorting;
+        ResultGrid.CellEditEnding += OnResultGridCellEditEnding;
+        ResultGrid.CellEditEnded += OnResultGridCellEditEnded;
+        ResultGrid.ColumnReordered += OnResultGridColumnReordered;
         ConfigureGridContextMenu();
     }
 
@@ -58,9 +67,16 @@ public partial class SqlEditorResultPanel : UserControl
             or nameof(SqlEditorViewModel.ResultTabs)
             or nameof(SqlEditorViewModel.ResultGridFilterText)
             or nameof(SqlEditorViewModel.ResultGridSortColumn)
-            or nameof(SqlEditorViewModel.ResultGridSortAscending))
+            or nameof(SqlEditorViewModel.ResultGridSortAscending)
+            or nameof(SqlEditorViewModel.SelectedOutputPane))
         {
             RefreshGrid(_viewModel?.ResultRowsView);
+        }
+
+        if (e.PropertyName is nameof(SqlEditorViewModel.OutputMessages)
+            or nameof(SqlEditorViewModel.SelectedOutputPane))
+        {
+            UpdateCounters();
         }
     }
 
@@ -68,6 +84,10 @@ public partial class SqlEditorResultPanel : UserControl
     {
         ResultGrid.Columns.Clear();
         ResultGrid.ItemsSource = null;
+        ResultGrid.IsReadOnly = true;
+        _inlineEditEligibility = SqlInlineEditEligibility.NotEligible;
+        _currentColumnIndexMap.Clear();
+        _pendingInlineEdits.Clear();
         _lastSelectedRow = null;
         _lastSelectedColumnIndex = -1;
 
@@ -84,21 +104,28 @@ public partial class SqlEditorResultPanel : UserControl
             return;
         }
 
-        for (int columnIndex = 0; columnIndex < table.Columns.Count; columnIndex++)
+        _inlineEditEligibility = _viewModel?.EvaluateInlineEditEligibility(table) ?? SqlInlineEditEligibility.NotEligible;
+        ResultGrid.IsReadOnly = !_inlineEditEligibility.IsEligible;
+
+        IReadOnlyList<DataColumn> displayColumns = BuildDisplayColumns(table);
+        for (int displayIndex = 0; displayIndex < displayColumns.Count; displayIndex++)
         {
-            int capturedColumnIndex = columnIndex;
-            DataColumn dataColumn = table.Columns[columnIndex];
+            DataColumn dataColumn = displayColumns[displayIndex];
+            int capturedColumnIndex = table.Columns.IndexOf(dataColumn);
             string columnName = dataColumn.ColumnName;
             string columnTypeLabel = SqlEditorResultCellContentFormatter.GetColumnTypeLabel(dataColumn);
+            SqlEditorSchemaColumnItem? schemaColumn = _viewModel?.ResolveResultSchemaColumn(columnName);
+            _currentColumnIndexMap[columnName] = capturedColumnIndex;
 
             if (_viewModel?.IsResultColumnHidden(columnName) == true)
                 continue;
 
             ResultGrid.Columns.Add(new DataGridTemplateColumn
             {
-                Header = BuildColumnHeader(columnName, columnTypeLabel),
+                Header = BuildColumnHeader(columnName, columnTypeLabel, schemaColumn),
                 SortMemberPath = columnName,
-                IsReadOnly = true,
+                IsReadOnly = !_inlineEditEligibility.IsEligible
+                    || !_inlineEditEligibility.EditableColumns.Contains(columnName, StringComparer.OrdinalIgnoreCase),
                 CanUserSort = true,
                 CellTemplate = new FuncDataTemplate<object?[]>((row, _) =>
                 {
@@ -148,9 +175,21 @@ public partial class SqlEditorResultPanel : UserControl
                         _viewModel?.HideResultColumn(columnName);
                     };
 
+                    bool isPinned = _viewModel?.IsResultColumnPinned(columnName) == true;
+                    var pinColumnItem = new MenuItem
+                    {
+                        Header = isPinned
+                            ? L("sqlEditor.results.context.unpinColumn", "Desafixar coluna")
+                            : L("sqlEditor.results.context.pinColumn", "Fixar coluna"),
+                    };
+                    pinColumnItem.Click += (_, _) =>
+                    {
+                        _viewModel?.SetResultColumnPinned(columnName, !isPinned);
+                    };
+
                     textBlock.ContextMenu = new ContextMenu
                     {
-                        ItemsSource = new object[] { expandCellItem, copyCellItem, copyRowItem, hideColumnItem },
+                        ItemsSource = new object[] { expandCellItem, copyCellItem, copyRowItem, hideColumnItem, pinColumnItem },
                     };
 
                     textBlock.DoubleTapped += async (_, _) =>
@@ -163,10 +202,24 @@ public partial class SqlEditorResultPanel : UserControl
 
                     return textBlock;
                 }),
+                CellEditingTemplate = new FuncDataTemplate<object?[]>((row, _) =>
+                {
+                    string text = SqlEditorResultCellContentFormatter.FormatCellValue(row, capturedColumnIndex);
+                    return new TextBox
+                    {
+                        Text = string.Equals(text, "NULL", StringComparison.Ordinal) ? string.Empty : text,
+                        MinWidth = 80,
+                        HorizontalAlignment = HorizontalAlignment.Stretch,
+                        VerticalAlignment = VerticalAlignment.Center,
+                    };
+                }),
             });
         }
 
-        ResultGrid.FrozenColumnCount = ResultGrid.Columns.Count > 0 ? 1 : 0;
+        int pinnedCount = _viewModel is null
+            ? 0
+            : displayColumns.Count(column => _viewModel.IsResultColumnPinned(column.ColumnName));
+        ResultGrid.FrozenColumnCount = Math.Clamp(pinnedCount, 0, ResultGrid.Columns.Count);
 
         var rows = new List<object?[]>();
         foreach (object? rowItem in rowsView)
@@ -192,6 +245,7 @@ public partial class SqlEditorResultPanel : UserControl
         var observableRows = new ObservableCollection<object?[]>(rows);
 
         ResultGrid.ItemsSource = observableRows;
+        UpdateCounters();
     }
 
     private void ConfigureGridContextMenu()
@@ -235,6 +289,30 @@ public partial class SqlEditorResultPanel : UserControl
             return;
 
         RefreshGrid(_viewModel.ResultRowsView);
+    }
+
+    private void ResultsPaneButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (_viewModel is null)
+            return;
+
+        _viewModel.SelectedOutputPane = SqlEditorOutputPane.Results;
+    }
+
+    private void MessagesPaneButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (_viewModel is null)
+            return;
+
+        _viewModel.SelectedOutputPane = SqlEditorOutputPane.Messages;
+    }
+
+    private void ClearMessagesButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (_viewModel is null)
+            return;
+
+        _viewModel.ClearOutputMessages();
     }
 
     private async void ExportReportButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -341,6 +419,20 @@ public partial class SqlEditorResultPanel : UserControl
         return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
     }
 
+    private void UpdateCounters()
+    {
+        if (_viewModel is null)
+            return;
+
+        if (_viewModel.IsMessagesOutputPaneSelected)
+        {
+            RowsCounterText.Text = string.Format(
+                CultureInfo.InvariantCulture,
+                L("sqlEditor.messages.count", "{0} mensagens"),
+                _viewModel.OutputMessages.Count);
+        }
+    }
+
     private List<object?[]> ApplyFilter(List<object?[]> rows, DataTable table)
     {
         if (_viewModel is null || rows.Count == 0)
@@ -392,6 +484,94 @@ public partial class SqlEditorResultPanel : UserControl
         return value;
     }
 
+    private void OnResultGridCellEditEnding(object? sender, DataGridCellEditEndingEventArgs e)
+    {
+        if (_viewModel is null || !_inlineEditEligibility.IsEligible)
+            return;
+
+        if (e.EditAction != DataGridEditAction.Commit)
+            return;
+
+        if (e.Row.DataContext is not object?[] row)
+            return;
+
+        string columnName = e.Column.SortMemberPath ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(columnName))
+            return;
+
+        if (!_inlineEditEligibility.EditableColumns.Contains(columnName, StringComparer.OrdinalIgnoreCase))
+            return;
+
+        if (!_currentColumnIndexMap.TryGetValue(columnName, out int columnIndex))
+            return;
+
+        if (e.EditingElement is not TextBox textBox)
+            return;
+
+        string originalText = SqlEditorResultCellContentFormatter.FormatCellValue(row, columnIndex);
+        string editedText = textBox.Text ?? string.Empty;
+        if (string.Equals(originalText, editedText, StringComparison.Ordinal))
+            return;
+
+        _pendingInlineEdits[row] = new PendingInlineEdit(columnName, columnIndex, editedText);
+    }
+
+    private async void OnResultGridCellEditEnded(object? sender, DataGridCellEditEndedEventArgs e)
+    {
+        if (_viewModel is null || !_inlineEditEligibility.IsEligible)
+            return;
+
+        if (e.EditAction != DataGridEditAction.Commit)
+            return;
+
+        if (e.Row.DataContext is not object?[] row)
+            return;
+
+        if (!_pendingInlineEdits.TryGetValue(row, out PendingInlineEdit? pending))
+            return;
+
+        _pendingInlineEdits.Remove(row);
+        try
+        {
+            string? tableFullName = _inlineEditEligibility.TableFullName;
+            if (string.IsNullOrWhiteSpace(tableFullName))
+                return;
+
+            var pkValues = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            foreach (string pkColumn in _inlineEditEligibility.PrimaryKeyColumns)
+            {
+                if (!_currentColumnIndexMap.TryGetValue(pkColumn, out int pkIndex))
+                    return;
+
+                pkValues[pkColumn] = row[pkIndex];
+            }
+
+            object? editedValue = string.IsNullOrWhiteSpace(pending.EditedText)
+                ? DBNull.Value
+                : pending.EditedText;
+            string updateSql = SqlInlineUpdateStatementBuilder.Build(
+                _viewModel.ActiveTabProvider,
+                tableFullName,
+                pending.ColumnName,
+                editedValue,
+                pkValues);
+
+            SqlEditorResultSet result = await _viewModel.ExecuteInlineUpdateAsync(updateSql);
+            if (!result.Success)
+                return;
+
+            row[pending.ColumnIndex] = editedValue;
+            ResultGrid.InvalidateVisual();
+        }
+        catch (Exception ex)
+        {
+            _viewModel.PublishStatus(
+                L("sqlEditor.inlineEdit.failed", "Falha ao atualizar celula."),
+                ex.Message,
+                hasError: true);
+        }
+    }
+
     private void OnResultGridSorting(object? sender, DataGridColumnEventArgs e)
     {
         if (_viewModel is null)
@@ -420,26 +600,135 @@ public partial class SqlEditorResultPanel : UserControl
         e.Handled = true;
     }
 
-    private static object BuildColumnHeader(string columnName, string columnTypeLabel)
+    private void OnResultGridColumnReordered(object? sender, DataGridColumnEventArgs e)
     {
-        var header = new StackPanel
+        if (_viewModel is null || ResultGrid.Columns.Count == 0)
+            return;
+
+        IReadOnlyList<string> order = ResultGrid.Columns
+            .OrderBy(static column => column.DisplayIndex)
+            .Select(column => column.SortMemberPath ?? column.Header?.ToString() ?? string.Empty)
+            .Where(static name => !string.IsNullOrWhiteSpace(name))
+            .ToList();
+        if (order.Count == 0)
+            return;
+
+        _viewModel.SetResultColumnOrder(order);
+    }
+
+    private IReadOnlyList<DataColumn> BuildDisplayColumns(DataTable table)
+    {
+        if (_viewModel is null || table.Columns.Count == 0)
+            return table.Columns.Cast<DataColumn>().ToList();
+
+        IReadOnlyList<string> order = _viewModel.ActiveTab.ResultColumnOrder;
+        Dictionary<string, int> orderMap = order
+            .Select((name, index) => (name, index))
+            .GroupBy(static x => x.name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(static g => g.Key, static g => g.First().index, StringComparer.OrdinalIgnoreCase);
+
+        List<DataColumn> columns = table.Columns
+            .Cast<DataColumn>()
+            .Where(column => !_viewModel.IsResultColumnHidden(column.ColumnName))
+            .OrderByDescending(column => _viewModel.IsResultColumnPinned(column.ColumnName))
+            .ThenBy(column => orderMap.TryGetValue(column.ColumnName, out int index) ? index : int.MaxValue)
+            .ThenBy(static column => column.Ordinal)
+            .ToList();
+
+        return columns;
+    }
+
+    private object BuildColumnHeader(
+        string columnName,
+        string columnTypeLabel,
+        SqlEditorSchemaColumnItem? schemaColumn)
+    {
+        var titleRow = new StackPanel
         {
-            Spacing = 0,
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
         };
 
-        header.Children.Add(new TextBlock
+        titleRow.Children.Add(new MaterialIcon
+        {
+            Kind = schemaColumn?.TypeIcon ?? MaterialIconKind.TableColumn,
+            Width = 12,
+            Height = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = ResolveResourceBrush("AccentPrimaryHoverBrush", Brushes.LightBlue),
+        });
+        titleRow.Children.Add(new TextBlock
         {
             Text = columnName,
             FontWeight = FontWeight.SemiBold,
         });
+        if (schemaColumn?.IsPrimaryKey == true)
+        {
+            titleRow.Children.Add(new MaterialIcon
+            {
+                Kind = MaterialIconKind.KeyVariant,
+                Width = 11,
+                Height = 11,
+                Foreground = new SolidColorBrush(Color.Parse("#5CE59D")),
+            });
+        }
+        if (schemaColumn?.IsForeignKey == true)
+        {
+            var fkButton = new Button
+            {
+                Background = Brushes.Transparent,
+                BorderBrush = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(0),
+                Width = 14,
+                Height = 14,
+                Content = new MaterialIcon
+                {
+                    Kind = MaterialIconKind.SourceBranch,
+                    Width = 11,
+                    Height = 11,
+                    Foreground = new SolidColorBrush(Color.Parse("#72B8FF")),
+                },
+            };
+            ToolTip.SetTip(fkButton, L("sqlEditor.results.relationship.quick", "Abrir relacionamento"));
+            fkButton.Click += async (_, _) => await ShowRelationshipDialogAsync(columnName);
+            titleRow.Children.Add(fkButton);
+        }
+        if (schemaColumn?.IsIndexed == true)
+        {
+            titleRow.Children.Add(new MaterialIcon
+            {
+                Kind = MaterialIconKind.Magnify,
+                Width = 11,
+                Height = 11,
+                Foreground = new SolidColorBrush(Color.Parse("#FFCF75")),
+            });
+        }
+
+        var header = new StackPanel { Spacing = 0 };
+        header.Children.Add(titleRow);
         header.Children.Add(new TextBlock
         {
             Text = columnTypeLabel,
             FontSize = 11,
-            Foreground = Brushes.Gray,
+            Foreground = ResolveResourceBrush("TextMutedBrush", Brushes.Gray),
         });
 
         return header;
+    }
+
+    private async Task ShowRelationshipDialogAsync(string columnName)
+    {
+        if (_viewModel is null || string.IsNullOrWhiteSpace(columnName))
+            return;
+
+        TopLevel? topLevel = TopLevel.GetTopLevel(this);
+        if (topLevel is not Window owner)
+            return;
+
+        IReadOnlyList<DBWeaver.Metadata.ForeignKeyRelation> relations = _viewModel.ResolveColumnRelationships(columnName);
+        var dialog = new SqlEditorForeignKeyDialogWindow(columnName, relations);
+        await dialog.ShowDialog(owner);
     }
 
     private async Task ShowExpandedCellDialogAsync(object?[]? row, int columnIndex, string columnName, string columnTypeLabel)
@@ -482,6 +771,17 @@ public partial class SqlEditorResultPanel : UserControl
         return _nullCellForegroundBrush;
     }
 
+    private static IBrush ResolveResourceBrush(string resourceKey, IBrush fallback)
+    {
+        if (Application.Current?.TryGetResource(resourceKey, null, out object? resource) == true
+            && resource is IBrush brush)
+        {
+            return brush;
+        }
+
+        return fallback;
+    }
+
     private static FilePickerFileType GetExportFileType(SqlEditorReportType reportType)
     {
         return reportType switch
@@ -507,6 +807,20 @@ public partial class SqlEditorResultPanel : UserControl
                 MimeTypes = ["text/html", "text/plain"],
             },
         };
+    }
+
+    private sealed record PendingInlineEdit(
+        string ColumnName,
+        int ColumnIndex,
+        string EditedText);
+
+    private sealed class ObjectArrayReferenceComparer : IEqualityComparer<object?[]>
+    {
+        public static ObjectArrayReferenceComparer Instance { get; } = new();
+
+        public bool Equals(object?[]? x, object?[]? y) => ReferenceEquals(x, y);
+
+        public int GetHashCode(object?[] obj) => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
     }
 }
 

@@ -68,7 +68,12 @@
           </ListBox.ItemsPanel>
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="vm:SqlEditorTabState">
-              <Border Classes="sql-tab-chip">
+              <Border Classes="sql-tab-chip"
+                      Cursor="Hand"
+                      PointerPressed="TabChip_OnPointerPressed"
+                      PointerEntered="TabChip_OnPointerEntered"
+                      PointerReleased="TabChip_OnPointerReleased"
+                      PointerCaptureLost="TabChip_OnPointerCaptureLost">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                   <TextBlock Text="●"
                              IsVisible="{Binding IsDirty}"

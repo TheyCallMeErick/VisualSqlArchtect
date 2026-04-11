@@ -104,6 +104,21 @@ public sealed class SqlCompletionProviderTests
     }
 
     [Fact]
+    public void GetSuggestions_SnippetsExposeTabStopMarkers()
+    {
+        var sut = new SqlCompletionProvider();
+
+        SqlCompletionRequest request = sut.GetSuggestions(string.Empty, 0, metadata: null, DatabaseProvider.Postgres);
+        SqlCompletionSuggestion snippet = Assert.Single(
+            request.Suggestions,
+            static s => s.Kind == SqlCompletionKind.Snippet && s.Label == "SELECT ... FROM ...");
+
+        Assert.Contains("$1", snippet.InsertText, StringComparison.Ordinal);
+        Assert.Contains("$2", snippet.InsertText, StringComparison.Ordinal);
+        Assert.Contains("$0", snippet.InsertText, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void GetSuggestions_InSecondStatement_UsesCurrentStatementContext()
     {
         var sut = new SqlCompletionProvider();

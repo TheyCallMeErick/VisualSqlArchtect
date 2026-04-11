@@ -10,6 +10,7 @@ using System.Diagnostics;
 using System.Data;
 using System.IO;
 using System.Windows.Input;
+using Material.Icons;
 
 namespace DBWeaver.UI.ViewModels;
 
@@ -31,6 +32,7 @@ public sealed class SqlEditorViewModel : ViewModelBase
     private readonly SqlEditorPropertyChangePublisher _propertyChangePublisher;
     private readonly SqlEditorResultStateService _resultStateService;
     private readonly SqlEditorTabCloseWorkflowService _tabCloseWorkflowService;
+    private readonly SqlResultEligibilityDetector _resultEligibilityDetector;
     private readonly ISqlEditorSessionDraftStore _sessionDraftStore;
     private readonly ILocalizationService _localization;
     private readonly Func<ConnectionConfig?> _connectionConfigResolver;
@@ -38,6 +40,8 @@ public sealed class SqlEditorViewModel : ViewModelBase
     private readonly Func<IReadOnlyList<SqlEditorConnectionProfileOption>> _connectionProfilesResolver;
     private readonly Func<ConnectionManagerViewModel?> _sharedConnectionManagerResolver;
     private readonly SqlCompletionProvider _completionProvider;
+    private readonly SqlSignatureHelpService _signatureHelpService;
+    private readonly SqlHoverDocumentationService _hoverDocumentationService;
     private readonly Func<DbMetadata?> _metadataResolver;
     private readonly IExplainExecutor _explainExecutor;
     private CancellationTokenSource? _executionCts;
@@ -48,6 +52,7 @@ public sealed class SqlEditorViewModel : ViewModelBase
     private string _executionStatusText;
     private string? _executionDetailText;
     private string _historySearchText = string.Empty;
+    private string _schemaSearchText = string.Empty;
     private bool _isHistoryClearConfirmationPending;
     private bool _isResultsSheetOpen;
     private double _resultsSheetHeight;
@@ -65,6 +70,8 @@ public sealed class SqlEditorViewModel : ViewModelBase
     private int _activeExecutionStatementEndLine;
     private int _cursorLine = 1;
     private int _cursorColumn = 1;
+    private string _signatureHelpText = string.Empty;
+    private string _hoverDocumentationText = string.Empty;
     private bool _isExplainRunning;
     private string _explainSummaryText = string.Empty;
     private string _explainRawOutput = string.Empty;
@@ -110,12 +117,15 @@ public sealed class SqlEditorViewModel : ViewModelBase
         _commandNotifier = new SqlEditorCommandNotifier();
         _propertyChangePublisher = new SqlEditorPropertyChangePublisher();
         _tabCloseWorkflowService = new SqlEditorTabCloseWorkflowService(_localization);
+        _resultEligibilityDetector = new SqlResultEligibilityDetector();
         _sessionDraftStore = sessionDraftStore ?? new SqlEditorSessionDraftStore();
         _connectionConfigResolver = connectionConfigResolver ?? (() => null);
         _connectionConfigByProfileIdResolver = connectionConfigByProfileIdResolver ?? (_ => _connectionConfigResolver());
         _connectionProfilesResolver = connectionProfilesResolver ?? (() => []);
         _sharedConnectionManagerResolver = sharedConnectionManagerResolver ?? (() => null);
         _completionProvider = completionProvider ?? new SqlCompletionProvider();
+        _signatureHelpService = new SqlSignatureHelpService();
+        _hoverDocumentationService = new SqlHoverDocumentationService();
         _metadataResolver = metadataResolver ?? (() => null);
         _explainExecutor = new ExplainExecutor();
         _executionStatusText = L("sqlEditor.status.ready", "Pronto.");
@@ -155,6 +165,9 @@ public sealed class SqlEditorViewModel : ViewModelBase
         CloseResultsSheetCommand = new RelayCommand(
             CloseResultsSheet,
             () => IsResultsSheetOpen);
+        ReopenResultsSheetCommand = new RelayCommand(
+            OpenResultsSheet,
+            () => CanReopenResultsSheet);
         SyncTabCommands();
     }
 
@@ -181,6 +194,7 @@ public sealed class SqlEditorViewModel : ViewModelBase
     public ICommand OpenConnectionSwitcherCommand { get; }
     public ICommand ExecuteHistoryEntryCommand { get; }
     public ICommand CloseResultsSheetCommand { get; }
+    public ICommand ReopenResultsSheetCommand { get; }
     public IReadOnlyList<DatabaseProvider> AvailableProviders { get; } = Enum.GetValues<DatabaseProvider>();
     public DatabaseProvider ActiveTabProvider
     {
@@ -299,6 +313,8 @@ public sealed class SqlEditorViewModel : ViewModelBase
         IsResultsSheetOpen
         && CurrentResult is not null
         && ((CurrentResult.Data?.Rows.Count ?? 0) > 0 || !string.IsNullOrWhiteSpace(CurrentResult.ErrorMessage));
+    public bool CanReopenResultsSheet => !IsResultsSheetOpen && CurrentResult is not null;
+    public string RestoreResultsButtonText => L("sqlEditor.results.restore", "Restaurar resultados");
 
     public double ResultsSheetHeight
     {
@@ -329,6 +345,14 @@ public sealed class SqlEditorViewModel : ViewModelBase
         return ActiveTab.HiddenResultColumns.Contains(columnName);
     }
 
+    public bool IsResultColumnPinned(string columnName)
+    {
+        if (string.IsNullOrWhiteSpace(columnName))
+            return false;
+
+        return ActiveTab.PinnedResultColumns.Contains(columnName);
+    }
+
     public void HideResultColumn(string columnName)
     {
         if (string.IsNullOrWhiteSpace(columnName))
@@ -349,6 +373,30 @@ public sealed class SqlEditorViewModel : ViewModelBase
 
         ActiveTab.HiddenResultColumns.Clear();
         ActiveTab.HiddenResultColumnsHistory.Clear();
+        RaiseSqlPanelPropertiesChanged();
+    }
+
+    public void SetResultColumnPinned(string columnName, bool pinned)
+    {
+        if (string.IsNullOrWhiteSpace(columnName))
+            return;
+
+        if (pinned)
+            ActiveTab.PinnedResultColumns.Add(columnName);
+        else
+            ActiveTab.PinnedResultColumns.Remove(columnName);
+
+        RaiseSqlPanelPropertiesChanged();
+    }
+
+    public void SetResultColumnOrder(IReadOnlyList<string> orderedColumnNames)
+    {
+        ArgumentNullException.ThrowIfNull(orderedColumnNames);
+
+        ActiveTab.ResultColumnOrder = orderedColumnNames
+            .Where(static name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
         RaiseSqlPanelPropertiesChanged();
     }
 
@@ -519,11 +567,61 @@ public sealed class SqlEditorViewModel : ViewModelBase
             : L("sqlEditor.history.clear", "Limpar historico");
     public string HistoryEmptyText => L("sqlEditor.history.empty", "Execute uma consulta para iniciar o historico.");
     public string MessagesEmptyText => L("sqlEditor.messages.empty", "As mensagens aparecem aqui apos a execucao.");
+    public string SchemaSearchText
+    {
+        get => _schemaSearchText;
+        set
+        {
+            string normalized = value?.Trim() ?? string.Empty;
+            if (!Set(ref _schemaSearchText, normalized))
+                return;
+
+            RaisePropertyChanged(nameof(FilteredSchemaTables));
+            RaisePropertyChanged(nameof(HasFilteredSchemaTables));
+            RaisePropertyChanged(nameof(IsSchemaEmpty));
+            RaisePropertyChanged(nameof(SchemaEmptyText));
+        }
+    }
     public IReadOnlyList<SqlEditorSchemaTableItem> SchemaTables => BuildSchemaTables();
+    public IReadOnlyList<SqlEditorSchemaTableItem> FilteredSchemaTables
+    {
+        get
+        {
+            IReadOnlyList<SqlEditorSchemaTableItem> tables = SchemaTables;
+            if (string.IsNullOrWhiteSpace(SchemaSearchText))
+                return tables;
+
+            string needle = SchemaSearchText.Trim();
+            return tables
+                .Where(table =>
+                    table.FullName.Contains(needle, StringComparison.OrdinalIgnoreCase)
+                    || table.Columns.Any(column =>
+                        column.Name.Contains(needle, StringComparison.OrdinalIgnoreCase)
+                        || column.DataType.Contains(needle, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+        }
+    }
     public bool HasSchemaTables => SchemaTables.Count > 0;
-    public bool IsSchemaEmpty => !HasSchemaTables;
-    public string SchemaEmptyText => L("sqlEditor.schema.empty", "Sem metadados disponiveis. Conecte e recarregue para ver tabelas.");
+    public bool HasFilteredSchemaTables => FilteredSchemaTables.Count > 0;
+    public bool IsSchemaEmpty => !HasFilteredSchemaTables;
+    public string SchemaEmptyText => string.IsNullOrWhiteSpace(SchemaSearchText)
+        ? L("sqlEditor.schema.empty", "Sem metadados disponiveis. Conecte e recarregue para ver tabelas.")
+        : L("sqlEditor.schema.empty.filter", "Nenhum item encontrado para o filtro informado.");
     public IReadOnlyList<SqlEditorResultTab> ResultTabs => ActiveTab.ResultTabs;
+    public SqlEditorOutputPane SelectedOutputPane
+    {
+        get => ActiveTab.SelectedOutputPane;
+        set
+        {
+            if (ActiveTab.SelectedOutputPane == value)
+                return;
+
+            ActiveTab.SelectedOutputPane = value;
+            RaiseSqlPanelPropertiesChanged();
+        }
+    }
+    public bool IsResultsOutputPaneSelected => SelectedOutputPane == SqlEditorOutputPane.Results;
+    public bool IsMessagesOutputPaneSelected => SelectedOutputPane == SqlEditorOutputPane.Messages;
     public int SelectedResultTabIndex
     {
         get => ActiveTab.SelectedResultTabIndex;
@@ -546,6 +644,10 @@ public sealed class SqlEditorViewModel : ViewModelBase
     public bool HasResultRows => ResultRowsView is not null;
     public bool IsResultRowsEmpty => !HasResultRows;
     public string ResultsEmptyText => L("sqlEditor.results.empty", "Execute uma consulta para preencher os resultados.");
+    public IReadOnlyList<SqlEditorMessageEntry> OutputMessages => ActiveTab.OutputMessages;
+    public bool HasOutputMessages => OutputMessages.Count > 0;
+    public bool IsOutputMessagesEmpty => !HasOutputMessages;
+    public string MessagesPanelEmptyText => L("sqlEditor.messages.panel.empty", "Sem mensagens registradas para esta aba.");
     public IReadOnlyList<SqlEditorHistoryEntry> ExecutionHistory => ActiveTab.ExecutionHistory;
     public SqlEditorExecutionTelemetry ExecutionTelemetry => ActiveTab.ExecutionTelemetry;
     public SqlEditorCompletionTelemetry CompletionTelemetry => ActiveTab.CompletionTelemetry;
@@ -831,6 +933,26 @@ public sealed class SqlEditorViewModel : ViewModelBase
 
     public string CursorPositionText => $"Ln {CursorLine}, Col {CursorColumn}";
     public string IndentationStatusText => L("sqlEditor.status.indentation", "Espacos: 2");
+    public string SignatureHelpText
+    {
+        get => _signatureHelpText;
+        private set
+        {
+            if (Set(ref _signatureHelpText, value))
+                RaisePropertyChanged(nameof(HasSignatureHelp));
+        }
+    }
+    public bool HasSignatureHelp => !string.IsNullOrWhiteSpace(SignatureHelpText);
+    public string HoverDocumentationText
+    {
+        get => _hoverDocumentationText;
+        private set
+        {
+            if (Set(ref _hoverDocumentationText, value))
+                RaisePropertyChanged(nameof(HasHoverDocumentation));
+        }
+    }
+    public bool HasHoverDocumentation => !string.IsNullOrWhiteSpace(HoverDocumentationText);
     public string ActiveProviderStatusText
     {
         get
@@ -1013,6 +1135,28 @@ public sealed class SqlEditorViewModel : ViewModelBase
             RaisePropertyChanged(nameof(CursorPositionText));
     }
 
+    public void UpdateSignatureHelp(string fullText, int caretOffset)
+    {
+        SignatureHelpInfo? help = _signatureHelpService.TryResolve(fullText, caretOffset, ActiveTabProvider);
+        SignatureHelpText = help?.DisplayText ?? string.Empty;
+    }
+
+    public void UpdateHoverDocumentation(string fullText, int caretOffset)
+    {
+        DbMetadata? metadata = _metadataResolver();
+        HoverDocumentationInfo? help = _hoverDocumentationService.TryResolve(
+            fullText,
+            caretOffset,
+            metadata,
+            ActiveTabProvider);
+        HoverDocumentationText = help?.DisplayText ?? string.Empty;
+    }
+
+    public void ClearHoverDocumentation()
+    {
+        HoverDocumentationText = string.Empty;
+    }
+
     public async Task<IReadOnlyList<SqlEditorResultSet>> ExecuteAllAsync(int maxRows = 1000)
     {
         _executionCts?.Cancel();
@@ -1088,10 +1232,20 @@ public sealed class SqlEditorViewModel : ViewModelBase
         }
     }
 
-    public async Task RunExplainAsync(bool includeAnalyze = false)
+    public ConnectionConfig? GetActiveConnectionConfigForTools()
     {
-        string sql = ActiveTab.SqlText?.Trim() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(sql))
+        return ResolveConnectionConfigForActiveTab();
+    }
+
+    public Task RunExplainAsync(bool includeAnalyze = false)
+    {
+        return RunExplainForSqlAsync(ActiveTab.SqlText, includeAnalyze);
+    }
+
+    public async Task RunExplainForSqlAsync(string? sql, bool includeAnalyze = false)
+    {
+        string statement = sql?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(statement))
         {
             ExplainSummaryText = L("sqlEditor.explain.empty", "Nada para explicar. Escreva um SQL primeiro.");
             ExplainRawOutput = string.Empty;
@@ -1107,7 +1261,7 @@ public sealed class SqlEditorViewModel : ViewModelBase
         try
         {
             ExplainResult result = await _explainExecutor.RunAsync(
-                sql,
+                statement,
                 ActiveTabProvider,
                 ResolveConnectionConfigForActiveTab(),
                 new ExplainOptions(IncludeAnalyze: includeAnalyze, IncludeBuffers: false, Format: ExplainFormat.Text),
@@ -1125,10 +1279,18 @@ public sealed class SqlEditorViewModel : ViewModelBase
                 planning,
                 execution);
             ExplainRawOutput = result.RawOutput;
+            AppendOutputMessage(
+                source: "Explain",
+                title: ExplainSummaryText,
+                detail: result.RawOutput,
+                isError: false,
+                relatedSql: statement,
+                focusMessagesPane: false);
         }
         catch (OperationCanceledException)
         {
             ExplainSummaryText = L("sqlEditor.explain.canceled", "Explain cancelado.");
+            AppendOutputMessage("Explain", ExplainSummaryText, null, false, statement, false);
         }
         catch (Exception ex)
         {
@@ -1136,6 +1298,7 @@ public sealed class SqlEditorViewModel : ViewModelBase
                 L("sqlEditor.explain.failed", "Falha ao executar explain: {0}"),
                 ex.Message);
             ExplainRawOutput = string.Empty;
+            AppendOutputMessage("Explain", ExplainSummaryText, ex.Message, true, statement, true);
         }
         finally
         {
@@ -1143,10 +1306,19 @@ public sealed class SqlEditorViewModel : ViewModelBase
         }
     }
 
-    public async Task RunBenchmarkAsync(int iterations = 8, int warmupIterations = 2, int intervalMs = 0)
+    public Task RunBenchmarkAsync(int iterations = 8, int warmupIterations = 2, int intervalMs = 0)
     {
-        string sql = ActiveTab.SqlText?.Trim() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(sql))
+        return RunBenchmarkForSqlAsync(ActiveTab.SqlText, iterations, warmupIterations, intervalMs);
+    }
+
+    public async Task RunBenchmarkForSqlAsync(
+        string? sql,
+        int iterations = 8,
+        int warmupIterations = 2,
+        int intervalMs = 0)
+    {
+        string statement = sql?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(statement))
         {
             BenchmarkSummaryText = L("sqlEditor.benchmark.empty", "Nada para medir. Escreva um SQL primeiro.");
             return;
@@ -1161,7 +1333,7 @@ public sealed class SqlEditorViewModel : ViewModelBase
 
         var iterationExecutor = new AdaptiveBenchmarkIterationExecutor(
             connectionResolver: ResolveConnectionConfigForActiveTab,
-            sqlResolver: () => ActiveTab.SqlText ?? string.Empty);
+            sqlResolver: () => statement);
         var runner = new BenchmarkRunner(iterationExecutor);
         var executionService = new BenchmarkExecutionService(runner);
 
@@ -1180,16 +1352,25 @@ public sealed class SqlEditorViewModel : ViewModelBase
             _latestBenchmarkResult = result;
             BenchmarkSummaryText = result.Summary;
             BenchmarkProgressText = L("sqlEditor.benchmark.finished", "Benchmark concluido.");
+            AppendOutputMessage(
+                source: "Benchmark",
+                title: BenchmarkProgressText,
+                detail: BenchmarkSummaryText,
+                isError: false,
+                relatedSql: statement,
+                focusMessagesPane: false);
         }
         catch (OperationCanceledException)
         {
             BenchmarkProgressText = L("sqlEditor.benchmark.canceled", "Benchmark cancelado.");
+            AppendOutputMessage("Benchmark", BenchmarkProgressText, null, false, statement, false);
         }
         catch (Exception ex)
         {
             BenchmarkSummaryText = string.Format(
                 L("sqlEditor.benchmark.failed", "Falha no benchmark: {0}"),
                 ex.Message);
+            AppendOutputMessage("Benchmark", BenchmarkSummaryText, ex.Message, true, statement, true);
         }
         finally
         {
@@ -1257,6 +1438,20 @@ public sealed class SqlEditorViewModel : ViewModelBase
         ExecutionStatusText = L("sqlEditor.status.historyLoaded", "Instrucao do historico carregada no editor.");
         ExecutionDetailText = null;
         HasExecutionError = false;
+        RaiseTabStateChanged();
+    }
+
+    public void AppendTextToEditor(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+
+        string suffix = ActiveTab.SqlText.EndsWith('\n') || string.IsNullOrWhiteSpace(ActiveTab.SqlText)
+            ? string.Empty
+            : Environment.NewLine;
+        ActiveTab.SqlText = $"{ActiveTab.SqlText}{suffix}{text}";
+        ActiveTab.IsDirty = true;
+        NotifyActiveTabEdited();
         RaiseTabStateChanged();
     }
 
@@ -1409,6 +1604,7 @@ public sealed class SqlEditorViewModel : ViewModelBase
             CancelPendingCloseTabCommand);
 
         (CloseResultsSheetCommand as RelayCommand)?.NotifyCanExecuteChanged();
+        (ReopenResultsSheetCommand as RelayCommand)?.NotifyCanExecuteChanged();
         (OpenConnectionSwitcherCommand as RelayCommand)?.NotifyCanExecuteChanged();
         (ExecuteHistoryEntryCommand as RelayCommand<SqlEditorHistoryEntry>)?.NotifyCanExecuteChanged();
     }
@@ -1498,12 +1694,60 @@ public sealed class SqlEditorViewModel : ViewModelBase
         ExecutionStatusText = statusText;
         ExecutionDetailText = detailText;
         HasExecutionError = hasError;
+        AppendOutputMessage(
+            source: L("sqlEditor.messages.source.status", "Status"),
+            title: statusText,
+            detail: detailText,
+            isError: hasError,
+            relatedSql: null,
+            focusMessagesPane: hasError);
+    }
+
+    public SqlInlineEditEligibility EvaluateInlineEditEligibility(DataTable table)
+    {
+        SqlEditorResultSet? result = CurrentResult;
+        if (result is null)
+            return SqlInlineEditEligibility.NotEligible;
+
+        DbMetadata? metadata = _metadataResolver();
+        ConnectionConfig? config = ResolveConnectionConfigForActiveTab();
+        return _resultEligibilityDetector.Evaluate(result.StatementSql, table, metadata, config);
+    }
+
+    public async Task<SqlEditorResultSet> ExecuteInlineUpdateAsync(string updateSql, CancellationToken ct = default)
+    {
+        ConnectionConfig? config = ResolveConnectionConfigForActiveTab();
+        SqlEditorResultSet result = await _executionService.ExecuteAsync(updateSql, config, maxRows: 1, ct);
+        UpdateExecutionFeedback(result);
+        RaiseSqlPanelPropertiesChanged();
+        return result;
     }
 
     private void StoreResult(SqlEditorResultSet result)
     {
         _isHistoryClearConfirmationPending = false;
         _resultStateService.AppendResult(ActiveTab, result);
+        if (!result.Success)
+        {
+            AppendOutputMessage(
+                source: L("sqlEditor.messages.source.execution", "Execucao"),
+                title: result.ErrorMessage ?? L("sqlEditor.status.failed", "Execution failed."),
+                detail: result.StatementSql,
+                isError: true,
+                relatedSql: result.StatementSql,
+                focusMessagesPane: true);
+        }
+        else
+        {
+            string rows = result.RowsAffected?.ToString() ?? "-";
+            AppendOutputMessage(
+                source: L("sqlEditor.messages.source.execution", "Execucao"),
+                title: string.Format(L("sqlEditor.messages.execution.ok", "Instrucao executada. Linhas: {0}"), rows),
+                detail: string.Format(L("sqlEditor.messages.execution.time", "Tempo: {0} ms"), Math.Round(result.ExecutionTime.TotalMilliseconds)),
+                isError: false,
+                relatedSql: result.StatementSql,
+                focusMessagesPane: false);
+        }
         PersistExecutionHistoryForActiveProfileAsync();
         SelectedExecutionHistoryEntry = ActiveTab.ExecutionHistory.FirstOrDefault();
         RaisePropertyChanged(nameof(CanExportReport));
@@ -1607,6 +1851,10 @@ public sealed class SqlEditorViewModel : ViewModelBase
         RaisePropertyChanged(nameof(ActiveProviderStatusText));
         RaisePropertyChanged(nameof(ExecuteOrCancelTooltipText));
         RaisePropertyChanged(nameof(CursorPositionTooltipText));
+        RaisePropertyChanged(nameof(SignatureHelpText));
+        RaisePropertyChanged(nameof(HasSignatureHelp));
+        RaisePropertyChanged(nameof(HoverDocumentationText));
+        RaisePropertyChanged(nameof(HasHoverDocumentation));
         NotifyCommands();
     }
 
@@ -1665,11 +1913,53 @@ public sealed class SqlEditorViewModel : ViewModelBase
     private void OpenResultsSheet()
     {
         IsResultsSheetOpen = true;
+        NotifyCommands();
     }
 
     private void CloseResultsSheet()
     {
         IsResultsSheetOpen = false;
+        NotifyCommands();
+    }
+
+    public void ClearOutputMessages()
+    {
+        if (ActiveTab.OutputMessages.Count == 0)
+            return;
+
+        ActiveTab.OutputMessages = [];
+        RaiseSqlPanelPropertiesChanged();
+    }
+
+    private void AppendOutputMessage(
+        string source,
+        string title,
+        string? detail,
+        bool isError,
+        string? relatedSql,
+        bool focusMessagesPane)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+            return;
+
+        var entry = new SqlEditorMessageEntry(
+            Timestamp: DateTimeOffset.Now,
+            Source: source,
+            Title: title,
+            Detail: detail,
+            IsError: isError,
+            Sql: relatedSql);
+
+        List<SqlEditorMessageEntry> list = ActiveTab.OutputMessages.ToList();
+        list.Insert(0, entry);
+        if (list.Count > 500)
+            list = list.Take(500).ToList();
+        ActiveTab.OutputMessages = list;
+
+        if (focusMessagesPane)
+            ActiveTab.SelectedOutputPane = SqlEditorOutputPane.Messages;
+
+        RaiseSqlPanelPropertiesChanged();
     }
 
     private void SyncDialectFromConnection()
@@ -1838,12 +2128,147 @@ public sealed class SqlEditorViewModel : ViewModelBase
                         Name = column.Name,
                         DataType = column.DataType,
                         IsPrimaryKey = column.IsPrimaryKey,
+                        IsForeignKey = column.IsForeignKey,
+                        IsIndexed = column.IsIndexed,
+                        IsUnique = column.IsUnique,
+                        RelatedTable = ResolveRelatedTable(table.FullName, column.Name, metadata),
+                        TypeIcon = ResolveTypeIcon(column),
                     })
                     .ToList(),
+                PrimaryKeyCount = table.Columns.Count(column => column.IsPrimaryKey),
+                ForeignKeyCount = table.Columns.Count(column => column.IsForeignKey),
+                IndexedColumnCount = table.Columns.Count(column => column.IsIndexed),
             }))
             .OrderBy(table => table.Schema)
             .ThenBy(table => table.Name)
             .ToList();
+    }
+
+    public IReadOnlyList<ForeignKeyRelation> ResolveColumnRelationships(string columnName)
+    {
+        if (string.IsNullOrWhiteSpace(columnName))
+            return [];
+
+        DbMetadata? metadata = _metadataResolver();
+        if (metadata is null)
+            return [];
+
+        string? tableFullName = ResolveResultSourceTableFullName(metadata);
+        if (string.IsNullOrWhiteSpace(tableFullName))
+            return [];
+
+        return metadata.AllForeignKeys
+            .Where(fk =>
+                (fk.ChildFullTable.Equals(tableFullName, StringComparison.OrdinalIgnoreCase)
+                 && fk.ChildColumn.Equals(columnName, StringComparison.OrdinalIgnoreCase))
+                || (fk.ParentFullTable.Equals(tableFullName, StringComparison.OrdinalIgnoreCase)
+                    && fk.ParentColumn.Equals(columnName, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+    }
+
+    public SqlEditorSchemaColumnItem? ResolveResultSchemaColumn(string columnName)
+    {
+        if (string.IsNullOrWhiteSpace(columnName))
+            return null;
+
+        DbMetadata? metadata = _metadataResolver();
+        if (metadata is null)
+            return null;
+
+        string? tableFullName = ResolveResultSourceTableFullName(metadata);
+        if (!string.IsNullOrWhiteSpace(tableFullName))
+        {
+            TableMetadata? table = metadata.FindTable(tableFullName);
+            ColumnMetadata? column = table?.Columns.FirstOrDefault(c =>
+                c.Name.Equals(columnName, StringComparison.OrdinalIgnoreCase));
+            if (column is not null)
+            {
+                return new SqlEditorSchemaColumnItem
+                {
+                    Name = column.Name,
+                    DataType = column.DataType,
+                    IsPrimaryKey = column.IsPrimaryKey,
+                    IsForeignKey = column.IsForeignKey,
+                    IsIndexed = column.IsIndexed,
+                    IsUnique = column.IsUnique,
+                    RelatedTable = ResolveRelatedTable(tableFullName, column.Name, metadata),
+                    TypeIcon = ResolveTypeIcon(column),
+                };
+            }
+        }
+
+        List<(TableMetadata Table, ColumnMetadata Column)> candidates = metadata.AllTables
+            .SelectMany(table => table.Columns
+                .Where(column => column.Name.Equals(columnName, StringComparison.OrdinalIgnoreCase))
+                .Select(column => (table, column)))
+            .Take(2)
+            .ToList();
+        if (candidates.Count != 1)
+            return null;
+
+        (TableMetadata candidateTable, ColumnMetadata candidateColumn) = candidates[0];
+        return new SqlEditorSchemaColumnItem
+        {
+            Name = candidateColumn.Name,
+            DataType = candidateColumn.DataType,
+            IsPrimaryKey = candidateColumn.IsPrimaryKey,
+            IsForeignKey = candidateColumn.IsForeignKey,
+            IsIndexed = candidateColumn.IsIndexed,
+            IsUnique = candidateColumn.IsUnique,
+            RelatedTable = ResolveRelatedTable(candidateTable.FullName, candidateColumn.Name, metadata),
+            TypeIcon = ResolveTypeIcon(candidateColumn),
+        };
+    }
+
+    private string? ResolveResultSourceTableFullName(DbMetadata metadata)
+    {
+        SqlEditorResultSet? result = CurrentResult;
+        if (result is null)
+            return null;
+
+        DataTable? resultData = result.Data;
+        if (resultData is null)
+            return null;
+
+        SqlInlineEditEligibility eligibility = _resultEligibilityDetector.Evaluate(
+            result.StatementSql,
+            resultData,
+            metadata,
+            ResolveConnectionConfigForActiveTab());
+        if (eligibility.IsEligible && !string.IsNullOrWhiteSpace(eligibility.TableFullName))
+            return eligibility.TableFullName;
+
+        return null;
+    }
+
+    private static string? ResolveRelatedTable(string tableFullName, string columnName, DbMetadata metadata)
+    {
+        ForeignKeyRelation? relation = metadata.AllForeignKeys.FirstOrDefault(fk =>
+            fk.ChildFullTable.Equals(tableFullName, StringComparison.OrdinalIgnoreCase)
+            && fk.ChildColumn.Equals(columnName, StringComparison.OrdinalIgnoreCase));
+        if (relation is not null)
+            return $"{relation.ParentFullTable}.{relation.ParentColumn}";
+
+        relation = metadata.AllForeignKeys.FirstOrDefault(fk =>
+            fk.ParentFullTable.Equals(tableFullName, StringComparison.OrdinalIgnoreCase)
+            && fk.ParentColumn.Equals(columnName, StringComparison.OrdinalIgnoreCase));
+        return relation is null ? null : $"{relation.ChildFullTable}.{relation.ChildColumn}";
+    }
+
+    private static MaterialIconKind ResolveTypeIcon(ColumnMetadata column)
+    {
+        return column.SemanticType switch
+        {
+            ColumnSemanticType.Numeric => MaterialIconKind.Numeric,
+            ColumnSemanticType.Text => MaterialIconKind.AlphabeticalVariant,
+            ColumnSemanticType.DateTime => MaterialIconKind.CalendarClock,
+            ColumnSemanticType.Boolean => MaterialIconKind.ToggleSwitchOutline,
+            ColumnSemanticType.Guid => MaterialIconKind.Fingerprint,
+            ColumnSemanticType.Document => MaterialIconKind.CodeJson,
+            ColumnSemanticType.Binary => MaterialIconKind.FileDocumentOutline,
+            ColumnSemanticType.Spatial => MaterialIconKind.MapMarkerPath,
+            _ => MaterialIconKind.TableColumn,
+        };
     }
 
     private string MutationConfirmationRequiredError() =>
@@ -1970,6 +2395,33 @@ public sealed class SqlEditorViewModel : ViewModelBase
         }
 
         return -1;
+    }
+
+    public bool ReorderTabs(string? sourceTabId, string? targetTabId)
+    {
+        if (string.IsNullOrWhiteSpace(sourceTabId) || string.IsNullOrWhiteSpace(targetTabId))
+            return false;
+
+        if (string.Equals(sourceTabId, targetTabId, StringComparison.Ordinal))
+            return false;
+
+        int sourceIndex = EditorTabs
+            .Select((tab, index) => new { tab, index })
+            .FirstOrDefault(x => string.Equals(x.tab.Id, sourceTabId, StringComparison.Ordinal))
+            ?.index ?? -1;
+        int targetIndex = EditorTabs
+            .Select((tab, index) => new { tab, index })
+            .FirstOrDefault(x => string.Equals(x.tab.Id, targetTabId, StringComparison.Ordinal))
+            ?.index ?? -1;
+
+        if (sourceIndex < 0 || targetIndex < 0)
+            return false;
+
+        if (!Tabs.MoveTab(sourceIndex, targetIndex))
+            return false;
+
+        RaiseTabStateChanged();
+        return true;
     }
 
     private void RestoreOrInitializeTabs(DatabaseProvider initialProvider, string? initialConnectionProfileId)

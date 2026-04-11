@@ -54,7 +54,8 @@
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch"/>
 
-    <Border Width="1180"
+        <Border IsVisible="{Binding ShowShellCard}"
+          Width="1180"
             MaxWidth="1180"
             Height="700"
             MaxHeight="700"
@@ -109,10 +110,28 @@
         </Border>
 
         <Grid Grid.Row="2">
-          <Border IsVisible="{Binding ShowQueryPrimaryContent}">
-            <ctrl:DataPreviewPanel x:Name="PreviewPanel"
-                                   DataContext="{Binding QueryDataPreview}"
-                                   ShowCloseButton="False"/>
+          <Border IsVisible="{Binding ShowQueryPrimaryContent}"
+                  Background="{StaticResource Bg0Brush}"
+                  Padding="12">
+            <Grid RowDefinitions="Auto,*">
+              <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+                <TextBlock FontSize="{StaticResource FontSizeCaption}"
+                           Foreground="{StaticResource TextSecondaryBrush}">
+                  <Run Text="{Binding [preview.providerLabel], Source={x:Static loc:LocalizationService.Instance}}"/>
+                  <Run Text=": "/>
+                  <Run Text="{Binding QueryProviderLabel}"/>
+                </TextBlock>
+              </StackPanel>
+
+              <ae:TextEditor Grid.Row="1"
+                             Name="QuerySqlEditor"
+                             Classes="ddl-output"
+                             IsReadOnly="True"
+                             ShowLineNumbers="True"
+                             WordWrap="False"
+                             HorizontalScrollBarVisibility="Auto"
+                             VerticalScrollBarVisibility="Auto"/>
+            </Grid>
           </Border>
 
           <Border IsVisible="{Binding ShowDdlPrimaryContent}"
@@ -180,5 +199,19 @@
         </Border>
       </Grid>
     </Border>
+
+    <Panel IsVisible="{Binding ShowSqlBenchmarkPrimaryContent}"
+           HorizontalAlignment="Center"
+           VerticalAlignment="Center"
+           ZIndex="91">
+      <ctrl:BenchmarkOverlay DataContext="{Binding BenchmarkTool}"/>
+    </Panel>
+
+    <Panel IsVisible="{Binding ShowSqlExplainPrimaryContent}"
+           HorizontalAlignment="Center"
+           VerticalAlignment="Center"
+           ZIndex="91">
+      <ctrl:ExplainPlanOverlay DataContext="{Binding ExplainPlanTool}"/>
+    </Panel>
   </Panel>
 </UserControl>

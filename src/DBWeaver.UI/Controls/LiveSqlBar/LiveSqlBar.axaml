@@ -8,6 +8,7 @@
              xmlns:loc="using:DBWeaver.UI.Services.Localization"
              xmlns:mi="using:Material.Icons.Avalonia"
              x:Class="DBWeaver.UI.Controls.LiveSqlBar"
+             x:Name="Root"
              x:DataType="vm:LiveSqlBarViewModel">
 
   <UserControl.Resources>
@@ -362,13 +363,14 @@
         </ItemsControl.ItemTemplate>
       </ItemsControl>
 
-      <Border Grid.Row="5"
+            <Border Grid.Row="5"
               Margin="12,2,12,10"
               Padding="10,10"
               Background="{StaticResource Bg1Brush}"
               BorderBrush="{StaticResource BorderBrush}"
               BorderThickness="1"
-              CornerRadius="{StaticResource RadiusMD}">
+              CornerRadius="{StaticResource RadiusMD}"
+                IsVisible="{ReflectionBinding ShowPerformanceTools, ElementName=Root}">
         <Grid ColumnDefinitions="*,Auto,Auto,*">
           <TextBlock Grid.Column="0"
                      Text="{Binding [liveSql.actionsHint], Source={x:Static loc:LocalizationService.Instance}, FallbackValue=Performance tools}"

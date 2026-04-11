@@ -19,8 +19,12 @@ public sealed class SqlEditorTabState
     public IReadOnlyList<SqlEditorResultTab> ResultTabs { get; set; } = [];
     public int SelectedResultTabIndex { get; set; } = -1;
     public int ResultTabCounter { get; set; }
+    public SqlEditorOutputPane SelectedOutputPane { get; set; } = SqlEditorOutputPane.Results;
+    public IReadOnlyList<SqlEditorMessageEntry> OutputMessages { get; set; } = [];
     public HashSet<string> HiddenResultColumns { get; set; } = [];
     public List<string> HiddenResultColumnsHistory { get; set; } = [];
+    public HashSet<string> PinnedResultColumns { get; set; } = [];
+    public List<string> ResultColumnOrder { get; set; } = [];
     public string ResultGridFilterText { get; set; } = string.Empty;
     public bool IsResultGridFilterHydratedFromSettings { get; set; }
     public string? ResultGridSortColumn { get; set; }

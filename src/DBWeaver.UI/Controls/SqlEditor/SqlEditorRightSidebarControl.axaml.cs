@@ -100,30 +100,6 @@ public partial class SqlEditorRightSidebarControl : UserControl
         e.Handled = true;
     }
 
-    private void ExplainButton_Click(object? sender, RoutedEventArgs e)
-    {
-        if (DataContext is not SqlEditorViewModel vm)
-            return;
-
-        _ = vm.RunExplainAsync(includeAnalyze: false);
-    }
-
-    private void BenchmarkButton_Click(object? sender, RoutedEventArgs e)
-    {
-        if (DataContext is not SqlEditorViewModel vm)
-            return;
-
-        _ = vm.RunBenchmarkAsync();
-    }
-
-    private void BenchmarkCancelButton_Click(object? sender, RoutedEventArgs e)
-    {
-        if (DataContext is not SqlEditorViewModel vm)
-            return;
-
-        vm.CancelBenchmark();
-    }
-
     private static string L(string key, string fallback)
     {
         string value = LocalizationService.Instance[key];

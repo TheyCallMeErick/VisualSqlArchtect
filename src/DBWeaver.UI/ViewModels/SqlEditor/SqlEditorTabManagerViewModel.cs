@@ -84,6 +84,23 @@ public sealed class SqlEditorTabManagerViewModel : ViewModelBase
         return newActive;
     }
 
+    public bool MoveTab(int sourceIndex, int targetIndex)
+    {
+        if (sourceIndex < 0 || sourceIndex >= Tabs.Count)
+            return false;
+
+        if (targetIndex < 0 || targetIndex >= Tabs.Count)
+            return false;
+
+        if (sourceIndex == targetIndex)
+            return false;
+
+        SqlEditorTabState activeTab = GetActiveTab();
+        Tabs.Move(sourceIndex, targetIndex);
+        ActiveTabIndex = Tabs.IndexOf(activeTab);
+        return true;
+    }
+
     public void ReceiveFromCanvas(string sql, DatabaseProvider provider)
     {
         SqlEditorTabState activeTab = GetActiveTab();

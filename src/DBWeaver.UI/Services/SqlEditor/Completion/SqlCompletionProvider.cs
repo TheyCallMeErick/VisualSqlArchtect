@@ -63,7 +63,7 @@ public sealed class SqlCompletionProvider
 
         if (metadata is not null)
         {
-            if (IsTableContext(completionContext))
+            if (ShouldOfferTableSuggestions(completionContext))
                 suggestions.AddRange(SuggestTables(metadata));
 
             if (IsJoinContext(completionContext))
@@ -72,7 +72,7 @@ public sealed class SqlCompletionProvider
             string? qualifier = TryGetQualifier(beforeCaret, prefixStart);
             if (!string.IsNullOrWhiteSpace(qualifier))
                 suggestions.AddRange(SuggestColumnsForQualifier(metadata, symbolTable, qualifier));
-            else if (IsColumnContext(completionContext))
+            else if (ShouldOfferColumnSuggestions(completionContext, symbolTable, prefix))
                 suggestions.AddRange(SuggestColumnsInScope(metadata, symbolTable));
         }
 
@@ -151,22 +151,22 @@ public sealed class SqlCompletionProvider
     [
         new(
             "SELECT ... FROM ...",
-            "SELECT\n  \nFROM ",
+            "SELECT\n  $1\nFROM $2$0",
             "Basic query skeleton",
             SqlCompletionKind.Snippet),
         new(
             "SELECT ... FROM ... WHERE ...",
-            "SELECT\n  \nFROM \nWHERE ",
+            "SELECT\n  $1\nFROM $2\nWHERE $3$0",
             "Query skeleton with filter",
             SqlCompletionKind.Snippet),
         new(
             "INSERT INTO ... VALUES ...",
-            "INSERT INTO \n(\n  \n)\nVALUES\n(\n  \n);",
+            "INSERT INTO $1\n(\n  $2\n)\nVALUES\n(\n  $3\n);$0",
             "Insert statement skeleton",
             SqlCompletionKind.Snippet),
         new(
             "UPDATE ... SET ... WHERE ...",
-            "UPDATE \nSET \nWHERE ;",
+            "UPDATE $1\nSET $2\nWHERE $3;$0",
             "Update statement skeleton",
             SqlCompletionKind.Snippet),
     ];
@@ -351,6 +351,28 @@ public sealed class SqlCompletionProvider
             or SqlCompletionContext.GroupByClause
             or SqlCompletionContext.HavingClause
             or SqlCompletionContext.UpdateSetClause;
+    }
+
+    private static bool ShouldOfferTableSuggestions(SqlCompletionContext context)
+    {
+        return IsTableContext(context)
+            || context is SqlCompletionContext.SelectList or SqlCompletionContext.Unknown;
+    }
+
+    private static bool ShouldOfferColumnSuggestions(
+        SqlCompletionContext context,
+        SqlSymbolTable symbolTable,
+        string prefix)
+    {
+        if (IsColumnContext(context))
+            return true;
+
+        if (context == SqlCompletionContext.Unknown && symbolTable.BindingsInOrder.Count > 0)
+            return true;
+
+        return context == SqlCompletionContext.SelectList
+               && symbolTable.BindingsInOrder.Count > 0
+               && !string.IsNullOrWhiteSpace(prefix);
     }
 
     private static string? TryGetQualifier(string beforeCaret, int prefixStart)
