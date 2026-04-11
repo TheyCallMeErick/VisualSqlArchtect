@@ -1,18 +1,24 @@
 using Avalonia.Controls;
+using Avalonia;
 using Avalonia.Media;
 using AvaloniaEdit.CodeCompletion;
 using AvaloniaEdit.Document;
 using AvaloniaEdit.Editing;
 using Material.Icons;
+using Material.Icons.Avalonia;
 
 namespace DBWeaver.UI.Services.SqlEditor;
 
 public sealed class SqlEditorCompletionData : ICompletionData
 {
+    private static readonly IBrush CompletionForegroundBrush = new SolidColorBrush(Color.Parse("#E2E7EF"));
+    private static readonly IBrush CompletionDescriptionBrush = new SolidColorBrush(Color.Parse("#A6B3C8"));
+
     private readonly string _insertText;
+    private readonly string _acceptedLabel;
     private readonly SqlCompletionKind _kind;
     private readonly int _prefixLength;
-    private readonly SqlEditorCompletionItemContent _content;
+    private readonly Control _content;
     private readonly Action<string>? _acceptedCallback;
 
     public SqlEditorCompletionData(
@@ -23,19 +29,19 @@ public sealed class SqlEditorCompletionData : ICompletionData
         int prefixLength,
         Action<string>? acceptedCallback = null)
     {
-        Text = label;
-        _insertText = insertText;
+        string normalizedLabel = ResolveDisplayLabel(label, insertText, description);
+        string normalizedInsertText = string.IsNullOrWhiteSpace(insertText)
+            ? normalizedLabel
+            : insertText;
+
+        _acceptedLabel = normalizedLabel;
+        Text = $"{ResolveKindGlyph(kind)} {normalizedLabel}";
+        _insertText = normalizedInsertText;
         string normalizedDescription = description ?? string.Empty;
         Description = normalizedDescription;
         _kind = kind;
         _prefixLength = Math.Max(0, prefixLength);
-        _content = new SqlEditorCompletionItemContent(
-            label,
-            normalizedDescription,
-            kind,
-            ResolveIconKind(kind),
-            ResolveIconForeground(kind),
-            ResolveLabelForeground(kind));
+        _content = BuildContent(normalizedLabel, normalizedDescription, _kind);
         _acceptedCallback = acceptedCallback;
     }
 
@@ -73,7 +79,7 @@ public sealed class SqlEditorCompletionData : ICompletionData
             SqlEditorSnippetTabStopSessionStore.Clear(textArea.Document);
         }
 
-        _acceptedCallback?.Invoke(Text);
+        _acceptedCallback?.Invoke(_acceptedLabel);
     }
 
     private static MaterialIconKind ResolveIconKind(SqlCompletionKind kind)
@@ -115,6 +121,95 @@ public sealed class SqlEditorCompletionData : ICompletionData
             SqlCompletionKind.Snippet => new SolidColorBrush(Color.Parse("#F1DBFF")),
             SqlCompletionKind.Join => new SolidColorBrush(Color.Parse("#CCF4F8")),
             _ => new SolidColorBrush(Color.Parse("#E2E7EF")),
+        };
+    }
+
+    private static Control BuildContent(string label, string description, SqlCompletionKind kind)
+    {
+        MaterialIconKind iconKind = ResolveIconKind(kind);
+        IBrush iconForeground = ResolveIconForeground(kind);
+        IBrush labelForeground = ResolveLabelForeground(kind);
+
+        var icon = new MaterialIcon
+        {
+            Kind = iconKind,
+            Width = 12,
+            Height = 12,
+            Foreground = iconForeground,
+            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+        };
+
+        var iconHost = new Border
+        {
+            Width = 18,
+            Height = 18,
+            CornerRadius = new CornerRadius(4),
+            Background = new SolidColorBrush(Color.Parse("#1A2436")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#2C3B58")),
+            BorderThickness = new Thickness(1),
+            Child = icon,
+        };
+
+        var labelBlock = new TextBlock
+        {
+            Text = label,
+            Foreground = labelForeground,
+            FontWeight = FontWeight.SemiBold,
+        };
+
+        var descriptionBlock = new TextBlock
+        {
+            Text = string.IsNullOrWhiteSpace(description) ? string.Empty : description,
+            Foreground = CompletionDescriptionBrush,
+            FontSize = 11,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            MaxWidth = 360,
+            IsVisible = !string.IsNullOrWhiteSpace(description),
+        };
+
+        var textStack = new StackPanel
+        {
+            Spacing = 1,
+            Children = { labelBlock, descriptionBlock },
+        };
+
+        var row = new StackPanel
+        {
+            Orientation = Avalonia.Layout.Orientation.Horizontal,
+            Spacing = 8,
+            MinWidth = 280,
+            Children = { iconHost, textStack },
+        };
+
+        return row;
+    }
+
+    private static string ResolveDisplayLabel(string? label, string? insertText, string? description)
+    {
+        if (!string.IsNullOrWhiteSpace(label))
+            return label;
+
+        if (!string.IsNullOrWhiteSpace(insertText))
+            return insertText;
+
+        if (!string.IsNullOrWhiteSpace(description))
+            return description;
+
+        return "(completion)";
+    }
+
+    private static string ResolveKindGlyph(SqlCompletionKind kind)
+    {
+        return kind switch
+        {
+            SqlCompletionKind.Keyword => "[K]",
+            SqlCompletionKind.Table => "[T]",
+            SqlCompletionKind.Column => "[C]",
+            SqlCompletionKind.Function => "[F]",
+            SqlCompletionKind.Snippet => "[S]",
+            SqlCompletionKind.Join => "[J]",
+            _ => "[•]",
         };
     }
 }

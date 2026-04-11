@@ -8,13 +8,20 @@ namespace DBWeaver.UI.Services.SqlEditor;
 
 public sealed class SqlEditorCompletionLoadingData : ICompletionData
 {
-    private readonly SqlEditorCompletionLoadingContent _content;
+    private static readonly IBrush LoadingForegroundBrush = new SolidColorBrush(Color.Parse("#B8C3D9"));
+    private readonly TextBlock _content;
 
     public SqlEditorCompletionLoadingData(string message)
     {
-        Text = message;
-        Description = message;
-        _content = new SqlEditorCompletionLoadingContent(message);
+        string normalized = string.IsNullOrWhiteSpace(message) ? "Carregando sugestoes..." : message;
+        Text = normalized;
+        Description = normalized;
+        _content = new TextBlock
+        {
+            Text = normalized,
+            Foreground = LoadingForegroundBrush,
+            FontStyle = FontStyle.Italic,
+        };
     }
 
     public IImage? Image => null;

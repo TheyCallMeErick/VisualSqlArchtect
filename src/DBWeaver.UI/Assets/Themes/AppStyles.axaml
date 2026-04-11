@@ -345,6 +345,10 @@
   </Style>
 
   <!-- ComboBox / ListBoxItem keyboard focus -->
+  <Style Selector="PopupRoot ListBoxItem">
+    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+  </Style>
+
   <Style Selector="ListBoxItem:focus-visible">
     <Setter Property="BorderBrush"     Value="{StaticResource BorderFocusBrush}"/>
     <Setter Property="BorderThickness" Value="1"/>

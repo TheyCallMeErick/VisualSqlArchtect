@@ -84,6 +84,9 @@ public sealed class SqlCompletionProvider
             connectionProfileId);
 
         IEnumerable<SqlCompletionSuggestion> filtered = ranked
+            .Where(static suggestion =>
+                !string.IsNullOrWhiteSpace(suggestion.Label)
+                || !string.IsNullOrWhiteSpace(suggestion.InsertText))
             .GroupBy(s => s.Label, StringComparer.OrdinalIgnoreCase)
             .Select(g => g.First())
             .ToList();
