@@ -20,6 +20,15 @@ namespace DBWeaver.UI.Services.SqlImport.Mapping;
 
 public sealed class SqlImportPredicateIrParser
 {
+    private static readonly HashSet<string> CanonicalFunctions =
+    ["COALESCE", "NULLIF", "UPPER", "LOWER", "LENGTH", "COUNT", "SUM", "AVG", "MIN", "MAX"];
+
+    private static readonly HashSet<string> DialectSpecificFunctions =
+    ["ISNULL", "LEN", "FORMAT"];
+
+    private static readonly HashSet<string> UnsupportedFunctions =
+    ["ROW_NUMBER", "RANK", "DENSE_RANK", "NTILE", "LAG", "LEAD", "FIRST_VALUE", "LAST_VALUE"];
+
     public SqlExpression ParseScalarExpression(
         string expression,
         string queryId,
@@ -544,12 +553,10 @@ public sealed class SqlImportPredicateIrParser
                 }
 
                 diagnostics.Add(CreateAmbiguousOrUnresolvedDiagnostic(
-                    "SQLIMP_0202_COLUMN_UNRESOLVED",
+                    SqlImportDiagnosticCodes.ColumnUnresolved,
                     clause,
                     $"Column '{qualifier}.{column}' could not be resolved in visible source aliases.",
-                    queryId,
-                    SqlImportDiagnosticCategory.PartialImport,
-                    SqlImportDiagnosticSeverity.Warning
+                    queryId
                 ));
 
                 return new ColumnRefExpr(
@@ -581,12 +588,10 @@ public sealed class SqlImportPredicateIrParser
             }
 
             diagnostics.Add(CreateAmbiguousOrUnresolvedDiagnostic(
-                "SQLIMP_0201_COLUMN_AMBIGUOUS",
+                SqlImportDiagnosticCodes.ColumnAmbiguous,
                 clause,
                 $"Column '{column}' is ambiguous across multiple sources.",
-                queryId,
-                SqlImportDiagnosticCategory.AmbiguityUnresolved,
-                SqlImportDiagnosticSeverity.Error
+                queryId
             ));
 
             return new ColumnRefExpr(
@@ -610,6 +615,34 @@ public sealed class SqlImportPredicateIrParser
 
         if (functionMatch.Success)
         {
+            string functionName = functionMatch.Groups["name"].Value;
+            string normalizedFunctionName = functionName.ToUpperInvariant();
+            SqlFunctionClassification classification = ClassifyFunction(normalizedFunctionName);
+
+            if (classification == SqlFunctionClassification.Unsupported)
+            {
+                diagnostics.Add(SqlImportDiagnosticCatalog.Create(
+                    SqlImportDiagnosticCodes.FunctionUnsupported,
+                    clause,
+                    $"Function '{functionName}' is not supported in the current AST→IR mapping slice.",
+                    queryId
+                ));
+            }
+            else if (classification == SqlFunctionClassification.GenericPreserved)
+            {
+                bool forbiddenContext = IsGenericFunctionForbiddenContext(clause);
+                diagnostics.Add(SqlImportDiagnosticCatalog.Create(
+                    forbiddenContext
+                        ? SqlImportDiagnosticCodes.FunctionGenericForbiddenContext
+                        : SqlImportDiagnosticCodes.FunctionGenericPreserved,
+                    clause,
+                    forbiddenContext
+                        ? $"Generic function '{functionName}' is not allowed in {clause} because it is a structural boolean context."
+                        : $"Generic function '{functionName}' was preserved in IR and may reduce semantic equivalence.",
+                    queryId
+                ));
+            }
+
             return new FunctionExpr(
                 exprId,
                 null,
@@ -617,12 +650,19 @@ public sealed class SqlImportPredicateIrParser
                 SqlResolutionStatus.Partial,
                 CreateTrace(queryId, exprId),
                 CreateNodeMetadata(),
-                Name: functionMatch.Groups["name"].Value,
-                CanonicalName: null,
-                Classification: SqlFunctionClassification.GenericPreserved,
+                Name: functionName,
+                CanonicalName: classification == SqlFunctionClassification.Canonical ? normalizedFunctionName : null,
+                Classification: classification,
                 Arguments: []
             );
         }
+
+        diagnostics.Add(SqlImportDiagnosticCatalog.Create(
+            SqlImportDiagnosticCodes.TypeInferenceFallback,
+            clause,
+            $"Expression '{trimmed}' could not be semantically typed and was preserved as generic literal.",
+            queryId
+        ));
 
         return new SqlImportLiteralExpr(
             exprId,
@@ -803,23 +843,37 @@ public sealed class SqlImportPredicateIrParser
         string code,
         SqlImportClause clause,
         string message,
-        string queryId,
-        SqlImportDiagnosticCategory category,
-        SqlImportDiagnosticSeverity severity
+        string queryId
     )
     {
-        return new SqlImportDiagnostic(
+        return SqlImportDiagnosticCatalog.Create(
             code,
-            category,
-            severity,
-            message,
             clause,
-            null,
-            null,
-            SqlImportDiagnosticAction.ContinuePartial,
-            "Qualify the column with explicit source alias to remove ambiguity.",
+            message,
             queryId,
-            queryId
+            SqlImportDiagnosticMessages.QualifyColumnRecommendedAction
         );
+    }
+
+    private static SqlFunctionClassification ClassifyFunction(string normalizedFunctionName)
+    {
+        if (CanonicalFunctions.Contains(normalizedFunctionName))
+            return SqlFunctionClassification.Canonical;
+
+        if (DialectSpecificFunctions.Contains(normalizedFunctionName))
+            return SqlFunctionClassification.DialectSpecific;
+
+        if (UnsupportedFunctions.Contains(normalizedFunctionName))
+            return SqlFunctionClassification.Unsupported;
+
+        return SqlFunctionClassification.GenericPreserved;
+    }
+
+    private static bool IsGenericFunctionForbiddenContext(SqlImportClause clause)
+    {
+        return clause is SqlImportClause.Where
+            or SqlImportClause.Join
+            or SqlImportClause.Having
+            or SqlImportClause.GroupBy;
     }
 }

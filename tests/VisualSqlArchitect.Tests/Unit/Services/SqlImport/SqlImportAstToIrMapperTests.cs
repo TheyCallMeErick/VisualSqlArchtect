@@ -1,5 +1,6 @@
 using DBWeaver.Core;
 using DBWeaver.SqlImport.Contracts;
+using DBWeaver.SqlImport.Diagnostics;
 using DBWeaver.SqlImport.IR;
 using DBWeaver.SqlImport.IR.Expressions;
 using DBWeaver.SqlImport.IR.Sources;
@@ -227,7 +228,127 @@ public sealed class SqlImportAstToIrMapperTests
     }
 
     [Fact]
-    public void MapSelectFrom_WithIntersect_EmitsUnsupportedSetOperationDiagnostic()
+    public void MapSelectFrom_WithUnionChain_MapsMultipleSetOperations()
+    {
+        var mapper = new SqlImportAstToIrMapper();
+        SqlImportParsedQuery parsed = CreateQuery(
+            selectedColumns: [new SqlImportSelectedColumn("o.id", null)],
+            fromParts: [new SqlImportSourcePart("orders", "o", null, null)]
+        );
+
+        SqlToNodeIR ir = mapper.MapSelectFrom(
+            parsed,
+            "SELECT o.id FROM orders o UNION SELECT a.id FROM archived_orders a UNION ALL SELECT h.id FROM history_orders h",
+            DatabaseProvider.Postgres
+        );
+
+        Assert.Equal(2, ir.Query.SetOperations.Count);
+        Assert.All(ir.Query.SetOperations, setOp => Assert.Equal("UNION", setOp.Kind));
+        Assert.False(ir.Query.SetOperations[0].IsAll);
+        Assert.True(ir.Query.SetOperations[1].IsAll);
+    }
+
+    [Fact]
+    public void MapSelectFrom_WithParenthesizedUnionOperands_MapsSetOperations()
+    {
+        var mapper = new SqlImportAstToIrMapper();
+        SqlImportParsedQuery parsed = CreateQuery(
+            selectedColumns: [new SqlImportSelectedColumn("o.id", null)],
+            fromParts: [new SqlImportSourcePart("orders", "o", null, null)]
+        );
+
+        SqlToNodeIR ir = mapper.MapSelectFrom(
+            parsed,
+            "SELECT o.id FROM orders o UNION (SELECT a.id FROM archived_orders a) UNION ALL (SELECT h.id FROM history_orders h)",
+            DatabaseProvider.Postgres
+        );
+
+        Assert.Equal(2, ir.Query.SetOperations.Count);
+        Assert.False(ir.Query.SetOperations[0].IsAll);
+        Assert.True(ir.Query.SetOperations[1].IsAll);
+    }
+
+    [Fact]
+    public void MapSelectFrom_WithParenthesizedUnionOperandAndSemicolon_MapsSetOperation()
+    {
+        var mapper = new SqlImportAstToIrMapper();
+        SqlImportParsedQuery parsed = CreateQuery(
+            selectedColumns: [new SqlImportSelectedColumn("o.id", null)],
+            fromParts: [new SqlImportSourcePart("orders", "o", null, null)]
+        );
+
+        SqlToNodeIR ir = mapper.MapSelectFrom(
+            parsed,
+            "SELECT o.id FROM orders o UNION (SELECT a.id FROM archived_orders a);",
+            DatabaseProvider.Postgres
+        );
+
+        Assert.Single(ir.Query.SetOperations);
+        Assert.Equal("UNION", ir.Query.SetOperations[0].Kind);
+    }
+
+    [Fact]
+    public void MapSelectFrom_WithUnparenthesizedUnionOperandOrderBy_EmitsPrecedenceDiagnostic()
+    {
+        var mapper = new SqlImportAstToIrMapper();
+        SqlImportParsedQuery parsed = CreateQuery(
+            selectedColumns: [new SqlImportSelectedColumn("o.id", null)],
+            fromParts: [new SqlImportSourcePart("orders", "o", null, null)]
+        );
+
+        SqlToNodeIR ir = mapper.MapSelectFrom(
+            parsed,
+            "SELECT o.id FROM orders o UNION SELECT a.id FROM archived_orders a ORDER BY a.id",
+            DatabaseProvider.Postgres
+        );
+
+        Assert.Empty(ir.Query.SetOperations);
+        Assert.Contains(ir.Diagnostics, diagnostic =>
+            diagnostic.Code == "SQLIMP_0301_SET_OPERAND_PRECEDENCE_AMBIGUOUS");
+    }
+
+    [Fact]
+    public void MapSelectFrom_WithParenthesizedUnionOperandOrderBy_MapsSetOperation()
+    {
+        var mapper = new SqlImportAstToIrMapper();
+        SqlImportParsedQuery parsed = CreateQuery(
+            selectedColumns: [new SqlImportSelectedColumn("o.id", null)],
+            fromParts: [new SqlImportSourcePart("orders", "o", null, null)]
+        );
+
+        SqlToNodeIR ir = mapper.MapSelectFrom(
+            parsed,
+            "SELECT o.id FROM orders o UNION (SELECT a.id FROM archived_orders a ORDER BY a.id)",
+            DatabaseProvider.Postgres
+        );
+
+        Assert.Single(ir.Query.SetOperations);
+        Assert.DoesNotContain(ir.Diagnostics, diagnostic =>
+            diagnostic.Code == "SQLIMP_0301_SET_OPERAND_PRECEDENCE_AMBIGUOUS");
+    }
+
+    [Fact]
+    public void MapSelectFrom_WithUnionThenIntersect_MapsBothSetOperations()
+    {
+        var mapper = new SqlImportAstToIrMapper();
+        SqlImportParsedQuery parsed = CreateQuery(
+            selectedColumns: [new SqlImportSelectedColumn("o.id", null)],
+            fromParts: [new SqlImportSourcePart("orders", "o", null, null)]
+        );
+
+        SqlToNodeIR ir = mapper.MapSelectFrom(
+            parsed,
+            "SELECT o.id FROM orders o UNION SELECT a.id FROM archived_orders a INTERSECT SELECT h.id FROM history_orders h",
+            DatabaseProvider.Postgres
+        );
+
+        Assert.Equal(2, ir.Query.SetOperations.Count);
+        Assert.Equal("UNION", ir.Query.SetOperations[0].Kind);
+        Assert.Equal("INTERSECT", ir.Query.SetOperations[1].Kind);
+    }
+
+    [Fact]
+    public void MapSelectFrom_WithIntersect_MapsSetOperation()
     {
         var mapper = new SqlImportAstToIrMapper();
         SqlImportParsedQuery parsed = CreateQuery(
@@ -241,10 +362,177 @@ public sealed class SqlImportAstToIrMapperTests
             DatabaseProvider.Postgres
         );
 
+        Assert.Single(ir.Query.SetOperations);
+        Assert.Equal("INTERSECT", ir.Query.SetOperations[0].Kind);
+    }
+
+    [Fact]
+    public void MapSelectFrom_WithExcept_MapsSetOperation()
+    {
+        var mapper = new SqlImportAstToIrMapper();
+        SqlImportParsedQuery parsed = CreateQuery(
+            selectedColumns: [new SqlImportSelectedColumn("o.id", null)],
+            fromParts: [new SqlImportSourcePart("orders", "o", null, null)]
+        );
+
+        SqlToNodeIR ir = mapper.MapSelectFrom(
+            parsed,
+            "SELECT o.id FROM orders o EXCEPT SELECT a.id FROM archived_orders a",
+            DatabaseProvider.Postgres
+        );
+
+        Assert.Single(ir.Query.SetOperations);
+        Assert.Equal("EXCEPT", ir.Query.SetOperations[0].Kind);
+    }
+
+    [Fact]
+    public void MapSelectFrom_WithSetOperationProjectionArityMismatch_EmitsDiagnostic()
+    {
+        var mapper = new SqlImportAstToIrMapper();
+        SqlImportParsedQuery parsed = CreateQuery(
+            selectedColumns: [new SqlImportSelectedColumn("o.id", null)],
+            fromParts: [new SqlImportSourcePart("orders", "o", null, null)]
+        );
+
+        SqlToNodeIR ir = mapper.MapSelectFrom(
+            parsed,
+            "SELECT o.id FROM orders o UNION SELECT a.id, a.name FROM archived_orders a",
+            DatabaseProvider.Postgres
+        );
+
         Assert.Empty(ir.Query.SetOperations);
         Assert.Contains(ir.Diagnostics, diagnostic =>
-            diagnostic.Code == "SQLIMP_0002_AST_UNSUPPORTED"
-            && diagnostic.Message.Contains("INTERSECT", StringComparison.OrdinalIgnoreCase));
+            diagnostic.Code == "SQLIMP_0302_SET_OPERAND_ARITY_MISMATCH");
+    }
+
+    [Fact]
+    public void MapSelectFrom_WithSetOperationSemanticMismatch_EmitsNonBlockingDiagnostic()
+    {
+        var mapper = new SqlImportAstToIrMapper();
+        SqlImportParsedQuery parsed = CreateQuery(
+            selectedColumns: [new SqlImportSelectedColumn("'alpha'", "v")],
+            fromParts: [new SqlImportSourcePart("orders", "o", null, null)]
+        );
+
+        SqlToNodeIR ir = mapper.MapSelectFrom(
+            parsed,
+            "SELECT 'alpha' AS v FROM orders o UNION SELECT 1 AS v FROM archived_orders a",
+            DatabaseProvider.Postgres
+        );
+
+        Assert.Single(ir.Query.SetOperations);
+        Assert.Contains(ir.Diagnostics, diagnostic =>
+            diagnostic.Code == "SQLIMP_0303_SET_OPERAND_SEMANTIC_MISMATCH");
+    }
+
+    [Fact]
+    public void MapSelectFrom_WithNumericSetOperationCompatibility_DoesNotEmitSemanticMismatch()
+    {
+        var mapper = new SqlImportAstToIrMapper();
+        SqlImportParsedQuery parsed = CreateQuery(
+            selectedColumns: [new SqlImportSelectedColumn("1", "v")],
+            fromParts: [new SqlImportSourcePart("orders", "o", null, null)]
+        );
+
+        SqlToNodeIR ir = mapper.MapSelectFrom(
+            parsed,
+            "SELECT 1 AS v FROM orders o UNION SELECT 2.5 AS v FROM archived_orders a",
+            DatabaseProvider.Postgres
+        );
+
+        Assert.Single(ir.Query.SetOperations);
+        Assert.DoesNotContain(ir.Diagnostics, diagnostic =>
+            diagnostic.Code == "SQLIMP_0303_SET_OPERAND_SEMANTIC_MISMATCH");
+    }
+
+    [Fact]
+    public void MapSelectFrom_WithQualifiedStarUnresolvedAlias_EmitsStarAliasUnresolvedDiagnostic()
+    {
+        var mapper = new SqlImportAstToIrMapper();
+        SqlImportParsedQuery parsed = new(
+            IsDistinct: false,
+            IsStar: true,
+            StarQualifier: "x",
+            SelectedColumns: [],
+            FromParts: [new SqlImportSourcePart("orders", "o", null, null)],
+            WhereClause: null,
+            OrderBy: null,
+            GroupBy: null,
+            HavingClause: null,
+            Limit: null,
+            OuterAliases: []
+        );
+
+        SqlToNodeIR ir = mapper.MapSelectFrom(
+            parsed,
+            "SELECT x.* FROM orders o",
+            DatabaseProvider.Postgres
+        );
+
+        Assert.Contains(ir.Diagnostics, diagnostic =>
+            diagnostic.Code == SqlImportDiagnosticCodes.StarAliasUnresolved);
+        Assert.Single(ir.Query.SelectItems);
+        Assert.Equal(SqlResolutionStatus.Unresolved, ir.Query.SelectItems[0].Expression.ResolutionStatus);
+    }
+
+    [Fact]
+    public void MapSelectFrom_WithGenericFunctionInWhere_EmitsForbiddenContextDiagnostic()
+    {
+        var mapper = new SqlImportAstToIrMapper();
+        SqlImportParsedQuery parsed = CreateQuery(
+            selectedColumns: [new SqlImportSelectedColumn("o.id", null)],
+            fromParts: [new SqlImportSourcePart("orders", "o", null, null)],
+            whereClause: "MY_FUNC(o.id) = 1"
+        );
+
+        SqlToNodeIR ir = mapper.MapSelectFrom(
+            parsed,
+            "SELECT o.id FROM orders o WHERE MY_FUNC(o.id) = 1",
+            DatabaseProvider.Postgres
+        );
+
+        Assert.Contains(ir.Diagnostics, diagnostic =>
+            diagnostic.Code == SqlImportDiagnosticCodes.FunctionGenericForbiddenContext);
+    }
+
+    [Fact]
+    public void MapSelectFrom_WithUnsupportedFunctionInWhere_EmitsFunctionUnsupportedDiagnostic()
+    {
+        var mapper = new SqlImportAstToIrMapper();
+        SqlImportParsedQuery parsed = CreateQuery(
+            selectedColumns: [new SqlImportSelectedColumn("o.id", null)],
+            fromParts: [new SqlImportSourcePart("orders", "o", null, null)],
+            whereClause: "ROW_NUMBER(o.id) = 1"
+        );
+
+        SqlToNodeIR ir = mapper.MapSelectFrom(
+            parsed,
+            "SELECT o.id FROM orders o WHERE ROW_NUMBER(o.id) = 1",
+            DatabaseProvider.Postgres
+        );
+
+        Assert.Contains(ir.Diagnostics, diagnostic =>
+            diagnostic.Code == SqlImportDiagnosticCodes.FunctionUnsupported);
+    }
+
+    [Fact]
+    public void MapSelectFrom_WithUntypedScalarFallback_EmitsTypeInferenceFallbackDiagnostic()
+    {
+        var mapper = new SqlImportAstToIrMapper();
+        SqlImportParsedQuery parsed = CreateQuery(
+            selectedColumns: [new SqlImportSelectedColumn("o.id", null)],
+            fromParts: [new SqlImportSourcePart("orders", "o", null, null)],
+            whereClause: "o.id + 1 > 10"
+        );
+
+        SqlToNodeIR ir = mapper.MapSelectFrom(
+            parsed,
+            "SELECT o.id FROM orders o WHERE o.id + 1 > 10",
+            DatabaseProvider.Postgres
+        );
+
+        Assert.Contains(ir.Diagnostics, diagnostic =>
+            diagnostic.Code == SqlImportDiagnosticCodes.TypeInferenceFallback);
     }
 
     private static SqlImportParsedQuery CreateQuery(

@@ -77,10 +77,8 @@ internal sealed class SqlImportHavingClauseApplier(CanvasViewModel canvas) : ISq
         else
         {
             report.Add(
-                new ImportReportItem(
+                SqlImportReportFactory.HavingUnsupported(
                     $"HAVING {SqlImportClauseApplyUtilities.Truncate(query.HavingClause, 40)}",
-                    ImportItemStatus.Partial,
-                    "Complex HAVING expression - connect predicate manually",
                     result.Id
                 )
             );

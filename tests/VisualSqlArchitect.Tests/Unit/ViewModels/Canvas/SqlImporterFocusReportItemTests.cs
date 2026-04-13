@@ -2,6 +2,7 @@
 using DBWeaver.UI.Services.Explain;
 using DBWeaver.UI.ViewModels;
 using DBWeaver.UI.ViewModels.Canvas;
+using DBWeaver.SqlImport.Diagnostics;
 using Xunit;
 
 namespace DBWeaver.Tests.Unit.ViewModels.Canvas;
@@ -30,7 +31,12 @@ public class SqlImporterFocusReportItemTests
     public void FocusReportItem_WhenItemHasNoNodeLink_ReturnsFalse()
     {
         var canvas = new CanvasViewModel();
-        var item = new ImportReportItem("No link", ImportItemStatus.Skipped, "reason");
+        var item = new ImportReportItem(
+            "No link",
+            ImportItemStatus.Skipped,
+            "reason",
+            diagnosticCode: SqlImportDiagnosticCodes.AstUnsupported
+        );
 
         bool focused = canvas.SqlImporter.FocusReportItem(item);
 

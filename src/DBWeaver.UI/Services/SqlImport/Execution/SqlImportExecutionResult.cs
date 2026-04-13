@@ -1,3 +1,5 @@
+using DBWeaver.SqlImport.Outcome;
+
 namespace DBWeaver.UI.Services.SqlImport.Execution;
 
 public readonly record struct SqlImportTiming(
@@ -11,5 +13,6 @@ public readonly record struct SqlImportExecutionResult(
     int Imported,
     int Partial,
     int Skipped,
-    SqlImportTiming Timing
+    SqlImportTiming Timing,
+    ImportOutcome? Outcome = null
 );

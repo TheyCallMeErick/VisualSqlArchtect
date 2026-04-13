@@ -50,18 +50,16 @@ internal sealed class SqlImportWhereClauseApplier(CanvasViewModel canvas) : ISql
         {
             SqlImportClauseApplyUtilities.SafeWire(rootCondition!, "result", result, "where", _canvas);
 
-            report.Add(new ImportReportItem(
+            report.Add(SqlImportReportFactory.WherePartial(
                 $"WHERE {SqlImportClauseApplyUtilities.Truncate(query.WhereClause, 60)}",
-                partial == 0 ? ImportItemStatus.Imported : ImportItemStatus.Partial,
-                partial == 0 ? null : "Some predicates were not recognized and may need manual adjustment.",
-                rootCondition!.Id));
+                rootCondition!.Id
+            ));
         }
         else
         {
-            report.Add(new ImportReportItem(
-                $"WHERE {SqlImportClauseApplyUtilities.Truncate(query.WhereClause, 60)}",
-                ImportItemStatus.Partial,
-                "Condition not supported by importer; connect manually after import."));
+            report.Add(SqlImportReportFactory.WhereUnsupported(
+                $"WHERE {SqlImportClauseApplyUtilities.Truncate(query.WhereClause, 60)}"
+            ));
             partial++;
         }
 

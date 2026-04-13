@@ -284,7 +284,12 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
                 sqlToImport = parseResult.NormalizedSql ?? sqlToImport;
             }
 
-            SqlImportExecutionResult result = _executionService.Execute(sqlToImport, Report, token);
+            SqlImportExecutionResult result = _executionService.Execute(
+                sqlToImport,
+                Report,
+                token,
+                FeatureFlags.RoundTripEquivalenceCheck
+            );
             ApplyTelemetry(result.Timing);
             ApplyReportTotals(result.Imported, result.Partial, result.Skipped);
             StatusMessage = string.Format(

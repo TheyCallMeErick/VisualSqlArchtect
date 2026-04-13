@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using Avalonia;
 using DBWeaver.Metadata;
 using DBWeaver.Nodes;
+using DBWeaver.SqlImport.Diagnostics;
 using DBWeaver.UI.Services.SqlImport;
 using DBWeaver.UI.ViewModels;
 using DBWeaver.UI.ViewModels.Canvas;
@@ -339,10 +340,10 @@ public sealed class ImportModelToCanvasBuilder(CanvasViewModel canvas)
                 if (!TryExtractProjectedColumnName(expr, out string colName))
                 {
                     context.Report.Add(
-                        new ImportReportItem(
+                        SqlImportReportFactory.Skipped(
+                            SqlImportDiagnosticCodes.TypeInferenceFallback,
                             $"Column: {expr}",
-                            ImportItemStatus.Skipped,
-                            "Complex expression — wire manually"
+                            SqlImportDiagnosticMessages.SelectComplexExpressionManualWireReportNote
                         )
                     );
                     context.State.Skipped++;
@@ -371,28 +372,27 @@ public sealed class ImportModelToCanvasBuilder(CanvasViewModel canvas)
                 else
                 {
                     context.Report.Add(
-                        new ImportReportItem(
+                        SqlImportReportFactory.Skipped(
+                            SqlImportDiagnosticCodes.ColumnUnresolved,
                             $"Column: {expr}",
-                            ImportItemStatus.Skipped,
-                            "Complex expression — wire manually"
+                            SqlImportDiagnosticMessages.SelectComplexExpressionManualWireReportNote
                         )
                     );
                     context.State.Skipped++;
                 }
             }
 
-            context.Report.Add(
-                new ImportReportItem(
-                    $"SELECT ({wired}/{context.Input.SelectedColumns.Count} columns)",
-                    wired == context.Input.SelectedColumns.Count
-                        ? ImportItemStatus.Imported
-                        : ImportItemStatus.Partial,
-                    wired == context.Input.SelectedColumns.Count
-                        ? null
-                        : "Some selected columns could not be auto-wired.",
-                    result.Id
-                )
-            );
+            context.Report.Add(SqlImportReportFactory.Diagnostic(
+                SqlImportDiagnosticCodes.ColumnUnresolved,
+                $"SELECT ({wired}/{context.Input.SelectedColumns.Count} columns)",
+                wired == context.Input.SelectedColumns.Count
+                    ? ImportItemStatus.Imported
+                    : ImportItemStatus.Partial,
+                wired == context.Input.SelectedColumns.Count
+                    ? null
+                    : SqlImportDiagnosticMessages.SelectColumnsPartialAutoWireReportNote,
+                result.Id
+            ));
 
             if (wired == context.Input.SelectedColumns.Count)
                 context.State.Imported++;

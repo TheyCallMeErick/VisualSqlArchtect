@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Text.RegularExpressions;
+using DBWeaver.SqlImport.Diagnostics;
+using DBWeaver.UI.Services.SqlImport;
 using DBWeaver.UI.Services.SqlImport.Rewriting;
 using DBWeaver.UI.ViewModels.Canvas;
 
@@ -71,7 +73,11 @@ public sealed class SqlImportClauseParser(SqlImportCteRewriteService cteRewriteS
             {
                 foreach (string cteIssue in _cteRewriteService.AnalyzeCteNameIssues(sql))
                 {
-                    report.Add(new ImportReportItem("CTE name diagnostics", ImportItemStatus.Partial, cteIssue));
+                    report.Add(SqlImportReportFactory.Partial(
+                        SqlImportDiagnosticCodes.AstUnsupported,
+                        "CTE name diagnostics",
+                        cteIssue
+                    ));
                     partial++;
                 }
             }
@@ -80,25 +86,27 @@ public sealed class SqlImportClauseParser(SqlImportCteRewriteService cteRewriteS
             {
                 string correlatedFields = SqlImportCteRewriteService.DescribeCorrelatedOuterReferences(sql, outerAliases);
                 report.Add(
-                    new ImportReportItem(
+                    SqlImportReportFactory.Partial(
+                        SqlImportDiagnosticCodes.AstUnsupported,
                         "Correlated sub-query",
-                        ImportItemStatus.Partial,
-                        string.IsNullOrWhiteSpace(correlatedFields)
-                            ? "Correlated sub-query is not yet supported and falls back to a safe partial import path."
-                            : $"Correlated sub-query is not yet supported and falls back to a safe partial import path. External refs: {correlatedFields}."
+                        SqlImportDiagnosticMessages.CorrelatedSubqueryFallbackWithExternalRefsReportNote(correlatedFields)
                     )
                 );
                 partial++;
             }
 
-            report.Add(new ImportReportItem("CTE / sub-query", ImportItemStatus.Skipped, "CTEs and sub-queries are not supported"));
+            report.Add(SqlImportReportFactory.Skipped(
+                SqlImportDiagnosticCodes.AstUnsupported,
+                "CTE / sub-query",
+                SqlImportDiagnosticMessages.CteSubqueryNotSupportedReportNote
+            ));
             skipped++;
 
             report.Add(
-                new ImportReportItem(
+                SqlImportReportFactory.Skipped(
+                    SqlImportDiagnosticCodes.AstUnsupported,
                     "Raw fallback",
-                    ImportItemStatus.Skipped,
-                    "Raw fallback is disabled for CTE/sub-query blocks to avoid unsafe or ambiguous SQL materialization."
+                    SqlImportDiagnosticMessages.RawFallbackDisabledForCteSubqueryReportNote
                 )
             );
             skipped++;
@@ -108,7 +116,11 @@ public sealed class SqlImportClauseParser(SqlImportCteRewriteService cteRewriteS
 
         if (Regex.IsMatch(sql, @"\bUNION\b", RegexOptions.IgnoreCase))
         {
-            report.Add(new ImportReportItem("UNION", ImportItemStatus.Skipped, "UNION is not supported"));
+            report.Add(SqlImportReportFactory.Skipped(
+                SqlImportDiagnosticCodes.AstUnsupported,
+                "UNION",
+                SqlImportDiagnosticMessages.UnionNotSupportedReportNote
+            ));
             skipped++;
         }
 

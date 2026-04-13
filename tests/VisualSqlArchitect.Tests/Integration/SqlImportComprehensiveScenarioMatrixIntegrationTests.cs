@@ -38,8 +38,13 @@ public class SqlImportComprehensiveScenarioMatrixIntegrationTests
 
         if (scenario.ExpectPartialOrSkipped)
         {
-            Assert.Contains(canvas.SqlImporter.Report, item =>
-                item.Status is ImportItemStatus.Partial or ImportItemStatus.Skipped);
+            var problematicItems = canvas.SqlImporter.Report
+                .Where(item => item.Status is ImportItemStatus.Partial or ImportItemStatus.Skipped)
+                .ToList();
+
+            Assert.NotEmpty(problematicItems);
+            Assert.All(problematicItems, item =>
+                Assert.False(string.IsNullOrWhiteSpace(item.DiagnosticCode)));
         }
 
         if (!scenario.ExpectStrictRoundTrip)

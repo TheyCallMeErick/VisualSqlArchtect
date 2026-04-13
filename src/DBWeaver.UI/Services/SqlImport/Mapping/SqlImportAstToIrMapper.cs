@@ -128,6 +128,8 @@ public sealed class SqlImportAstToIrMapper
             sql,
             provider,
             effectiveFeatureFlags,
+            GetProjectionArityOrNull(selectItems),
+            GetProjectionSemanticTypesOrNull(selectItems),
             queryId,
             diagnostics
         );
@@ -276,7 +278,7 @@ public sealed class SqlImportAstToIrMapper
             if (joinType != SqlJoinType.Cross && onExpr is null)
             {
                 diagnostics.Add(CreateWarning(
-                    "SQLIMP_0002_AST_UNSUPPORTED",
+                    SqlImportDiagnosticCodes.AstUnsupported,
                     SqlImportClause.Join,
                     "JOIN without ON clause is currently treated as unsupported in AST→IR P0 mapping.",
                     queryId
@@ -291,63 +293,123 @@ public sealed class SqlImportAstToIrMapper
         string sql,
         DatabaseProvider provider,
         IReadOnlyCollection<string> featureFlags,
+        int? expectedProjectionArity,
+        IReadOnlyList<SqlImportSemanticType>? expectedProjectionSemanticTypes,
         string queryId,
         ICollection<SqlImportDiagnostic> diagnostics
     )
     {
-        if (!TrySplitFirstSetOperation(sql, out string operatorToken, out bool isAll, out string rightSql))
+        IReadOnlyList<SetOperandSegment> segments = SplitTopLevelSetOperations(sql);
+        if (segments.Count == 0)
             return [];
 
-        if (!operatorToken.Equals("UNION", StringComparison.OrdinalIgnoreCase))
+        var operations = new List<SetOperationExpr>(segments.Count);
+
+        foreach (SetOperandSegment segment in segments)
         {
-            diagnostics.Add(CreateWarning(
-                "SQLIMP_0002_AST_UNSUPPORTED",
-                SqlImportClause.Unknown,
-                $"{operatorToken.ToUpperInvariant()} is not mapped in AST→IR P0 and is currently tracked as partial support.",
-                queryId
-            ));
-            return [];
+            string setOperatorKind = segment.OperatorToken.ToUpperInvariant();
+
+            string rawOperandSql = segment.OperandSql.Trim();
+            string rawOperandWithoutSemicolon = rawOperandSql.TrimEnd(';').Trim();
+            bool isOperandParenthesized = TryUnwrapOutermostParentheses(rawOperandWithoutSemicolon, out _);
+            if (!isOperandParenthesized && ContainsTopLevelSetOperandTailClause(rawOperandSql))
+            {
+                diagnostics.Add(CreateWarning(
+                    SqlImportDiagnosticCodes.SetOperandPrecedenceAmbiguous,
+                    SqlImportClause.Unknown,
+                    SqlImportDiagnosticMessages.SetOperandPrecedenceAmbiguous,
+                    queryId
+                ));
+                break;
+            }
+
+            string normalizedOperandSql = NormalizeSetOperandSql(segment.OperandSql);
+            if (string.IsNullOrWhiteSpace(normalizedOperandSql))
+            {
+                diagnostics.Add(CreateWarning(
+                    SqlImportDiagnosticCodes.AstUnsupported,
+                    SqlImportClause.Unknown,
+                    SqlImportDiagnosticMessages.SetOperandEmptyAfterNormalization,
+                    queryId
+                ));
+                break;
+            }
+
+            if (!TryParseSimpleSelectOperand(normalizedOperandSql, out SqlImportParsedQuery? rightParsed))
+            {
+                diagnostics.Add(CreateWarning(
+                    SqlImportDiagnosticCodes.AstUnsupported,
+                    SqlImportClause.Unknown,
+                    SqlImportDiagnosticMessages.SetOperandParseFailed,
+                    queryId
+                ));
+                break;
+            }
+
+            SqlToNodeIR rightIr;
+            try
+            {
+                rightIr = MapSelectFrom(rightParsed!, normalizedOperandSql, provider, featureFlags);
+            }
+            catch
+            {
+                diagnostics.Add(CreateWarning(
+                    SqlImportDiagnosticCodes.AstUnsupported,
+                    SqlImportClause.Unknown,
+                    SqlImportDiagnosticMessages.SetOperandMappingFailed,
+                    queryId
+                ));
+                break;
+            }
+
+            int? rightProjectionArity = GetProjectionArityOrNull(rightIr.Query.SelectItems);
+            if (expectedProjectionArity.HasValue && rightProjectionArity.HasValue && expectedProjectionArity.Value != rightProjectionArity.Value)
+            {
+                diagnostics.Add(CreateWarning(
+                    SqlImportDiagnosticCodes.SetOperandArityMismatch,
+                    SqlImportClause.Unknown,
+                    $"Set operation '{setOperatorKind}' requires matching projection arity. Left has {expectedProjectionArity.Value} column(s) and right has {rightProjectionArity.Value} column(s).",
+                    queryId
+                ));
+                break;
+            }
+
+            if (!expectedProjectionArity.HasValue && rightProjectionArity.HasValue)
+                expectedProjectionArity = rightProjectionArity.Value;
+
+            IReadOnlyList<SqlImportSemanticType>? rightProjectionSemanticTypes = GetProjectionSemanticTypesOrNull(rightIr.Query.SelectItems);
+            if (expectedProjectionSemanticTypes is not null && rightProjectionSemanticTypes is not null)
+            {
+                int comparableLength = Math.Min(expectedProjectionSemanticTypes.Count, rightProjectionSemanticTypes.Count);
+                for (int index = 0; index < comparableLength; index++)
+                {
+                    SqlImportSemanticType leftType = expectedProjectionSemanticTypes[index];
+                    SqlImportSemanticType rightType = rightProjectionSemanticTypes[index];
+                    if (!AreSetProjectionSemanticTypesCompatible(leftType, rightType))
+                    {
+                        diagnostics.Add(CreateWarning(
+                            SqlImportDiagnosticCodes.SetOperandSemanticMismatch,
+                            SqlImportClause.Unknown,
+                            $"Set operation '{setOperatorKind}' has potentially incompatible semantic types at projection index {index}: left '{leftType}' vs right '{rightType}'.",
+                            queryId
+                        ));
+                    }
+                }
+
+                expectedProjectionSemanticTypes = MergeSetProjectionSemanticTypes(
+                    expectedProjectionSemanticTypes,
+                    rightProjectionSemanticTypes
+                );
+            }
+            else if (expectedProjectionSemanticTypes is null && rightProjectionSemanticTypes is not null)
+            {
+                expectedProjectionSemanticTypes = rightProjectionSemanticTypes;
+            }
+
+            operations.Add(new SetOperationExpr(setOperatorKind, rightIr.Query, segment.IsAll));
         }
 
-        if (Regex.IsMatch(rightSql, @"\b(UNION|INTERSECT|EXCEPT)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
-        {
-            diagnostics.Add(CreateWarning(
-                "SQLIMP_0002_AST_UNSUPPORTED",
-                SqlImportClause.Unknown,
-                "Nested set operations are not yet mapped in AST→IR P0.",
-                queryId
-            ));
-            return [];
-        }
-
-        if (!TryParseSimpleSelectOperand(rightSql, out SqlImportParsedQuery? rightParsed))
-        {
-            diagnostics.Add(CreateWarning(
-                "SQLIMP_0002_AST_UNSUPPORTED",
-                SqlImportClause.Unknown,
-                "Set operation right operand could not be parsed into AST→IR P0 shape.",
-                queryId
-            ));
-            return [];
-        }
-
-        SqlToNodeIR rightIr;
-        try
-        {
-            rightIr = MapSelectFrom(rightParsed!, rightSql, provider, featureFlags);
-        }
-        catch
-        {
-            diagnostics.Add(CreateWarning(
-                "SQLIMP_0002_AST_UNSUPPORTED",
-                SqlImportClause.Unknown,
-                "Set operation right operand mapping failed in AST→IR P0.",
-                queryId
-            ));
-            return [];
-        }
-
-        return [new SetOperationExpr("UNION", rightIr.Query, isAll)];
+        return operations;
     }
 
     private IReadOnlyList<SqlExpression> BuildGroupByExpressions(
@@ -451,7 +513,7 @@ public sealed class SqlImportAstToIrMapper
                 if (resolutionStatus is SqlResolutionStatus.Unresolved or SqlResolutionStatus.Ambiguous)
                 {
                     diagnostics.Add(CreateWarning(
-                        "SQLIMP_0202_COLUMN_UNRESOLVED",
+                        SqlImportDiagnosticCodes.ColumnUnresolved,
                         SqlImportClause.OrderBy,
                         $"ORDER BY expression '{orderExpression}' could not be fully resolved.",
                         queryId
@@ -513,6 +575,9 @@ public sealed class SqlImportAstToIrMapper
     {
         if (parsed.IsStar)
         {
+            bool hasUnresolvedStarAlias = !string.IsNullOrWhiteSpace(parsed.StarQualifier)
+                && !sourceByAlias.ContainsKey(parsed.StarQualifier);
+
             string exprId = StableSqlImportIdGenerator.BuildExprId(
                 queryId,
                 "select/0",
@@ -524,7 +589,7 @@ public sealed class SqlImportAstToIrMapper
                 ExprId: exprId,
                 SourceSpan: null,
                 SemanticType: SqlImportSemanticType.Unknown,
-                ResolutionStatus: SqlResolutionStatus.Partial,
+                ResolutionStatus: hasUnresolvedStarAlias ? SqlResolutionStatus.Unresolved : SqlResolutionStatus.Partial,
                 TraceMeta: CreateTrace(queryId, exprId),
                 NodeMetadata: CreateNodeMetadata(),
                 Qualifier: parsed.StarQualifier
@@ -545,12 +610,24 @@ public sealed class SqlImportAstToIrMapper
                 normalizedAlias: aliasMeta.NormalizedAlias
             );
 
-            diagnostics.Add(CreateWarning(
-                "SQLIMP_0851_STAR_PRESERVED_MISSING_METADATA",
-                SqlImportClause.Star,
-                "Star projection was preserved in this first AST→IR slice and is classified as partial until expansion rules are enabled.",
-                queryId
-            ));
+            if (hasUnresolvedStarAlias)
+            {
+                diagnostics.Add(CreateError(
+                    SqlImportDiagnosticCodes.StarAliasUnresolved,
+                    SqlImportClause.Star,
+                    $"Qualified star alias '{parsed.StarQualifier}' could not be resolved in visible source aliases.",
+                    queryId
+                ));
+            }
+            else
+            {
+                diagnostics.Add(CreateWarning(
+                    SqlImportDiagnosticCodes.StarPreservedMissingMetadata,
+                    SqlImportClause.Star,
+                    "Star projection was preserved in this first AST→IR slice and is classified as partial until expansion rules are enabled.",
+                    queryId
+                ));
+            }
 
             return
             [
@@ -921,16 +998,9 @@ public sealed class SqlImportAstToIrMapper
         return terms;
     }
 
-    private static bool TrySplitFirstSetOperation(
-        string sql,
-        out string operatorToken,
-        out bool isAll,
-        out string rightSql
-    )
+    private static IReadOnlyList<SetOperandSegment> SplitTopLevelSetOperations(string sql)
     {
-        operatorToken = string.Empty;
-        isAll = false;
-        rightSql = string.Empty;
+        var operators = new List<(int Start, int End, string Token, bool IsAll)>();
 
         int depth = 0;
         bool inString = false;
@@ -979,14 +1049,215 @@ public sealed class SqlImportAstToIrMapper
             if (!tokenMatch.Success)
                 continue;
 
-            operatorToken = tokenMatch.Groups[1].Value;
-            isAll = tokenMatch.Groups[2].Success;
+            string token = tokenMatch.Groups[1].Value;
+            bool isAll = tokenMatch.Groups[2].Success;
             int consumed = tokenMatch.Length;
-            rightSql = sql[(index + consumed)..].Trim();
-            return !string.IsNullOrWhiteSpace(rightSql);
+            operators.Add((index, index + consumed, token, isAll));
+            index += consumed - 1;
+        }
+
+        if (operators.Count == 0)
+            return [];
+
+        var segments = new List<SetOperandSegment>(operators.Count);
+        for (int index = 0; index < operators.Count; index++)
+        {
+            var current = operators[index];
+            int operandEnd = index + 1 < operators.Count ? operators[index + 1].Start : sql.Length;
+            string operandSql = sql[current.End..operandEnd].Trim();
+            if (string.IsNullOrWhiteSpace(operandSql))
+                break;
+
+            segments.Add(new SetOperandSegment(current.Token, current.IsAll, operandSql));
+        }
+
+        return segments;
+    }
+
+    private readonly record struct SetOperandSegment(string OperatorToken, bool IsAll, string OperandSql);
+
+    private static int? GetProjectionArityOrNull(IReadOnlyList<SelectItemExpr> selectItems)
+    {
+        if (selectItems.Any(item => item.Expression is StarExpr))
+            return null;
+
+        return selectItems.Count;
+    }
+
+    private static IReadOnlyList<SqlImportSemanticType>? GetProjectionSemanticTypesOrNull(IReadOnlyList<SelectItemExpr> selectItems)
+    {
+        if (selectItems.Any(item => item.Expression is StarExpr))
+            return null;
+
+        return selectItems.Select(item => item.SemanticType).ToArray();
+    }
+
+    private static bool AreSetProjectionSemanticTypesCompatible(
+        SqlImportSemanticType left,
+        SqlImportSemanticType right
+    )
+    {
+        if (left == right)
+            return true;
+
+        if (left is SqlImportSemanticType.Unknown or SqlImportSemanticType.Null
+            || right is SqlImportSemanticType.Unknown or SqlImportSemanticType.Null)
+        {
+            return true;
+        }
+
+        if (IsNumericSemanticType(left) && IsNumericSemanticType(right))
+            return true;
+
+        if (IsTemporalSemanticType(left) && IsTemporalSemanticType(right))
+            return true;
+
+        return false;
+    }
+
+    private static IReadOnlyList<SqlImportSemanticType> MergeSetProjectionSemanticTypes(
+        IReadOnlyList<SqlImportSemanticType> left,
+        IReadOnlyList<SqlImportSemanticType> right
+    )
+    {
+        int count = Math.Min(left.Count, right.Count);
+        var merged = new SqlImportSemanticType[count];
+        for (int index = 0; index < count; index++)
+        {
+            SqlImportSemanticType leftType = left[index];
+            SqlImportSemanticType rightType = right[index];
+            merged[index] = leftType is SqlImportSemanticType.Unknown or SqlImportSemanticType.Null
+                ? rightType
+                : leftType;
+        }
+
+        return merged;
+    }
+
+    private static bool IsNumericSemanticType(SqlImportSemanticType type)
+    {
+        return type is SqlImportSemanticType.Integer or SqlImportSemanticType.Decimal;
+    }
+
+    private static bool IsTemporalSemanticType(SqlImportSemanticType type)
+    {
+        return type is SqlImportSemanticType.Date or SqlImportSemanticType.DateTime or SqlImportSemanticType.Time;
+    }
+
+    private static bool ContainsTopLevelSetOperandTailClause(string sql)
+    {
+        int depth = 0;
+        bool inString = false;
+
+        for (int index = 0; index < sql.Length; index++)
+        {
+            char current = sql[index];
+
+            if (current == '\'')
+            {
+                bool escapedQuote = index + 1 < sql.Length && sql[index + 1] == '\'';
+                if (escapedQuote)
+                {
+                    index++;
+                    continue;
+                }
+
+                inString = !inString;
+                continue;
+            }
+
+            if (inString)
+                continue;
+
+            if (current == '(')
+            {
+                depth++;
+                continue;
+            }
+
+            if (current == ')')
+            {
+                depth = Math.Max(0, depth - 1);
+                continue;
+            }
+
+            if (depth != 0)
+                continue;
+
+            Match clauseMatch = Regex.Match(
+                sql[index..],
+                @"^\s*(ORDER\s+BY|LIMIT|OFFSET|TOP)\b",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
+            );
+
+            if (clauseMatch.Success)
+                return true;
         }
 
         return false;
+    }
+
+    private static string NormalizeSetOperandSql(string operandSql)
+    {
+        string normalized = operandSql.Trim();
+        normalized = normalized.TrimEnd(';').Trim();
+
+        while (TryUnwrapOutermostParentheses(normalized, out string unwrapped))
+        {
+            normalized = unwrapped.Trim();
+        }
+
+        return normalized;
+    }
+
+    private static bool TryUnwrapOutermostParentheses(string input, out string unwrapped)
+    {
+        unwrapped = string.Empty;
+        if (input.Length < 2 || input[0] != '(' || input[^1] != ')')
+            return false;
+
+        int depth = 0;
+        bool inString = false;
+
+        for (int index = 0; index < input.Length; index++)
+        {
+            char current = input[index];
+
+            if (current == '\'')
+            {
+                bool escapedQuote = index + 1 < input.Length && input[index + 1] == '\'';
+                if (escapedQuote)
+                {
+                    index++;
+                    continue;
+                }
+
+                inString = !inString;
+                continue;
+            }
+
+            if (inString)
+                continue;
+
+            if (current == '(')
+            {
+                depth++;
+                continue;
+            }
+
+            if (current == ')')
+            {
+                depth--;
+                if (depth == 0 && index != input.Length - 1)
+                    return false;
+            }
+        }
+
+        if (depth != 0)
+            return false;
+
+        unwrapped = input[1..^1];
+        return true;
     }
 
     private static bool TryParseSimpleSelectOperand(string sql, out SqlImportParsedQuery? parsed)
@@ -1226,18 +1497,27 @@ public sealed class SqlImportAstToIrMapper
         string queryId
     )
     {
-        return new SqlImportDiagnostic(
-            Code: code,
-            Category: SqlImportDiagnosticCategory.UnsupportedFeature,
-            Severity: SqlImportDiagnosticSeverity.Warning,
-            Message: message,
-            Clause: clause,
-            SourceSpan: null,
-            SqlFragment: null,
-            Action: SqlImportDiagnosticAction.ContinuePartial,
-            RecommendedAction: "Proceed with supported SELECT/FROM mapping and complete remaining clauses in the next milestone.",
-            QueryId: queryId,
-            CorrelationId: queryId
+        return SqlImportDiagnosticCatalog.Create(
+            code,
+            clause,
+            message,
+            queryId,
+            SqlImportDiagnosticMessages.ContinuePartialRecommendedAction
+        );
+    }
+
+    private static SqlImportDiagnostic CreateError(
+        string code,
+        SqlImportClause clause,
+        string message,
+        string queryId
+    )
+    {
+        return SqlImportDiagnosticCatalog.Create(
+            code,
+            clause,
+            message,
+            queryId
         );
     }
 

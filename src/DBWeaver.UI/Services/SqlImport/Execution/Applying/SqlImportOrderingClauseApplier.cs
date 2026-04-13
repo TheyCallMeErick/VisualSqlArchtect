@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Text.RegularExpressions;
 using DBWeaver.Nodes;
+using DBWeaver.SqlImport.Diagnostics;
 using DBWeaver.UI.Services.SqlImport;
 using DBWeaver.UI.Services.SqlImport.Build;
 using DBWeaver.UI.Services.SqlImport.Execution.Parsing;
@@ -94,10 +95,8 @@ internal sealed class SqlImportOrderingClauseApplier : ISqlImportApplyStep
         else if (importedTerms > 0)
         {
             report.Add(
-                new ImportReportItem(
+                SqlImportReportFactory.OrderByPartial(
                     $"ORDER BY {SqlImportClauseApplyUtilities.Truncate(query.OrderBy, 30)}",
-                    ImportItemStatus.Partial,
-                    "Some sort terms could not be mapped and were skipped",
                     result.Id
                 )
             );
@@ -106,10 +105,8 @@ internal sealed class SqlImportOrderingClauseApplier : ISqlImportApplyStep
         else
         {
             report.Add(
-                new ImportReportItem(
-                    $"ORDER BY {SqlImportClauseApplyUtilities.Truncate(query.OrderBy, 30)}",
-                    ImportItemStatus.Skipped,
-                    "Unsupported sort expression - add manually"
+                SqlImportReportFactory.OrderByUnsupported(
+                    $"ORDER BY {SqlImportClauseApplyUtilities.Truncate(query.OrderBy, 30)}"
                 )
             );
             skipped++;

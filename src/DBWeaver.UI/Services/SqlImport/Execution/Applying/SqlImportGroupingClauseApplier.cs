@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Text.RegularExpressions;
+using DBWeaver.SqlImport.Diagnostics;
 using DBWeaver.UI.Services.SqlImport;
 using DBWeaver.UI.Services.SqlImport.Build;
 using DBWeaver.UI.Services.SqlImport.Execution.Parsing;
@@ -77,10 +78,8 @@ internal sealed class SqlImportGroupingClauseApplier : ISqlImportApplyStep
         else if (importedTerms > 0)
         {
             report.Add(
-                new ImportReportItem(
+                SqlImportReportFactory.GroupByPartial(
                     $"GROUP BY {SqlImportClauseApplyUtilities.Truncate(query.GroupBy, 30)}",
-                    ImportItemStatus.Partial,
-                    "Some grouping terms could not be mapped and were skipped",
                     result.Id
                 )
             );
@@ -89,10 +88,8 @@ internal sealed class SqlImportGroupingClauseApplier : ISqlImportApplyStep
         else
         {
             report.Add(
-                new ImportReportItem(
-                    $"GROUP BY {SqlImportClauseApplyUtilities.Truncate(query.GroupBy, 30)}",
-                    ImportItemStatus.Skipped,
-                    "Unsupported grouping expression - add manually"
+                SqlImportReportFactory.GroupByUnsupported(
+                    $"GROUP BY {SqlImportClauseApplyUtilities.Truncate(query.GroupBy, 30)}"
                 )
             );
             skipped++;
@@ -128,10 +125,8 @@ internal sealed class SqlImportGroupingClauseApplier : ISqlImportApplyStep
                 continue;
 
             report.Add(
-                new ImportReportItem(
-                    $"GROUP BY conflict: {SqlImportClauseApplyUtilities.Truncate(exprTrimmed, 40)}",
-                    ImportItemStatus.Partial,
-                    "Selected column is neither grouped nor aggregated"
+                SqlImportReportFactory.GroupByConflict(
+                    $"GROUP BY conflict: {SqlImportClauseApplyUtilities.Truncate(exprTrimmed, 40)}"
                 )
             );
             partial++;
