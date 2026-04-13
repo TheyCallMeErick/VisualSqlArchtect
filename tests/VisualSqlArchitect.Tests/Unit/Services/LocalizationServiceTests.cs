@@ -3,6 +3,7 @@ using Xunit;
 
 namespace DBWeaver.Tests.Unit.Services;
 
+[Collection("LocalizationSensitive")]
 public class LocalizationServiceTests
 {
     [Fact]
@@ -56,6 +57,52 @@ public class LocalizationServiceTests
 
         Assert.True(loc.SetCulture("zh-TW"));
         Assert.Equal("zh-TW", loc.CurrentCulture);
+
+        // restore default
+        loc.SetCulture("pt-BR");
+    }
+
+    [Fact]
+    public void SchemaAnalysisKeys_AreAvailableInSupportedLocales()
+    {
+        var loc = LocalizationService.Instance;
+        string[] cultures = ["pt-BR", "en-US", "es-ES", "ru-RU", "ja-JP"];
+        string[] requiredKeys =
+        [
+            "preview.schemaAnalysis.run",
+            "preview.schemaAnalysis.cancel",
+            "preview.schemaAnalysis.clearFilters",
+            "preview.schemaAnalysis.severity",
+            "preview.schemaAnalysis.rule",
+            "preview.schemaAnalysis.minConfidence",
+            "preview.schemaAnalysis.tableFilter",
+            "preview.schemaAnalysis.details",
+            "preview.schemaAnalysis.evidence",
+            "preview.schemaAnalysis.suggestions",
+            "preview.schemaAnalysis.ruleDiagnostics",
+            "preview.schemaAnalysis.sqlCandidates",
+            "preview.schemaAnalysis.copySql",
+            "preview.schemaAnalysis.applyToCanvas",
+            "preview.schemaAnalysis.state.metadataUnavailable",
+            "preview.schemaAnalysis.state.cancelled",
+            "preview.schemaAnalysis.state.partialTimeout",
+            "preview.schemaAnalysis.state.failed",
+            "preview.schemaAnalysis.state.empty",
+            "preview.schemaAnalysis.state.noFilterMatch",
+            "preview.schemaAnalysis.state.noIssueSelected",
+            "preview.schemaAnalysis.state.noSqlCandidate",
+            "preview.schemaAnalysis.actionBlockedTooltip",
+        ];
+
+        foreach (string culture in cultures)
+        {
+            Assert.True(loc.SetCulture(culture));
+            foreach (string key in requiredKeys)
+            {
+                string value = loc[key];
+                Assert.NotEqual(key, value);
+            }
+        }
 
         // restore default
         loc.SetCulture("pt-BR");

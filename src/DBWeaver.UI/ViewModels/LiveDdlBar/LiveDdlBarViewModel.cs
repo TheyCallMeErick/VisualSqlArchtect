@@ -3,6 +3,8 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using DBWeaver.Core;
 using DBWeaver.Ddl;
+using DBWeaver.Ddl.SchemaAnalysis.Application;
+using DBWeaver.Ddl.SchemaAnalysis.Application.Validation;
 using DBWeaver.Nodes;
 using DBWeaver.Compilation;
 using DBWeaver.UI.Services.Localization;
@@ -26,10 +28,19 @@ public sealed class LiveDdlBarViewModel : ViewModelBase
     private DatabaseProvider _provider = DatabaseProvider.SqlServer;
 
     private CancellationTokenSource? _debounce;
+    private readonly SchemaAnalysisService _schemaAnalysisService;
+    private CancellationTokenSource? _schemaAnalysisCts;
+    private bool _isRunningSchemaAnalysis;
 
     public ObservableCollection<string> ErrorHints { get; } = [];
 
     public DdlDiagnosticsPanelViewModel DiagnosticsPanel { get; }
+
+    public SchemaAnalysisPanelViewModel SchemaAnalysisPanel { get; }
+
+    public RelayCommand RunSchemaAnalysisCommand { get; }
+
+    public RelayCommand CancelSchemaAnalysisCommand { get; }
 
     public string RawSql
     {
@@ -69,18 +80,55 @@ public sealed class LiveDdlBarViewModel : ViewModelBase
 
     public bool HasSql => !string.IsNullOrWhiteSpace(RawSql);
 
+    public bool IsRunningSchemaAnalysis
+    {
+        get => _isRunningSchemaAnalysis;
+        private set
+        {
+            if (!Set(ref _isRunningSchemaAnalysis, value))
+                return;
+
+            RunSchemaAnalysisCommand.NotifyCanExecuteChanged();
+            CancelSchemaAnalysisCommand.NotifyCanExecuteChanged();
+        }
+    }
+
     public LiveDdlBarViewModel(CanvasViewModel canvas)
     {
         _canvas = canvas;
+        _schemaAnalysisService = SchemaAnalysisServiceFactory.CreateDefault();
         DiagnosticsPanel = new DdlDiagnosticsPanelViewModel(nodeId => _ = FocusNodeById(nodeId));
+        SchemaAnalysisPanel = new SchemaAnalysisPanelViewModel();
+        RunSchemaAnalysisCommand = new RelayCommand(
+            () => _ = AnalyzeSchemaStructureAsync(),
+            () => !IsRunningSchemaAnalysis && _canvas.DatabaseMetadata is not null
+        );
+        CancelSchemaAnalysisCommand = new RelayCommand(
+            CancelSchemaAnalysis,
+            () => IsRunningSchemaAnalysis
+        );
 
         _canvas.Connections.CollectionChanged += OnConnectionsChanged;
         _canvas.Nodes.CollectionChanged += OnNodesChanged;
+        _canvas.PropertyChanged += OnCanvasPropertyChanged;
 
         foreach (NodeViewModel node in _canvas.Nodes)
             SubscribeNode(node);
 
         Recompile();
+
+        if (_canvas.DatabaseMetadata is null)
+            SchemaAnalysisPanel.SetMetadataUnavailable();
+    }
+
+    private void OnCanvasPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(CanvasViewModel.DatabaseMetadata))
+        {
+            RunSchemaAnalysisCommand.NotifyCanExecuteChanged();
+            if (_canvas.DatabaseMetadata is null)
+                SchemaAnalysisPanel.SetMetadataUnavailable();
+        }
     }
 
     private void OnConnectionsChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -179,6 +227,50 @@ public sealed class LiveDdlBarViewModel : ViewModelBase
             IsCompiling = false;
             RaisePropertyChanged(nameof(HasSql));
         }
+    }
+
+    public async Task AnalyzeSchemaStructureAsync(CancellationToken ct = default)
+    {
+        if (IsRunningSchemaAnalysis)
+            return;
+
+        if (_canvas.DatabaseMetadata is null)
+        {
+            SchemaAnalysisPanel.SetMetadataUnavailable();
+            return;
+        }
+
+        _schemaAnalysisCts?.Cancel();
+        _schemaAnalysisCts?.Dispose();
+        _schemaAnalysisCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+
+        try
+        {
+            IsRunningSchemaAnalysis = true;
+            SchemaAnalysisPanel.SetLoading();
+
+            var profile = SchemaAnalysisProfileNormalizer.CreateDefaultProfile();
+            var result = await _schemaAnalysisService.AnalyzeAsync(
+                _canvas.DatabaseMetadata,
+                profile,
+                _schemaAnalysisCts.Token
+            );
+
+            SchemaAnalysisPanel.ApplyResult(result);
+        }
+        catch (OperationCanceledException)
+        {
+            SchemaAnalysisPanel.SetCancelled();
+        }
+        finally
+        {
+            IsRunningSchemaAnalysis = false;
+        }
+    }
+
+    public void CancelSchemaAnalysis()
+    {
+        _schemaAnalysisCts?.Cancel();
     }
 
     private NodeGraph BuildNodeGraph()

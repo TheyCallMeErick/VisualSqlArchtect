@@ -26,6 +26,7 @@ public class OutputPreviewModalViewModelTests
         Assert.True(vm.IsDdlMode);
         Assert.False(vm.HasDdlSql);
         Assert.True(vm.HasDiagnostics);
+        Assert.Same(liveDdl, vm.DdlTool);
     }
 
     [Fact]
@@ -49,6 +50,7 @@ public class OutputPreviewModalViewModelTests
         Assert.True(vm.IsDdlMode);
         Assert.False(vm.HasDdlSql);
         Assert.True(vm.HasDiagnostics);
+        Assert.Same(liveDdl, vm.DdlTool);
     }
 
     [Fact]
@@ -62,6 +64,78 @@ public class OutputPreviewModalViewModelTests
         Assert.True(vm.IsUnavailableMode);
         Assert.True(vm.ShowUnavailablePrimaryContent);
         Assert.False(vm.HasDiagnostics);
+        Assert.Null(vm.DdlTool);
         Assert.Equal("Preview indisponível para este documento.", vm.UnavailableMessage);
+    }
+
+    [Fact]
+    public void OpenForQuery_ClearsDdlToolAfterDdlMode()
+    {
+        var ddlCanvas = new CanvasViewModel(
+            nodeManager: null,
+            pinManager: null,
+            selectionManager: null,
+            localizationService: null,
+            domainStrategy: new DdlDomainStrategy());
+        LiveDdlBarViewModel liveDdl = Assert.IsType<LiveDdlBarViewModel>(ddlCanvas.LiveDdl);
+        liveDdl.Recompile();
+
+        var queryCanvas = new CanvasViewModel();
+        LiveSqlBarViewModel liveSql = queryCanvas.LiveSql;
+
+        var vm = new OutputPreviewModalViewModel();
+        vm.OpenForDdl(ddlCanvas, liveDdl, "PostgreSQL");
+        Assert.Same(liveDdl, vm.DdlTool);
+
+        vm.OpenForQuery(queryCanvas, liveSql, "PostgreSQL");
+
+        Assert.Null(vm.DdlTool);
+        Assert.True(vm.IsQueryMode);
+    }
+
+    [Fact]
+    public void OpenForSqlBenchmark_ClearsDdlToolAfterDdlMode()
+    {
+        var ddlCanvas = new CanvasViewModel(
+            nodeManager: null,
+            pinManager: null,
+            selectionManager: null,
+            localizationService: null,
+            domainStrategy: new DdlDomainStrategy());
+        LiveDdlBarViewModel liveDdl = Assert.IsType<LiveDdlBarViewModel>(ddlCanvas.LiveDdl);
+        liveDdl.Recompile();
+
+        var queryCanvas = new CanvasViewModel();
+        var vm = new OutputPreviewModalViewModel();
+
+        vm.OpenForDdl(ddlCanvas, liveDdl, "PostgreSQL");
+        Assert.Same(liveDdl, vm.DdlTool);
+
+        vm.OpenForSqlBenchmark(queryCanvas, "SELECT 1", null);
+
+        Assert.Null(vm.DdlTool);
+        Assert.True(vm.IsSqlBenchmarkMode);
+    }
+
+    [Fact]
+    public void Close_ClearsDdlToolAfterDdlMode()
+    {
+        var ddlCanvas = new CanvasViewModel(
+            nodeManager: null,
+            pinManager: null,
+            selectionManager: null,
+            localizationService: null,
+            domainStrategy: new DdlDomainStrategy());
+        LiveDdlBarViewModel liveDdl = Assert.IsType<LiveDdlBarViewModel>(ddlCanvas.LiveDdl);
+        liveDdl.Recompile();
+
+        var vm = new OutputPreviewModalViewModel();
+        vm.OpenForDdl(ddlCanvas, liveDdl, "PostgreSQL");
+        Assert.Same(liveDdl, vm.DdlTool);
+
+        vm.Close();
+
+        Assert.Null(vm.DdlTool);
+        Assert.False(vm.IsVisible);
     }
 }

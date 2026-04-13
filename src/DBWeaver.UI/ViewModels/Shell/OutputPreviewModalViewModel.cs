@@ -35,6 +35,7 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
     private string _unavailableMessage = "Preview is unavailable for this document.";
     private BenchmarkViewModel? _benchmarkTool;
     private ExplainPlanViewModel? _explainPlanTool;
+    private LiveDdlBarViewModel? _ddlTool;
     private PropertyChangedEventHandler? _benchmarkToolPropertyChanged;
     private PropertyChangedEventHandler? _explainPlanToolPropertyChanged;
 
@@ -191,6 +192,12 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
         private set => Set(ref _explainPlanTool, value);
     }
 
+    public LiveDdlBarViewModel? DdlTool
+    {
+        get => _ddlTool;
+        private set => Set(ref _ddlTool, value);
+    }
+
     public string UnavailableMessage
     {
         get => _unavailableMessage;
@@ -213,6 +220,7 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
         DdlProviderLabel = string.Empty;
         BenchmarkTool = null;
         ExplainPlanTool = null;
+        DdlTool = null;
         ActiveTab = EOutputPreviewTab.Primary;
         IsVisible = true;
         Diagnostics?.RunChecksCommand.Execute(null);
@@ -231,6 +239,7 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
         DdlProviderLabel = providerLabel;
         BenchmarkTool = null;
         ExplainPlanTool = null;
+        DdlTool = liveDdl;
         ActiveTab = EOutputPreviewTab.Primary;
         IsVisible = true;
         Diagnostics?.RunChecksCommand.Execute(null);
@@ -252,6 +261,7 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
         DdlProviderLabel = string.Empty;
         BenchmarkTool = null;
         ExplainPlanTool = null;
+        DdlTool = null;
         ActiveTab = EOutputPreviewTab.Primary;
         IsVisible = true;
     }
@@ -273,6 +283,7 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
         DdlProviderLabel = string.Empty;
         BenchmarkTool = benchmark;
         ExplainPlanTool = null;
+        DdlTool = null;
         ActiveTab = EOutputPreviewTab.Primary;
         IsVisible = true;
     }
@@ -298,6 +309,7 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
         DdlProviderLabel = string.Empty;
         BenchmarkTool = null;
         ExplainPlanTool = explain;
+        DdlTool = null;
         ActiveTab = EOutputPreviewTab.Primary;
         IsVisible = true;
     }
@@ -313,6 +325,7 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
         UnwireToolHandlers();
         BenchmarkTool = null;
         ExplainPlanTool = null;
+        DdlTool = null;
         IsVisible = false;
     }
 
