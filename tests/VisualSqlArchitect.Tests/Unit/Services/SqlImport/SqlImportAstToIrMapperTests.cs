@@ -516,6 +516,83 @@ public sealed class SqlImportAstToIrMapperTests
     }
 
     [Fact]
+    public void MapSelectFrom_WithFunctionArgumentsInWhere_PreservesFunctionArgumentsInIr()
+    {
+        var mapper = new SqlImportAstToIrMapper();
+        SqlImportParsedQuery parsed = CreateQuery(
+            selectedColumns: [new SqlImportSelectedColumn("o.id", null)],
+            fromParts: [new SqlImportSourcePart("orders", "o", null, null)],
+            whereClause: "MY_FUNC(o.id, 10) = 1"
+        );
+
+        SqlToNodeIR ir = mapper.MapSelectFrom(
+            parsed,
+            "SELECT o.id FROM orders o WHERE MY_FUNC(o.id, 10) = 1",
+            DatabaseProvider.Postgres
+        );
+
+        var comparison = Assert.IsType<DBWeaver.SqlImport.IR.Expressions.ComparisonExpr>(ir.Query.WhereExpr);
+        var function = Assert.IsType<FunctionExpr>(comparison.Left);
+
+        Assert.Equal("MY_FUNC", function.Name);
+        Assert.Equal(2, function.Arguments.Count);
+        Assert.IsType<ColumnRefExpr>(function.Arguments[0]);
+        Assert.IsType<DBWeaver.SqlImport.IR.Expressions.LiteralExpr>(function.Arguments[1]);
+    }
+
+    [Fact]
+    public void MapSelectFrom_WithCountDistinctInWhere_PreservesDistinctArgumentNode()
+    {
+        var mapper = new SqlImportAstToIrMapper();
+        SqlImportParsedQuery parsed = CreateQuery(
+            selectedColumns: [new SqlImportSelectedColumn("o.id", null)],
+            fromParts: [new SqlImportSourcePart("orders", "o", null, null)],
+            whereClause: "COUNT(DISTINCT o.customer_id) > 1"
+        );
+
+        SqlToNodeIR ir = mapper.MapSelectFrom(
+            parsed,
+            "SELECT o.id FROM orders o WHERE COUNT(DISTINCT o.customer_id) > 1",
+            DatabaseProvider.Postgres
+        );
+
+        var comparison = Assert.IsType<DBWeaver.SqlImport.IR.Expressions.ComparisonExpr>(ir.Query.WhereExpr);
+        var outerFunction = Assert.IsType<FunctionExpr>(comparison.Left);
+        Assert.Equal("COUNT", outerFunction.Name);
+        Assert.Single(outerFunction.Arguments);
+
+        var distinctArgument = Assert.IsType<FunctionExpr>(outerFunction.Arguments[0]);
+        Assert.Equal("DISTINCT", distinctArgument.Name);
+        Assert.Single(distinctArgument.Arguments);
+        Assert.IsType<ColumnRefExpr>(distinctArgument.Arguments[0]);
+    }
+
+    [Fact]
+    public void MapSelectFrom_WithCountStarInWhere_PreservesStarArgument()
+    {
+        var mapper = new SqlImportAstToIrMapper();
+        SqlImportParsedQuery parsed = CreateQuery(
+            selectedColumns: [new SqlImportSelectedColumn("o.id", null)],
+            fromParts: [new SqlImportSourcePart("orders", "o", null, null)],
+            whereClause: "COUNT(*) > 1"
+        );
+
+        SqlToNodeIR ir = mapper.MapSelectFrom(
+            parsed,
+            "SELECT o.id FROM orders o WHERE COUNT(*) > 1",
+            DatabaseProvider.Postgres
+        );
+
+        var comparison = Assert.IsType<DBWeaver.SqlImport.IR.Expressions.ComparisonExpr>(ir.Query.WhereExpr);
+        var function = Assert.IsType<FunctionExpr>(comparison.Left);
+        Assert.Equal("COUNT", function.Name);
+        Assert.Single(function.Arguments);
+
+        var star = Assert.IsType<DBWeaver.SqlImport.IR.Expressions.LiteralExpr>(function.Arguments[0]);
+        Assert.Equal("*", star.Raw);
+    }
+
+    [Fact]
     public void MapSelectFrom_WithUntypedScalarFallback_EmitsTypeInferenceFallbackDiagnostic()
     {
         var mapper = new SqlImportAstToIrMapper();

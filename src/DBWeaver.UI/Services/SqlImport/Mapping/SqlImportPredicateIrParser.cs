@@ -618,6 +618,15 @@ public sealed class SqlImportPredicateIrParser
             string functionName = functionMatch.Groups["name"].Value;
             string normalizedFunctionName = functionName.ToUpperInvariant();
             SqlFunctionClassification classification = ClassifyFunction(normalizedFunctionName);
+            IReadOnlyList<SqlExpression> arguments = ParseFunctionArguments(
+                functionMatch.Groups["args"].Value,
+                queryId,
+                $"{exprPath}/fn/{normalizedFunctionName}",
+                sourceByAlias,
+                fallbackSourceId,
+                clause,
+                exprId
+            );
 
             if (classification == SqlFunctionClassification.Unsupported)
             {
@@ -653,7 +662,7 @@ public sealed class SqlImportPredicateIrParser
                 Name: functionName,
                 CanonicalName: classification == SqlFunctionClassification.Canonical ? normalizedFunctionName : null,
                 Classification: classification,
-                Arguments: []
+                Arguments: arguments
             );
         }
 
@@ -822,6 +831,151 @@ public sealed class SqlImportPredicateIrParser
 
         char character = input[index];
         return !char.IsLetterOrDigit(character) && character != '_';
+    }
+
+    private IReadOnlyList<SqlExpression> ParseFunctionArguments(
+        string rawArguments,
+        string queryId,
+        string exprPath,
+        IReadOnlyDictionary<string, string> sourceByAlias,
+        string fallbackSourceId,
+        SqlImportClause clause,
+        string parentExprId)
+    {
+        string trimmedArguments = rawArguments.Trim();
+        if (string.IsNullOrWhiteSpace(trimmedArguments))
+            return [];
+
+        IReadOnlyList<string> argumentTokens = SplitTopLevelCommaList(trimmedArguments);
+        var arguments = new List<SqlExpression>(argumentTokens.Count);
+
+        for (int index = 0; index < argumentTokens.Count; index++)
+        {
+            string argumentToken = argumentTokens[index].Trim();
+            if (argumentToken == "*")
+            {
+                arguments.Add(CreateStarArgumentLiteral(queryId, exprPath, index, parentExprId));
+                continue;
+            }
+
+            if (argumentToken.StartsWith("DISTINCT ", StringComparison.OrdinalIgnoreCase))
+            {
+                string distinctInnerToken = argumentToken["DISTINCT ".Length..].Trim();
+                SqlExpression innerArgument = ParseScalarBestEffort(
+                    distinctInnerToken,
+                    queryId,
+                    $"{exprPath}/arg/{index}/distinct-inner",
+                    sourceByAlias,
+                    fallbackSourceId,
+                    clause,
+                    parentExprId
+                );
+
+                arguments.Add(CreateDistinctArgumentWrapper(
+                    argumentToken,
+                    innerArgument,
+                    queryId,
+                    exprPath,
+                    index,
+                    parentExprId
+                ));
+                continue;
+            }
+
+            SqlExpression parsedArgument = ParseScalarBestEffort(
+                argumentToken,
+                queryId,
+                $"{exprPath}/arg/{index}",
+                sourceByAlias,
+                fallbackSourceId,
+                clause,
+                parentExprId
+            );
+
+            arguments.Add(parsedArgument);
+        }
+
+        return arguments;
+    }
+
+    private SqlExpression ParseScalarBestEffort(
+        string expression,
+        string queryId,
+        string exprPath,
+        IReadOnlyDictionary<string, string> sourceByAlias,
+        string fallbackSourceId,
+        SqlImportClause clause,
+        string parentExprId)
+    {
+        var diagnostics = new List<SqlImportDiagnostic>();
+        return ParseScalar(
+            expression,
+            queryId,
+            exprPath,
+            sourceByAlias,
+            fallbackSourceId,
+            diagnostics,
+            clause,
+            parentExprId
+        );
+    }
+
+    private static SqlImportLiteralExpr CreateStarArgumentLiteral(
+        string queryId,
+        string exprPath,
+        int argumentIndex,
+        string parentExprId)
+    {
+        string rawStar = "*";
+        string exprId = StableSqlImportIdGenerator.BuildExprId(
+            queryId,
+            $"{exprPath}/arg/{argumentIndex}",
+            "Scalar",
+            ComputeHash(rawStar),
+            parentExprId
+        );
+
+        return new SqlImportLiteralExpr(
+            exprId,
+            null,
+            SqlImportSemanticType.Unknown,
+            SqlResolutionStatus.Resolved,
+            CreateTrace(queryId, exprId),
+            CreateNodeMetadata(),
+            rawStar,
+            rawStar,
+            false
+        );
+    }
+
+    private static FunctionExpr CreateDistinctArgumentWrapper(
+        string rawArgument,
+        SqlExpression innerArgument,
+        string queryId,
+        string exprPath,
+        int argumentIndex,
+        string parentExprId)
+    {
+        string exprId = StableSqlImportIdGenerator.BuildExprId(
+            queryId,
+            $"{exprPath}/arg/{argumentIndex}/distinct",
+            "Scalar",
+            ComputeHash(rawArgument),
+            parentExprId
+        );
+
+        return new FunctionExpr(
+            exprId,
+            null,
+            SqlImportSemanticType.Unknown,
+            innerArgument.ResolutionStatus,
+            CreateTrace(queryId, exprId),
+            CreateNodeMetadata(),
+            Name: "DISTINCT",
+            CanonicalName: "DISTINCT",
+            Classification: SqlFunctionClassification.GenericPreserved,
+            Arguments: [innerArgument]
+        );
     }
 
     private static string ComputeHash(string input)
