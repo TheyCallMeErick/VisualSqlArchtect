@@ -127,27 +127,27 @@ public sealed class Nf1HintMultiValuedRule : ISchemaAnalysisRule
 
         List<SchemaEvidence> evidence =
         [
-            new SchemaEvidence(EvidenceKind.MetadataFact, "score", score.ToString("0.0000", System.Globalization.CultureInfo.InvariantCulture), 1.0),
+            SchemaEvidenceFactory.MetadataFact("score", score.ToString("0.0000", System.Globalization.CultureInfo.InvariantCulture), 1.0),
         ];
 
         if (hasStrongToken)
         {
-            evidence.Add(new SchemaEvidence(EvidenceKind.MetadataFact, "strongToken", column.Name, 0.9));
+            evidence.Add(SchemaEvidenceFactory.MetadataFact("strongToken", column.Name, 0.9));
         }
 
         if (defaultContainsComma)
         {
-            evidence.Add(new SchemaEvidence(EvidenceKind.MetadataFact, "defaultContainsComma", column.DefaultValue ?? string.Empty, 0.85));
+            evidence.Add(SchemaEvidenceFactory.MetadataFact("defaultContainsComma", column.DefaultValue ?? string.Empty, 0.85));
         }
 
         if (hasJsonXmlRelationalContext)
         {
-            evidence.Add(new SchemaEvidence(EvidenceKind.ConstraintTopology, "jsonXmlRelationalContext", "true", 0.8));
+            evidence.Add(SchemaEvidenceFactory.ConstraintTopology("jsonXmlRelationalContext", "true", 0.8));
         }
 
         if (isAllowlisted)
         {
-            evidence.Add(new SchemaEvidence(EvidenceKind.PolicyRequirement, "semiStructuredPayloadAllowlist", "matched", 0.75));
+            evidence.Add(SchemaEvidenceFactory.PolicyRequirement("semiStructuredPayloadAllowlist", "matched", 0.75));
         }
 
         return new SchemaIssue(

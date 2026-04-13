@@ -193,34 +193,19 @@ public sealed class MissingRequiredCommentRule : ISchemaAnalysisRule
     {
         List<SchemaEvidence> evidence =
         [
-            new(
-                EvidenceKind.PolicyRequirement,
-                "requiredCommentTarget",
-                targetKind,
-                1.0
-            ),
+            SchemaEvidenceFactory.PolicyRequirement("requiredCommentTarget", targetKind, 1.0),
         ];
 
         if (provider == DatabaseProvider.SQLite)
         {
             evidence.Add(
-                new SchemaEvidence(
-                    EvidenceKind.ProviderLimitation,
-                    "provider",
-                    provider.ToString(),
-                    0.9
-                )
+                SchemaEvidenceFactory.ProviderLimitation("provider", provider.ToString(), 0.9)
             );
         }
         else
         {
             evidence.Add(
-                new SchemaEvidence(
-                    EvidenceKind.MetadataFact,
-                    "commentState",
-                    "MissingOrEquivalent",
-                    0.9
-                )
+                SchemaEvidenceFactory.MetadataFact("commentState", "MissingOrEquivalent", 0.9)
             );
         }
 

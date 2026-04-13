@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using DBWeaver.Ddl.SchemaAnalysis.Application.Indexing;
+using DBWeaver.Ddl.SchemaAnalysis.Application.Processing;
 using DBWeaver.Ddl.SchemaAnalysis.Domain.Contracts;
 using DBWeaver.Ddl.SchemaAnalysis.Domain.Enums;
 using DBWeaver.Ddl.SchemaAnalysis.Domain.Normalization;
@@ -74,12 +75,7 @@ public sealed partial class LowSemanticNameRule : ISchemaAnalysisRule
                     Message: message,
                     Evidence:
                     [
-                        new SchemaEvidence(
-                            EvidenceKind.MetadataFact,
-                            "principalToken",
-                            principalToken,
-                            1.0
-                        ),
+                        SchemaEvidenceFactory.MetadataFact("principalToken", principalToken, 1.0),
                     ],
                     Suggestions: [],
                     IsAmbiguous: false

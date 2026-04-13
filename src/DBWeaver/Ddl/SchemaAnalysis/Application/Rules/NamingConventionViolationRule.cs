@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using DBWeaver.Ddl.SchemaAnalysis.Application.Indexing;
+using DBWeaver.Ddl.SchemaAnalysis.Application.Processing;
 using DBWeaver.Ddl.SchemaAnalysis.Domain.Contracts;
 using DBWeaver.Ddl.SchemaAnalysis.Domain.Enums;
 using DBWeaver.Ddl.SchemaAnalysis.Domain.Normalization;
@@ -55,8 +56,7 @@ public sealed class NamingConventionViolationRule : ISchemaAnalysisRule
                     Message: message,
                     Evidence:
                     [
-                        new SchemaEvidence(
-                            EvidenceKind.PolicyRequirement,
+                        SchemaEvidenceFactory.PolicyRequirement(
                             "namingConvention",
                             context.Profile.NamingConvention.ToString(),
                             1.0

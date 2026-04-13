@@ -43,6 +43,52 @@ public sealed class SchemaAnalysisServiceTests
         Assert.Single(result.Issues);
         Assert.Equal("issue-1", result.Issues[0].IssueId);
         Assert.Equal(1, result.Summary.TotalIssues);
+        Assert.NotEmpty(result.Issues[0].Suggestions);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_AttachesEmptySuggestionList_WhenFactoryHasNoMapping()
+    {
+        SchemaIssue issue = CreateIssue(
+            issueId: "issue-1",
+            ruleCode: SchemaRuleCode.FK_CATALOG_INCONSISTENT,
+            confidence: 0.90
+        ) with
+        {
+            TargetType = SchemaTargetType.Constraint,
+            ConstraintName = "fk_orders_customer",
+            ColumnName = null,
+        };
+        SchemaAnalysisService service = new(
+            rules: [new StubRule(SchemaRuleCode.FK_CATALOG_INCONSISTENT, [issue], [])]
+        );
+
+        SchemaAnalysisResult result = await service.AnalyzeAsync(CreateMetadata(), CreateProfile());
+
+        Assert.Single(result.Issues);
+        Assert.Empty(result.Issues[0].Suggestions);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_TruncatesSuggestions_ByProfileLimit()
+    {
+        SchemaIssue issue = CreateIssue(
+            issueId: "issue-1",
+            ruleCode: SchemaRuleCode.MISSING_FK,
+            confidence: 0.90
+        );
+        SchemaAnalysisProfile profile = CreateProfile() with
+        {
+            MaxSuggestionsPerIssue = 1,
+        };
+        SchemaAnalysisService service = new(
+            rules: [new StubRule(SchemaRuleCode.MISSING_FK, [issue], [])]
+        );
+
+        SchemaAnalysisResult result = await service.AnalyzeAsync(CreateMetadata(), profile);
+
+        SchemaSuggestion suggestion = Assert.Single(result.Issues[0].Suggestions);
+        Assert.Equal("Review inferred foreign key", suggestion.Title);
     }
 
     [Fact]

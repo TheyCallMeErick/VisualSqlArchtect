@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using DBWeaver.Core;
 using DBWeaver.Ddl.SchemaAnalysis.Application.Indexing;
+using DBWeaver.Ddl.SchemaAnalysis.Application.Processing;
 using DBWeaver.Ddl.SchemaAnalysis.Domain.Contracts;
 using DBWeaver.Ddl.SchemaAnalysis.Domain.Enums;
 using DBWeaver.Ddl.SchemaAnalysis.Domain.Normalization;
@@ -332,31 +333,15 @@ public sealed partial class MissingFkRule : ISchemaAnalysisRule
 
         List<SchemaEvidence> evidence =
         [
-            new(
-                EvidenceKind.NamingMatch,
-                "entityMatch",
-                best.ExactEntityMatch ? "Exact" : "Synonym",
-                1.0
-            ),
-            new(
-                EvidenceKind.TypeCompatibility,
-                "targetType",
-                best.TypeExact ? "Exact" : "SemanticStrong",
-                0.95
-            ),
-            new(
-                EvidenceKind.ConstraintTopology,
-                "targetKind",
-                best.TargetIsPk ? "PrimaryKey" : "UniqueConstraint",
-                0.90
-            ),
+            SchemaEvidenceFactory.NamingMatch("entityMatch", best.ExactEntityMatch ? "Exact" : "Synonym", 1.0),
+            SchemaEvidenceFactory.TypeCompatibility("targetType", best.TypeExact ? "Exact" : "SemanticStrong", 0.95),
+            SchemaEvidenceFactory.ConstraintTopology("targetKind", best.TargetIsPk ? "PrimaryKey" : "UniqueConstraint", 0.90),
         ];
 
         if (isAmbiguous)
         {
             evidence.Add(
-                new SchemaEvidence(
-                    EvidenceKind.Ambiguity,
+                SchemaEvidenceFactory.Ambiguity(
                     "candidateTargets",
                     string.Join(", ", topCandidates.Select(candidate => candidate.TargetTableFullName)),
                     0.85

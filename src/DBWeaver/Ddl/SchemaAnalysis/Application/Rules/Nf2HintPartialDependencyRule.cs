@@ -231,21 +231,20 @@ public sealed class Nf2HintPartialDependencyRule : ISchemaAnalysisRule
 
         List<SchemaEvidence> evidence =
         [
-            new SchemaEvidence(EvidenceKind.MetadataFact, "score", score.ToString("0.0000", System.Globalization.CultureInfo.InvariantCulture), 1.0),
-            new SchemaEvidence(EvidenceKind.NamingMatch, "associatedPkComponent", associatedPkComponent, 0.95),
-            new SchemaEvidence(EvidenceKind.ConstraintTopology, "compositePrimaryKey", "true", 0.90),
+            SchemaEvidenceFactory.MetadataFact("score", score.ToString("0.0000", System.Globalization.CultureInfo.InvariantCulture), 1.0),
+            SchemaEvidenceFactory.NamingMatch("associatedPkComponent", associatedPkComponent, 0.95),
+            SchemaEvidenceFactory.ConstraintTopology("compositePrimaryKey", "true", 0.90),
         ];
 
         if (participatesInUniqueIndexWithFullPk)
         {
-            evidence.Add(new SchemaEvidence(EvidenceKind.ConstraintTopology, "uniqueIndexWithFullPk", "true", 0.75));
+            evidence.Add(SchemaEvidenceFactory.ConstraintTopology("uniqueIndexWithFullPk", "true", 0.75));
         }
 
         if (dimensionCriterionMatched.HasValue)
         {
             evidence.Add(
-                new SchemaEvidence(
-                    EvidenceKind.MetadataFact,
+                SchemaEvidenceFactory.MetadataFact(
                     "dimensionCriterionMatched",
                     dimensionCriterionMatched.Value ? "true" : "false",
                     0.70

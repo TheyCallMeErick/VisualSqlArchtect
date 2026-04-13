@@ -38,6 +38,7 @@ public sealed class SchemaAnalysisService
     private readonly IReadOnlyDictionary<SchemaRuleCode, ISchemaAnalysisRule> _rules;
     private readonly SchemaIssueDeduplicator _issueDeduplicator;
     private readonly SchemaIssueOrderer _issueOrderer;
+    private readonly SchemaSuggestionFactory _suggestionFactory;
     private readonly ISchemaAnalysisCache? _cache;
 
     public SchemaAnalysisService(
@@ -49,6 +50,7 @@ public sealed class SchemaAnalysisService
         SchemaAnalysisContractValidator? contractValidator = null,
         SchemaIssueDeduplicator? issueDeduplicator = null,
         SchemaIssueOrderer? issueOrderer = null,
+        SchemaSuggestionFactory? suggestionFactory = null,
         ISchemaAnalysisCache? cache = null
     )
     {
@@ -59,6 +61,7 @@ public sealed class SchemaAnalysisService
         _contractValidator = contractValidator ?? new SchemaAnalysisContractValidator();
         _issueDeduplicator = issueDeduplicator ?? new SchemaIssueDeduplicator();
         _issueOrderer = issueOrderer ?? new SchemaIssueOrderer();
+        _suggestionFactory = suggestionFactory ?? new SchemaSuggestionFactory();
         _cache = cache;
         _rules = rules.ToDictionary(static rule => rule.RuleCode);
     }
@@ -244,7 +247,13 @@ public sealed class SchemaAnalysisService
         IReadOnlyList<SchemaIssue> truncatedIssues = timedOut && !profile.AllowPartialOnTimeout
             ? []
             : dedupedIssues.Take(profile.MaxIssues).ToList();
-        IReadOnlyList<SchemaIssue> finalIssues = _issueOrderer.Order(truncatedIssues);
+        IReadOnlyList<SchemaIssue> orderedIssues = _issueOrderer.Order(truncatedIssues);
+        IReadOnlyList<SchemaIssue> finalIssues = orderedIssues
+            .Select(issue => issue with
+            {
+                Suggestions = _suggestionFactory.CreateSuggestions(issue, metadata.Provider, profile),
+            })
+            .ToList();
 
         SchemaAnalysisSummary summary = BuildSummary(finalIssues);
         DateTimeOffset completedAtUtc = DateTimeOffset.UtcNow;

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using DBWeaver.Core;
+using DBWeaver.Ddl.SchemaAnalysis.Application.Processing;
 using DBWeaver.Ddl.SchemaAnalysis.Domain.Contracts;
 using DBWeaver.Ddl.SchemaAnalysis.Domain.Enums;
 using DBWeaver.Ddl.SchemaAnalysis.Domain.Normalization;
@@ -89,18 +90,8 @@ public sealed class FkCatalogInconsistentRule : ISchemaAnalysisRule
 
         List<SchemaEvidence> evidence =
         [
-            new(
-                EvidenceKind.MetadataFact,
-                "constraintName",
-                foreignKey.ConstraintName,
-                1.0
-            ),
-            new(
-                EvidenceKind.ConstraintTopology,
-                $"{missingSide}ColumnMissing",
-                missingColumn,
-                0.95
-            ),
+            SchemaEvidenceFactory.MetadataFact("constraintName", foreignKey.ConstraintName, 1.0),
+            SchemaEvidenceFactory.ConstraintTopology($"{missingSide}ColumnMissing", missingColumn, 0.95),
         ];
 
         return new SchemaIssue(
@@ -147,18 +138,8 @@ public sealed class FkCatalogInconsistentRule : ISchemaAnalysisRule
 
         List<SchemaEvidence> evidence =
         [
-            new(
-                EvidenceKind.MetadataFact,
-                "constraintName",
-                foreignKey.ConstraintName,
-                1.0
-            ),
-            new(
-                EvidenceKind.TypeCompatibility,
-                "compatibilityLevel",
-                compatibility.CompatibilityLevel.ToString(),
-                0.95
-            ),
+            SchemaEvidenceFactory.MetadataFact("constraintName", foreignKey.ConstraintName, 1.0),
+            SchemaEvidenceFactory.TypeCompatibility("compatibilityLevel", compatibility.CompatibilityLevel.ToString(), 0.95),
         ];
 
         return new SchemaIssue(
