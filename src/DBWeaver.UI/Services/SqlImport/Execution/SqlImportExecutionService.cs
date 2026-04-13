@@ -4,6 +4,7 @@ using DBWeaver.UI.Services.SqlImport.Build;
 using DBWeaver.UI.Services.SqlImport.Contracts;
 using DBWeaver.UI.Services.SqlImport.Execution.Applying;
 using DBWeaver.UI.Services.SqlImport.Execution.Parsing;
+using DBWeaver.UI.Services.SqlImport.Mapping;
 using DBWeaver.UI.Services.SqlImport.Rewriting;
 using DBWeaver.UI.Services.SqlImport.Validation;
 using DBWeaver.UI.ViewModels;
@@ -21,6 +22,7 @@ public sealed class SqlImportExecutionService(
     private readonly SqlImportSyntaxValidator _syntaxValidator = syntaxValidator;
     private readonly SqlImportClauseParser _clauseParser = new(cteRewriteService);
     private readonly SqlImportClauseApplier _clauseApplier = new(canvas);
+    private readonly SqlImportAstToIrMapper _astToIrMapper = new();
 
     public SqlImportExecutionResult Execute(
         string sql,
@@ -74,6 +76,24 @@ public sealed class SqlImportExecutionService(
         var mapWatch = Stopwatch.StartNew();
 
         SqlImportParsedQuery parsed = parseResult.Query;
+
+        try
+        {
+            _ = _astToIrMapper.MapSelectFrom(
+                parsed,
+                sql,
+                _canvas.ActiveConnectionConfig?.Provider ?? DBWeaver.Core.DatabaseProvider.Postgres
+            );
+        }
+        catch (Exception ex)
+        {
+            report.Add(new ImportReportItem(
+                "AST → IR",
+                ImportItemStatus.Partial,
+                $"AST→IR base mapping failed and was isolated from current import path: {ex.Message}"
+            ));
+            partial++;
+        }
 
         var coreBuilder = new ImportModelToCanvasBuilder(_canvas);
         var coreInput = new ImportBuildInput(

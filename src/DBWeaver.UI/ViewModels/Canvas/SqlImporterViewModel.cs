@@ -274,7 +274,7 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
             await Task.Delay(Math.Max(0, ImportStartDelayMs), token); // yield to update UI before heavy work
 
             string sqlToImport = SqlInput.Trim();
-            if (FeatureFlags.UseAstParser)
+            if (FeatureFlags.AstIrPrimary)
             {
                 var parser = new SqlParserService();
                 SqlParseResult parseResult = parser.Parse(sqlToImport);
