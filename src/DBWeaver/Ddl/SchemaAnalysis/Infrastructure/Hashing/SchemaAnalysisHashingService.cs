@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using DBWeaver.Ddl.SchemaAnalysis.Domain.Contracts;
+using DBWeaver.Ddl.SchemaAnalysis.Domain.Normalization;
 using DBWeaver.Ddl.SchemaAnalysis.Infrastructure.Serialization;
 using DBWeaver.Metadata;
 
@@ -23,54 +24,55 @@ public sealed class SchemaAnalysisHashingService
 
         var payload = new
         {
-            provider = metadata.Provider.ToString(),
-            databaseName = metadata.DatabaseName,
+            provider = NormalizeText(metadata.Provider.ToString()),
+            databaseName = NormalizeText(metadata.DatabaseName),
             schemas = metadata.Schemas
-                .OrderBy(static schema => schema.Name, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(schema => NormalizeText(SchemaCanonicalizer.Normalize(metadata.Provider, schema.Name) ?? schema.Name), StringComparer.Ordinal)
                 .Select(schema => new
                 {
-                    schema = schema.Name,
+                    schema = NormalizeText(SchemaCanonicalizer.Normalize(metadata.Provider, schema.Name) ?? schema.Name),
                     tables = schema.Tables
-                        .OrderBy(static table => table.Schema, StringComparer.OrdinalIgnoreCase)
-                        .ThenBy(static table => table.Name, StringComparer.OrdinalIgnoreCase)
+                        .OrderBy(table => NormalizeText(SchemaCanonicalizer.Normalize(metadata.Provider, table.Schema) ?? table.Schema), StringComparer.Ordinal)
+                        .ThenBy(table => NormalizeText(table.Name), StringComparer.Ordinal)
                         .Select(table => new
                         {
-                            schema = table.Schema,
-                            table = table.Name,
+                            schema = NormalizeText(SchemaCanonicalizer.Normalize(metadata.Provider, table.Schema) ?? table.Schema),
+                            table = NormalizeText(table.Name),
                             kind = table.Kind.ToString(),
                             columns = table.Columns
                                 .OrderBy(static column => column.OrdinalPosition)
-                                .ThenBy(static column => column.Name, StringComparer.OrdinalIgnoreCase)
+                                .ThenBy(column => NormalizeText(column.Name), StringComparer.Ordinal)
                                 .Select(column => new
                                 {
-                                    name = column.Name,
-                                    rawType = column.NativeType,
+                                    name = NormalizeText(column.Name),
+                                    rawType = NormalizeText(column.NativeType),
                                     ordinal = column.OrdinalPosition,
                                 }),
                             indexes = table.Indexes
-                                .OrderBy(static index => index.Name, StringComparer.OrdinalIgnoreCase)
+                                .OrderBy(index => NormalizeText(index.Name), StringComparer.Ordinal)
                                 .Select(index => new
                                 {
-                                    name = index.Name,
+                                    name = NormalizeText(index.Name),
                                     isUnique = index.IsUnique,
                                     isPrimaryKey = index.IsPrimaryKey,
                                     columns = index.Columns
-                                        .OrderBy(static column => column, StringComparer.OrdinalIgnoreCase),
+                                        .Select(NormalizeText)
+                                        .OrderBy(static column => column, StringComparer.Ordinal),
                                 }),
                         }),
                 }),
             foreignKeys = metadata.AllForeignKeys
-                .OrderBy(static foreignKey => foreignKey.ConstraintName, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(foreignKey => NormalizeText(foreignKey.ConstraintName), StringComparer.Ordinal)
                 .ThenBy(static foreignKey => foreignKey.OrdinalPosition)
                 .Select(foreignKey => new
                 {
-                    name = foreignKey.ConstraintName,
-                    childSchema = foreignKey.ChildSchema,
-                    childTable = foreignKey.ChildTable,
-                    childColumn = foreignKey.ChildColumn,
-                    parentSchema = foreignKey.ParentSchema,
-                    parentTable = foreignKey.ParentTable,
-                    parentColumn = foreignKey.ParentColumn,
+                    name = NormalizeText(foreignKey.ConstraintName),
+                    childSchema = NormalizeText(SchemaCanonicalizer.Normalize(metadata.Provider, foreignKey.ChildSchema) ?? foreignKey.ChildSchema),
+                    childTable = NormalizeText(foreignKey.ChildTable),
+                    childColumn = NormalizeText(foreignKey.ChildColumn),
+                    parentSchema = NormalizeText(SchemaCanonicalizer.Normalize(metadata.Provider, foreignKey.ParentSchema) ?? foreignKey.ParentSchema),
+                    parentTable = NormalizeText(foreignKey.ParentTable),
+                    parentColumn = NormalizeText(foreignKey.ParentColumn),
                     ordinal = foreignKey.OrdinalPosition,
                 }),
         };
@@ -94,5 +96,10 @@ public sealed class SchemaAnalysisHashingService
         byte[] bytes = Encoding.UTF8.GetBytes(payload);
         byte[] hash = SHA256.HashData(bytes);
         return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    private static string NormalizeText(string value)
+    {
+        return value.Normalize(NormalizationForm.FormC).Trim();
     }
 }

@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using DBWeaver.Core;
 using DBWeaver.Ddl.SchemaAnalysis.Application.Caching;
 using DBWeaver.Ddl.SchemaAnalysis.Application.Indexing;
@@ -8,6 +6,7 @@ using DBWeaver.Ddl.SchemaAnalysis.Application.Rules;
 using DBWeaver.Ddl.SchemaAnalysis.Application.Validation;
 using DBWeaver.Ddl.SchemaAnalysis.Domain.Contracts;
 using DBWeaver.Ddl.SchemaAnalysis.Domain.Enums;
+using DBWeaver.Ddl.SchemaAnalysis.Domain.Normalization;
 using DBWeaver.Ddl.SchemaAnalysis.Domain.Validation;
 using DBWeaver.Ddl.SchemaAnalysis.Infrastructure.Hashing;
 using DBWeaver.Metadata;
@@ -114,17 +113,11 @@ public sealed class SchemaAnalysisService
             profileContentHash
         );
 
-        List<SchemaIssue> issues = [];
         List<SchemaRuleExecutionDiagnostic> diagnostics =
         [
             .. profileNormalization.Diagnostics,
             .. metadataValidation.Diagnostics,
         ];
-        List<SchemaIssue> materializedIssues = [];
-        int completedRules = 0;
-        bool timedOut = false;
-        bool cancelled = false;
-        bool ruleFailurePartial = false;
 
         using CancellationTokenSource timeoutCts = new(profile.TimeoutMs);
         using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
@@ -132,141 +125,56 @@ public sealed class SchemaAnalysisService
             timeoutCts.Token
         );
 
-        foreach (SchemaRuleCode ruleCode in OrderedRuleCodes)
+        IReadOnlyList<RuleExecutionPlanItem> executableRules = BuildExecutionPlan(profile);
+        RuleExecutionAggregate executionAggregate = await ExecuteRulesAsync(
+            executableRules,
+            context,
+            profile,
+            linkedCts.Token,
+            timeoutCts
+        );
+
+        diagnostics.AddRange(executionAggregate.Diagnostics);
+
+        if (executionAggregate.HasFatalFailure)
         {
-            try
-            {
-                linkedCts.Token.ThrowIfCancellationRequested();
-            }
-            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
-            {
-                timedOut = true;
-                diagnostics.Add(
-                    new SchemaRuleExecutionDiagnostic(
-                        Code: "ANL-TIMEOUT",
-                        Message: "A execução atingiu o timeout global configurado.",
-                        RuleCode: null,
-                        State: RuleExecutionState.TimedOut,
-                        IsFatal: false
-                    )
-                );
-                break;
-            }
-            catch (OperationCanceledException)
-            {
-                cancelled = true;
-                break;
-            }
-
-            SchemaRuleSetting setting = profile.RuleSettings[ruleCode];
-            if (!setting.Enabled)
-            {
-                continue;
-            }
-
-            if (!_rules.TryGetValue(ruleCode, out ISchemaAnalysisRule? rule))
-            {
-                continue;
-            }
-
-            SchemaRuleExecutionResult executionResult;
-            try
-            {
-                executionResult = await rule.ExecuteAsync(context, linkedCts.Token);
-            }
-            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
-            {
-                timedOut = true;
-                diagnostics.Add(
-                    new SchemaRuleExecutionDiagnostic(
-                        Code: "ANL-TIMEOUT",
-                        Message: "A execução atingiu o timeout global configurado.",
-                        RuleCode: null,
-                        State: RuleExecutionState.TimedOut,
-                        IsFatal: false
-                    )
-                );
-                break;
-            }
-            catch (OperationCanceledException)
-            {
-                cancelled = true;
-                break;
-            }
-            catch (Exception) when (profile.AllowPartialOnRuleFailure)
-            {
-                ruleFailurePartial = true;
-                diagnostics.Add(
-                    new SchemaRuleExecutionDiagnostic(
-                        Code: "ANL-RULE-FAILED",
-                        Message: "Uma regra falhou e a execução seguiu conforme política de parcial.",
-                        RuleCode: ruleCode,
-                        State: RuleExecutionState.Failed,
-                        IsFatal: false
-                    )
-                );
-                continue;
-            }
-            catch (Exception)
-            {
-                diagnostics.Add(
-                    new SchemaRuleExecutionDiagnostic(
-                        Code: "ANL-RULE-FAILED",
-                        Message: "Uma regra falhou e a execução seguiu conforme política de parcial.",
-                        RuleCode: ruleCode,
-                        State: RuleExecutionState.Failed,
-                        IsFatal: true
-                    )
-                );
-
-                return BuildFailedResult(
-                    metadata,
-                    profile,
-                    startedAtUtc,
-                    diagnostics: diagnostics
-                );
-            }
-
-            IReadOnlyList<SchemaIssue> orderedRuleIssues = executionResult.Issues
-                .OrderByDescending(static issue => issue.Confidence)
-                .ThenBy(static issue => issue.IssueId, StringComparer.Ordinal)
-                .Take(setting.MaxIssues)
-                .ToList();
-
-            IReadOnlyList<SchemaIssue> thresholdFilteredIssues = orderedRuleIssues
-                .Where(issue => issue.Confidence >= Math.Max(profile.MinConfidenceGlobal, setting.MinConfidence))
-                .ToList();
-
-            issues.AddRange(thresholdFilteredIssues);
-            materializedIssues.AddRange(thresholdFilteredIssues);
-            diagnostics.AddRange(executionResult.Diagnostics);
-            completedRules++;
+            return BuildFailedResult(
+                metadata,
+                profile,
+                startedAtUtc,
+                diagnostics: diagnostics
+            );
         }
 
-        IReadOnlyList<SchemaIssue> dedupedIssues = _issueDeduplicator.Deduplicate(issues);
-        IReadOnlyList<SchemaIssue> truncatedIssues = timedOut && !profile.AllowPartialOnTimeout
+        IReadOnlyList<SchemaIssue> dedupedIssues = _issueDeduplicator.Deduplicate(executionAggregate.Issues);
+        IReadOnlyList<SchemaIssue> truncatedIssues = executionAggregate.TimedOut && !profile.AllowPartialOnTimeout
             ? []
             : dedupedIssues.Take(profile.MaxIssues).ToList();
         IReadOnlyList<SchemaIssue> orderedIssues = _issueOrderer.Order(truncatedIssues);
         IReadOnlyList<SchemaIssue> finalIssues = orderedIssues
             .Select(issue => issue with
             {
-                Suggestions = _suggestionFactory.CreateSuggestions(issue, metadata.Provider, profile),
+                Suggestions = _suggestionFactory.CreateSuggestions(
+                    issue,
+                    metadata.Provider,
+                    profile,
+                    ResolveExistingConstraintNames(indices, metadata.Provider, issue.SchemaName)
+                ),
             })
             .ToList();
 
         SchemaAnalysisSummary summary = BuildSummary(finalIssues);
         DateTimeOffset completedAtUtc = DateTimeOffset.UtcNow;
         SchemaAnalysisPartialState partialState = BuildPartialState(
-            timedOut,
-            cancelled,
-            ruleFailurePartial,
-            completedRules
+            executionAggregate.TimedOut,
+            executionAggregate.Cancelled,
+            executionAggregate.RuleFailurePartial,
+            executionAggregate.CompletedRules
         );
         SchemaAnalysisStatus status = DetermineStatus(
             diagnostics,
             partialState,
-            hasMaterializedIssues: materializedIssues.Count > 0,
+            hasMaterializedIssues: executionAggregate.Issues.Count > 0,
             allowPartialOnTimeout: profile.AllowPartialOnTimeout
         );
 
@@ -291,10 +199,323 @@ public sealed class SchemaAnalysisService
 
         if (_cache is not null && profile.CacheTtlSeconds > 0)
         {
-            _cache.Set(cacheKey, result, TimeSpan.FromSeconds(profile.CacheTtlSeconds));
+            _cache.Set(cacheKey, SanitizeForCache(result), TimeSpan.FromSeconds(profile.CacheTtlSeconds));
         }
 
         return result;
+    }
+
+    private IReadOnlyList<RuleExecutionPlanItem> BuildExecutionPlan(SchemaAnalysisProfile profile)
+    {
+        List<RuleExecutionPlanItem> plan = [];
+
+        for (int index = 0; index < OrderedRuleCodes.Length; index++)
+        {
+            SchemaRuleCode ruleCode = OrderedRuleCodes[index];
+            SchemaRuleSetting setting = profile.RuleSettings[ruleCode];
+            if (!setting.Enabled || !_rules.TryGetValue(ruleCode, out ISchemaAnalysisRule? rule))
+            {
+                continue;
+            }
+
+            plan.Add(new RuleExecutionPlanItem(index, ruleCode, setting, rule));
+        }
+
+        return plan;
+    }
+
+    private async Task<RuleExecutionAggregate> ExecuteRulesAsync(
+        IReadOnlyList<RuleExecutionPlanItem> executableRules,
+        SchemaAnalysisExecutionContext context,
+        SchemaAnalysisProfile profile,
+        CancellationToken cancellationToken,
+        CancellationTokenSource timeoutCts
+    )
+    {
+        if (ShouldExecuteInParallel(profile, executableRules))
+        {
+            return await ExecuteRulesInParallelAsync(executableRules, context, profile, cancellationToken, timeoutCts);
+        }
+
+        return await ExecuteRulesSequentiallyAsync(executableRules, context, profile, cancellationToken, timeoutCts);
+    }
+
+    private async Task<RuleExecutionAggregate> ExecuteRulesSequentiallyAsync(
+        IReadOnlyList<RuleExecutionPlanItem> executableRules,
+        SchemaAnalysisExecutionContext context,
+        SchemaAnalysisProfile profile,
+        CancellationToken cancellationToken,
+        CancellationTokenSource timeoutCts
+    )
+    {
+        List<RuleExecutionOutcome> outcomes = [];
+
+        foreach (RuleExecutionPlanItem rule in executableRules)
+        {
+            RuleExecutionOutcome outcome = await ExecuteRuleCoreAsync(
+                rule,
+                context,
+                profile,
+                cancellationToken,
+                timeoutCts
+            );
+            outcomes.Add(outcome);
+
+            if (outcome.IsTerminal)
+            {
+                break;
+            }
+        }
+
+        return AggregateOutcomes(outcomes);
+    }
+
+    private async Task<RuleExecutionAggregate> ExecuteRulesInParallelAsync(
+        IReadOnlyList<RuleExecutionPlanItem> executableRules,
+        SchemaAnalysisExecutionContext context,
+        SchemaAnalysisProfile profile,
+        CancellationToken cancellationToken,
+        CancellationTokenSource timeoutCts
+    )
+    {
+        using SemaphoreSlim gate = new(Math.Max(1, profile.MaxDegreeOfParallelism));
+
+        Task<RuleExecutionOutcome>[] tasks = executableRules
+            .Select(rule => ExecuteRuleWithGateAsync(rule, context, profile, gate, cancellationToken, timeoutCts))
+            .ToArray();
+
+        RuleExecutionOutcome[] outcomes = await Task.WhenAll(tasks);
+        return AggregateOutcomes(outcomes);
+    }
+
+    private async Task<RuleExecutionOutcome> ExecuteRuleWithGateAsync(
+        RuleExecutionPlanItem rule,
+        SchemaAnalysisExecutionContext context,
+        SchemaAnalysisProfile profile,
+        SemaphoreSlim gate,
+        CancellationToken cancellationToken,
+        CancellationTokenSource timeoutCts
+    )
+    {
+        bool enteredGate = false;
+
+        try
+        {
+            await gate.WaitAsync(cancellationToken);
+            enteredGate = true;
+            return await ExecuteRuleCoreAsync(rule, context, profile, cancellationToken, timeoutCts);
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+        {
+            return new RuleExecutionOutcome(
+                rule.Index,
+                [],
+                [],
+                RuleExecutionTerminalState.TimedOut,
+                Completed: false
+            );
+        }
+        catch (OperationCanceledException)
+        {
+            return new RuleExecutionOutcome(
+                rule.Index,
+                [],
+                [],
+                RuleExecutionTerminalState.Cancelled,
+                Completed: false
+            );
+        }
+        finally
+        {
+            if (enteredGate)
+            {
+                gate.Release();
+            }
+        }
+    }
+
+    private async Task<RuleExecutionOutcome> ExecuteRuleCoreAsync(
+        RuleExecutionPlanItem rule,
+        SchemaAnalysisExecutionContext context,
+        SchemaAnalysisProfile profile,
+        CancellationToken cancellationToken,
+        CancellationTokenSource timeoutCts
+    )
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            SchemaRuleExecutionResult executionResult = await rule.Rule.ExecuteAsync(context, cancellationToken);
+
+            IReadOnlyList<SchemaIssue> orderedRuleIssues = executionResult.Issues
+                .OrderByDescending(static issue => issue.Confidence)
+                .ThenBy(static issue => issue.IssueId, StringComparer.Ordinal)
+                .Take(rule.Setting.MaxIssues)
+                .ToList();
+
+            IReadOnlyList<SchemaIssue> thresholdFilteredIssues = orderedRuleIssues
+                .Where(issue => issue.Confidence >= Math.Max(profile.MinConfidenceGlobal, rule.Setting.MinConfidence))
+                .ToList();
+
+            return new RuleExecutionOutcome(
+                rule.Index,
+                thresholdFilteredIssues,
+                executionResult.Diagnostics,
+                RuleExecutionTerminalState.None,
+                Completed: true
+            );
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+        {
+            return new RuleExecutionOutcome(
+                rule.Index,
+                [],
+                [],
+                RuleExecutionTerminalState.TimedOut,
+                Completed: false
+            );
+        }
+        catch (OperationCanceledException)
+        {
+            return new RuleExecutionOutcome(
+                rule.Index,
+                [],
+                [],
+                RuleExecutionTerminalState.Cancelled,
+                Completed: false
+            );
+        }
+        catch (Exception) when (profile.AllowPartialOnRuleFailure)
+        {
+            return new RuleExecutionOutcome(
+                rule.Index,
+                [],
+                [
+                    new SchemaRuleExecutionDiagnostic(
+                        Code: "ANL-RULE-FAILED",
+                        Message: "Uma regra falhou e a execucao seguiu conforme politica de parcial.",
+                        RuleCode: rule.RuleCode,
+                        State: RuleExecutionState.Failed,
+                        IsFatal: false
+                    ),
+                ],
+                RuleExecutionTerminalState.RuleFailurePartial,
+                Completed: false
+            );
+        }
+        catch (Exception)
+        {
+            return new RuleExecutionOutcome(
+                rule.Index,
+                [],
+                [
+                    new SchemaRuleExecutionDiagnostic(
+                        Code: "ANL-RULE-FAILED",
+                        Message: "Uma regra falhou e a execucao seguiu conforme politica de parcial.",
+                        RuleCode: rule.RuleCode,
+                        State: RuleExecutionState.Failed,
+                        IsFatal: true
+                    ),
+                ],
+                RuleExecutionTerminalState.FatalFailure,
+                Completed: false
+            );
+        }
+    }
+
+    private static bool ShouldExecuteInParallel(
+        SchemaAnalysisProfile profile,
+        IReadOnlyCollection<RuleExecutionPlanItem> executableRules
+    )
+    {
+        return profile.EnableParallelRules
+            && profile.MaxDegreeOfParallelism > 1
+            && executableRules.Count > 1;
+    }
+
+    private static RuleExecutionAggregate AggregateOutcomes(IEnumerable<RuleExecutionOutcome> outcomes)
+    {
+        List<SchemaIssue> issues = [];
+        List<SchemaRuleExecutionDiagnostic> diagnostics = [];
+        int completedRules = 0;
+        bool timedOut = false;
+        bool cancelled = false;
+        bool ruleFailurePartial = false;
+        bool hasFatalFailure = false;
+
+        foreach (RuleExecutionOutcome outcome in outcomes.OrderBy(static outcome => outcome.Index))
+        {
+            diagnostics.AddRange(outcome.Diagnostics);
+
+            if (outcome.Completed)
+            {
+                issues.AddRange(outcome.Issues);
+                completedRules++;
+                continue;
+            }
+
+            switch (outcome.TerminalState)
+            {
+                case RuleExecutionTerminalState.RuleFailurePartial:
+                    ruleFailurePartial = true;
+                    break;
+
+                case RuleExecutionTerminalState.TimedOut:
+                    timedOut = true;
+                    diagnostics.Add(
+                        new SchemaRuleExecutionDiagnostic(
+                            Code: "ANL-TIMEOUT",
+                            Message: "A execucao atingiu o timeout global configurado.",
+                            RuleCode: null,
+                            State: RuleExecutionState.TimedOut,
+                            IsFatal: false
+                        )
+                    );
+                    return new RuleExecutionAggregate(
+                        issues,
+                        diagnostics,
+                        completedRules,
+                        timedOut,
+                        cancelled,
+                        ruleFailurePartial,
+                        hasFatalFailure
+                    );
+
+                case RuleExecutionTerminalState.Cancelled:
+                    cancelled = true;
+                    return new RuleExecutionAggregate(
+                        issues,
+                        diagnostics,
+                        completedRules,
+                        timedOut,
+                        cancelled,
+                        ruleFailurePartial,
+                        hasFatalFailure
+                    );
+
+                case RuleExecutionTerminalState.FatalFailure:
+                    hasFatalFailure = true;
+                    return new RuleExecutionAggregate(
+                        issues,
+                        diagnostics,
+                        completedRules,
+                        timedOut,
+                        cancelled,
+                        ruleFailurePartial,
+                        hasFatalFailure
+                    );
+            }
+        }
+
+        return new RuleExecutionAggregate(
+            issues,
+            diagnostics,
+            completedRules,
+            timedOut,
+            cancelled,
+            ruleFailurePartial,
+            hasFatalFailure
+        );
     }
 
     private static SchemaAnalysisResult BuildFailedResult(
@@ -334,7 +555,7 @@ public sealed class SchemaAnalysisService
             .. cachedResult.Diagnostics,
             new SchemaRuleExecutionDiagnostic(
                 Code: "ANL-CACHE-HIT",
-                Message: "Resultado retornado do cache válido.",
+                Message: "Resultado retornado do cache valido.",
                 RuleCode: null,
                 State: RuleExecutionState.Completed,
                 IsFatal: false
@@ -348,6 +569,18 @@ public sealed class SchemaAnalysisService
             CompletedAtUtc = completedAtUtc,
             DurationMs = Math.Max(0, (long)(completedAtUtc - startedAtUtc).TotalMilliseconds),
             Diagnostics = OrderDiagnostics(diagnostics),
+        };
+    }
+
+    private static SchemaAnalysisResult SanitizeForCache(SchemaAnalysisResult result)
+    {
+        IReadOnlyList<SchemaRuleExecutionDiagnostic> persistentDiagnostics = result.Diagnostics
+            .Where(static diagnostic => !IsTransientDiagnostic(diagnostic))
+            .ToList();
+
+        return result with
+        {
+            Diagnostics = OrderDiagnostics(persistentDiagnostics),
         };
     }
 
@@ -370,6 +603,18 @@ public sealed class SchemaAnalysisService
             PerRuleCount: perRule,
             PerTableCount: perTable
         );
+    }
+
+    private static IReadOnlySet<string> ResolveExistingConstraintNames(
+        SchemaMetadataIndexSnapshot indices,
+        DatabaseProvider provider,
+        string? schemaName
+    )
+    {
+        string canonicalSchema = SchemaCanonicalizer.Normalize(provider, schemaName) ?? string.Empty;
+        return indices.ConstraintNamesBySchema.TryGetValue(canonicalSchema, out IReadOnlySet<string>? names)
+            ? names
+            : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     }
 
     private static SchemaAnalysisPartialState BuildPartialState(
@@ -449,4 +694,45 @@ public sealed class SchemaAnalysisService
             .ToList();
     }
 
+    private static bool IsTransientDiagnostic(SchemaRuleExecutionDiagnostic diagnostic)
+    {
+        return diagnostic.Code is "ANL-CACHE-HIT";
+    }
+
+    private enum RuleExecutionTerminalState
+    {
+        None,
+        TimedOut,
+        Cancelled,
+        RuleFailurePartial,
+        FatalFailure,
+    }
+
+    private sealed record RuleExecutionPlanItem(
+        int Index,
+        SchemaRuleCode RuleCode,
+        SchemaRuleSetting Setting,
+        ISchemaAnalysisRule Rule
+    );
+
+    private sealed record RuleExecutionOutcome(
+        int Index,
+        IReadOnlyList<SchemaIssue> Issues,
+        IReadOnlyList<SchemaRuleExecutionDiagnostic> Diagnostics,
+        RuleExecutionTerminalState TerminalState,
+        bool Completed
+    )
+    {
+        public bool IsTerminal => TerminalState is not RuleExecutionTerminalState.None;
+    }
+
+    private sealed record RuleExecutionAggregate(
+        IReadOnlyList<SchemaIssue> Issues,
+        IReadOnlyList<SchemaRuleExecutionDiagnostic> Diagnostics,
+        int CompletedRules,
+        bool TimedOut,
+        bool Cancelled,
+        bool RuleFailurePartial,
+        bool HasFatalFailure
+    );
 }

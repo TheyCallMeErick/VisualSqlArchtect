@@ -7,10 +7,14 @@ namespace DBWeaver.Ddl.SchemaAnalysis.Application.Processing;
 
 public sealed class SchemaSuggestionFactory
 {
+    private readonly SchemaMissingFkSqlCandidateFactory _missingFkSqlCandidateFactory = new();
+    private readonly SchemaMissingRequiredCommentSqlCandidateFactory _missingRequiredCommentSqlCandidateFactory = new();
+
     public IReadOnlyList<SchemaSuggestion> CreateSuggestions(
         SchemaIssue issue,
         DatabaseProvider provider,
-        SchemaAnalysisProfile profile
+        SchemaAnalysisProfile profile,
+        IReadOnlySet<string>? existingConstraintNames = null
     )
     {
         ArgumentNullException.ThrowIfNull(issue);
@@ -18,7 +22,7 @@ public sealed class SchemaSuggestionFactory
 
         List<SchemaSuggestion> suggestions = issue.RuleCode switch
         {
-            SchemaRuleCode.MISSING_FK => BuildMissingFkSuggestions(issue, provider),
+            SchemaRuleCode.MISSING_FK => BuildMissingFkSuggestions(issue, provider, existingConstraintNames),
             SchemaRuleCode.MISSING_REQUIRED_COMMENT => BuildMissingRequiredCommentSuggestions(issue, provider),
             SchemaRuleCode.NAMING_CONVENTION_VIOLATION => BuildNamingSuggestions(issue),
             SchemaRuleCode.LOW_SEMANTIC_NAME => BuildLowSemanticNameSuggestions(issue),
@@ -36,18 +40,34 @@ public sealed class SchemaSuggestionFactory
             .ToList();
     }
 
-    private static List<SchemaSuggestion> BuildMissingFkSuggestions(SchemaIssue issue, DatabaseProvider provider)
+    private List<SchemaSuggestion> BuildMissingFkSuggestions(
+        SchemaIssue issue,
+        DatabaseProvider provider,
+        IReadOnlySet<string>? existingConstraintNames
+    )
     {
         string qualifiedColumn = BuildQualifiedColumn(issue);
+        SchemaSuggestion primarySuggestion = CreateSuggestion(
+            issue,
+            "Review inferred foreign key",
+            $"Revisar a coluna '{qualifiedColumn}' e confirmar se ela deve ser promovida a FK explícita.",
+            issue.Confidence,
+            []
+        );
+
+        SqlFixCandidate? candidate = _missingFkSqlCandidateFactory.CreateCandidate(
+            issue,
+            provider,
+            primarySuggestion.SuggestionId,
+            existingConstraintNames
+        );
+
         return
         [
-            CreateSuggestion(
-                issue,
-                "Review inferred foreign key",
-                $"Revisar a coluna '{qualifiedColumn}' e confirmar se ela deve ser promovida a FK explícita.",
-                issue.Confidence,
-                []
-            ),
+            primarySuggestion with
+            {
+                SqlCandidates = candidate is null ? [] : [candidate],
+            },
             CreateSuggestion(
                 issue,
                 "Validate relationship cardinality",
@@ -58,18 +78,29 @@ public sealed class SchemaSuggestionFactory
         ];
     }
 
-    private static List<SchemaSuggestion> BuildMissingRequiredCommentSuggestions(SchemaIssue issue, DatabaseProvider provider)
+    private List<SchemaSuggestion> BuildMissingRequiredCommentSuggestions(SchemaIssue issue, DatabaseProvider provider)
     {
         string target = BuildIssueTarget(issue);
+        SchemaSuggestion suggestion = CreateSuggestion(
+            issue,
+            "Add technical comment",
+            $"Adicionar comentário técnico objetivo para '{target}' compatível com o provider {provider}.",
+            issue.Confidence,
+            []
+        );
+
+        SqlFixCandidate? candidate = _missingRequiredCommentSqlCandidateFactory.CreateCandidate(
+            issue,
+            provider,
+            suggestion.SuggestionId
+        );
+
         return
         [
-            CreateSuggestion(
-                issue,
-                "Add technical comment",
-                $"Adicionar comentário técnico objetivo para '{target}' compatível com o provider {provider}.",
-                issue.Confidence,
-                []
-            ),
+            suggestion with
+            {
+                SqlCandidates = candidate is null ? [] : [candidate],
+            },
         ];
     }
 
@@ -126,7 +157,7 @@ public sealed class SchemaSuggestionFactory
     )
     {
         double roundedConfidence = Math.Round(Math.Clamp(confidence, 0d, 1d), 4, MidpointRounding.ToEven);
-        string suggestionId = ComputeSuggestionId(issue.IssueId, title, description, roundedConfidence);
+        string suggestionId = SchemaDeterministicIdFactory.CreateSuggestionId(issue.IssueId, title, description, roundedConfidence);
 
         return new SchemaSuggestion(
             SuggestionId: suggestionId,
@@ -136,25 +167,6 @@ public sealed class SchemaSuggestionFactory
             SqlCandidates: candidates
         );
     }
-
-    private static string ComputeSuggestionId(
-        string issueId,
-        string title,
-        string description,
-        double confidence
-    )
-    {
-        string payload = string.Join(
-            "|",
-            SchemaIssueTextNormalizer.NormalizeForHash(issueId),
-            SchemaIssueTextNormalizer.NormalizeForHash(title),
-            SchemaIssueTextNormalizer.NormalizeForHash(description),
-            confidence.ToString("0.0000", CultureInfo.InvariantCulture)
-        );
-
-        return SchemaIssueTextNormalizer.ComputeSha256Hex(payload);
-    }
-
     private static string BuildQualifiedColumn(SchemaIssue issue)
     {
         if (!string.IsNullOrWhiteSpace(issue.SchemaName)

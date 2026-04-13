@@ -336,6 +336,9 @@ public sealed partial class MissingFkRule : ISchemaAnalysisRule
             SchemaEvidenceFactory.NamingMatch("entityMatch", best.ExactEntityMatch ? "Exact" : "Synonym", 1.0),
             SchemaEvidenceFactory.TypeCompatibility("targetType", best.TypeExact ? "Exact" : "SemanticStrong", 0.95),
             SchemaEvidenceFactory.ConstraintTopology("targetKind", best.TargetIsPk ? "PrimaryKey" : "UniqueConstraint", 0.90),
+            SchemaEvidenceFactory.MetadataFact("targetSchema", best.TargetTable.Schema, 0.90),
+            SchemaEvidenceFactory.MetadataFact("targetTable", best.TargetTable.Name, 0.90),
+            SchemaEvidenceFactory.MetadataFact("targetColumn", best.TargetColumn.Name, 0.90),
         ];
 
         if (isAmbiguous)

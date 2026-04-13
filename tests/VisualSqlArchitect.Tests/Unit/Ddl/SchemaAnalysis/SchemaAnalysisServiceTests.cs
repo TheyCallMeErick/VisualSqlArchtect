@@ -1,5 +1,6 @@
 using DBWeaver.Ddl.SchemaAnalysis.Application;
 using DBWeaver.Ddl.SchemaAnalysis.Application.Caching;
+using DBWeaver.Ddl.SchemaAnalysis.Application.Processing;
 using DBWeaver.Ddl.SchemaAnalysis.Application.Rules;
 using DBWeaver.Ddl.SchemaAnalysis.Domain.Contracts;
 using DBWeaver.Ddl.SchemaAnalysis.Domain.Enums;
@@ -44,6 +45,7 @@ public sealed class SchemaAnalysisServiceTests
         Assert.Equal("issue-1", result.Issues[0].IssueId);
         Assert.Equal(1, result.Summary.TotalIssues);
         Assert.NotEmpty(result.Issues[0].Suggestions);
+        Assert.NotEmpty(result.Issues[0].Suggestions[0].SqlCandidates);
     }
 
     [Fact]
@@ -104,7 +106,13 @@ public sealed class SchemaAnalysisServiceTests
             ]
         );
 
-        await service.AnalyzeAsync(CreateMetadata(), CreateProfile());
+        SchemaAnalysisProfile serialProfile = CreateProfile() with
+        {
+            EnableParallelRules = false,
+            MaxDegreeOfParallelism = 1,
+        };
+
+        await service.AnalyzeAsync(CreateMetadata(), serialProfile);
 
         Assert.Equal(
             [SchemaRuleCode.FK_CATALOG_INCONSISTENT, SchemaRuleCode.MISSING_FK, SchemaRuleCode.LOW_SEMANTIC_NAME],
@@ -182,6 +190,98 @@ public sealed class SchemaAnalysisServiceTests
         Assert.Empty(result.Issues);
     }
 
+    [Fact]
+    public async Task AnalyzeAsync_ProducesEquivalentLogicalResult_InSerialAndParallelModes()
+    {
+        DbMetadata metadata = CreateMetadata();
+        SchemaAnalysisService serialService = new(
+            rules:
+            [
+                new DelayedIssueRule(SchemaRuleCode.FK_CATALOG_INCONSISTENT, TimeSpan.FromMilliseconds(20), [CreateIssue("issue-a", SchemaRuleCode.FK_CATALOG_INCONSISTENT, 0.92)]),
+                new DelayedIssueRule(SchemaRuleCode.MISSING_FK, TimeSpan.FromMilliseconds(5), [CreateIssue("issue-b", SchemaRuleCode.MISSING_FK, 0.88)]),
+                new DelayedIssueRule(SchemaRuleCode.LOW_SEMANTIC_NAME, TimeSpan.FromMilliseconds(10), [CreateIssue("issue-c", SchemaRuleCode.LOW_SEMANTIC_NAME, 0.81)]),
+            ]
+        );
+        SchemaAnalysisService parallelService = new(
+            rules:
+            [
+                new DelayedIssueRule(SchemaRuleCode.FK_CATALOG_INCONSISTENT, TimeSpan.FromMilliseconds(20), [CreateIssue("issue-a", SchemaRuleCode.FK_CATALOG_INCONSISTENT, 0.92)]),
+                new DelayedIssueRule(SchemaRuleCode.MISSING_FK, TimeSpan.FromMilliseconds(5), [CreateIssue("issue-b", SchemaRuleCode.MISSING_FK, 0.88)]),
+                new DelayedIssueRule(SchemaRuleCode.LOW_SEMANTIC_NAME, TimeSpan.FromMilliseconds(10), [CreateIssue("issue-c", SchemaRuleCode.LOW_SEMANTIC_NAME, 0.81)]),
+            ]
+        );
+        SchemaAnalysisProfile serialProfile = CreateProfile() with
+        {
+            EnableParallelRules = false,
+            MaxDegreeOfParallelism = 1,
+        };
+        SchemaAnalysisProfile parallelProfile = CreateProfile() with
+        {
+            EnableParallelRules = true,
+            MaxDegreeOfParallelism = 4,
+        };
+
+        SchemaAnalysisResult serialResult = await serialService.AnalyzeAsync(metadata, serialProfile);
+        SchemaAnalysisResult parallelResult = await parallelService.AnalyzeAsync(metadata, parallelProfile);
+
+        AssertEquivalentLogicalResult(serialResult, parallelResult);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ProducesSerialEquivalentResult_WhenParallelEnabledWithDegreeOne()
+    {
+        DbMetadata metadata = CreateMetadata();
+        SchemaAnalysisService service = new(
+            rules:
+            [
+                new DelayedIssueRule(SchemaRuleCode.FK_CATALOG_INCONSISTENT, TimeSpan.FromMilliseconds(15), [CreateIssue("issue-a", SchemaRuleCode.FK_CATALOG_INCONSISTENT, 0.92)]),
+                new DelayedIssueRule(SchemaRuleCode.MISSING_FK, TimeSpan.FromMilliseconds(5), [CreateIssue("issue-b", SchemaRuleCode.MISSING_FK, 0.88)]),
+            ]
+        );
+        SchemaAnalysisProfile serialProfile = CreateProfile() with
+        {
+            EnableParallelRules = false,
+            MaxDegreeOfParallelism = 1,
+        };
+        SchemaAnalysisProfile singleDegreeParallelProfile = CreateProfile() with
+        {
+            EnableParallelRules = true,
+            MaxDegreeOfParallelism = 1,
+        };
+
+        SchemaAnalysisResult serialResult = await service.AnalyzeAsync(metadata, serialProfile);
+        SchemaAnalysisResult singleDegreeResult = await service.AnalyzeAsync(metadata, singleDegreeParallelProfile);
+
+        AssertEquivalentLogicalResult(serialResult, singleDegreeResult);
+    }
+
+    [Fact]
+    public async Task AnalyzeAsync_ProducesStableLogicalResult_AcrossRepeatedParallelRuns()
+    {
+        DbMetadata metadata = CreateMetadata();
+        SchemaAnalysisService service = new(
+            rules:
+            [
+                new DelayedIssueRule(SchemaRuleCode.FK_CATALOG_INCONSISTENT, TimeSpan.FromMilliseconds(20), [CreateIssue("issue-a", SchemaRuleCode.FK_CATALOG_INCONSISTENT, 0.92)]),
+                new DelayedIssueRule(SchemaRuleCode.MISSING_FK, TimeSpan.FromMilliseconds(5), [CreateIssue("issue-b", SchemaRuleCode.MISSING_FK, 0.88)]),
+                new DelayedIssueRule(SchemaRuleCode.LOW_SEMANTIC_NAME, TimeSpan.FromMilliseconds(10), [CreateIssue("issue-c", SchemaRuleCode.LOW_SEMANTIC_NAME, 0.81)]),
+            ]
+        );
+        SchemaAnalysisProfile parallelProfile = CreateProfile() with
+        {
+            EnableParallelRules = true,
+            MaxDegreeOfParallelism = 4,
+        };
+
+        SchemaAnalysisResult baseline = await service.AnalyzeAsync(metadata, parallelProfile);
+
+        for (int index = 0; index < 3; index++)
+        {
+            SchemaAnalysisResult repeated = await service.AnalyzeAsync(metadata, parallelProfile);
+            AssertEquivalentLogicalResult(baseline, repeated);
+        }
+    }
+
     private static DbMetadata CreateMetadata()
     {
         TableMetadata orders = new(
@@ -253,10 +353,116 @@ public sealed class SchemaAnalysisServiceTests
             ConstraintName: null,
             Title: "Issue",
             Message: "Issue message",
-            Evidence: [new SchemaEvidence(EvidenceKind.MetadataFact, "key", "value", 1.0)],
+            Evidence: ruleCode == SchemaRuleCode.MISSING_FK
+                ? [
+                    SchemaEvidenceFactory.MetadataFact("targetSchema", "public", 0.9),
+                    SchemaEvidenceFactory.MetadataFact("targetTable", "customers", 0.9),
+                    SchemaEvidenceFactory.MetadataFact("targetColumn", "id", 0.9),
+                ]
+                : [SchemaEvidenceFactory.MetadataFact("key", "value", 1.0)],
             Suggestions: [],
             IsAmbiguous: false
         );
+
+    private static void AssertEquivalentLogicalResult(
+        SchemaAnalysisResult expected,
+        SchemaAnalysisResult actual
+    )
+    {
+        Assert.Equal(expected.Status, actual.Status);
+        Assert.Equal(expected.Provider, actual.Provider);
+        Assert.Equal(expected.DatabaseName, actual.DatabaseName);
+        Assert.Equal(expected.ProfileVersion, actual.ProfileVersion);
+        Assert.Equal(expected.PartialState, actual.PartialState);
+        AssertEquivalentSummary(expected.Summary, actual.Summary);
+        Assert.Equal(
+            expected.Issues.Select(CreateIssueSnapshot),
+            actual.Issues.Select(CreateIssueSnapshot)
+        );
+        Assert.Equal(
+            expected.Diagnostics.Select(CreateDiagnosticSnapshot),
+            actual.Diagnostics.Select(CreateDiagnosticSnapshot)
+        );
+    }
+
+    private static void AssertEquivalentSummary(
+        SchemaAnalysisSummary expected,
+        SchemaAnalysisSummary actual
+    )
+    {
+        Assert.Equal(expected.TotalIssues, actual.TotalIssues);
+        Assert.Equal(expected.InfoCount, actual.InfoCount);
+        Assert.Equal(expected.WarningCount, actual.WarningCount);
+        Assert.Equal(expected.CriticalCount, actual.CriticalCount);
+        Assert.Equal(
+            expected.PerRuleCount.OrderBy(static entry => entry.Key),
+            actual.PerRuleCount.OrderBy(static entry => entry.Key)
+        );
+        Assert.Equal(
+            expected.PerTableCount.OrderBy(static entry => entry.Key, StringComparer.Ordinal),
+            actual.PerTableCount.OrderBy(static entry => entry.Key, StringComparer.Ordinal)
+        );
+    }
+
+    private static string CreateIssueSnapshot(SchemaIssue issue)
+    {
+        string evidence = string.Join(
+            "|",
+            issue.Evidence.Select(static evidence =>
+                $"{evidence.Kind}:{evidence.Key}:{evidence.Value}:{evidence.Weight:F4}:{evidence.SourcePath}")
+        );
+        string suggestions = string.Join(
+            "|",
+            issue.Suggestions.Select(static suggestion =>
+                $"{suggestion.SuggestionId}:{suggestion.Title}:{suggestion.Description}:{suggestion.Confidence:F4}:{string.Join("~", suggestion.SqlCandidates.Select(CreateCandidateSnapshot))}")
+        );
+
+        return string.Join(
+            "||",
+            issue.IssueId,
+            issue.RuleCode,
+            issue.Severity,
+            issue.Confidence.ToString("F4"),
+            issue.TargetType,
+            issue.SchemaName,
+            issue.TableName,
+            issue.ColumnName,
+            issue.ConstraintName,
+            issue.Title,
+            issue.Message,
+            evidence,
+            suggestions,
+            issue.IsAmbiguous
+        );
+    }
+
+    private static string CreateCandidateSnapshot(SqlFixCandidate candidate)
+    {
+        return string.Join(
+            "::",
+            candidate.CandidateId,
+            candidate.Provider,
+            candidate.Title,
+            candidate.Sql,
+            string.Join("~", candidate.PreconditionsSql),
+            candidate.Safety,
+            candidate.Visibility,
+            candidate.IsAutoApplicable,
+            string.Join("~", candidate.Notes)
+        );
+    }
+
+    private static string CreateDiagnosticSnapshot(SchemaRuleExecutionDiagnostic diagnostic)
+    {
+        return string.Join(
+            "::",
+            diagnostic.Code,
+            diagnostic.Message,
+            diagnostic.RuleCode,
+            diagnostic.State,
+            diagnostic.IsFatal
+        );
+    }
 
     private sealed class StubRule(
         SchemaRuleCode ruleCode,
@@ -294,6 +500,25 @@ public sealed class SchemaAnalysisServiceTests
     }
 
     private sealed class DelayedRule(
+        SchemaRuleCode ruleCode,
+        TimeSpan delay,
+        IReadOnlyList<SchemaIssue> issues
+    ) : ISchemaAnalysisRule
+    {
+        public SchemaRuleCode RuleCode => ruleCode;
+
+        public async Task<SchemaRuleExecutionResult> ExecuteAsync(
+            SchemaAnalysisExecutionContext context,
+            CancellationToken cancellationToken = default
+        )
+        {
+            _ = context;
+            await Task.Delay(delay, cancellationToken);
+            return new SchemaRuleExecutionResult(issues, []);
+        }
+    }
+
+    private sealed class DelayedIssueRule(
         SchemaRuleCode ruleCode,
         TimeSpan delay,
         IReadOnlyList<SchemaIssue> issues

@@ -32,7 +32,7 @@ public sealed class SchemaSuggestionFactoryTests
 
         SchemaSuggestion suggestion = Assert.Single(suggestions);
         Assert.Equal("Add technical comment", suggestion.Title);
-        Assert.Empty(suggestion.SqlCandidates);
+        Assert.NotEmpty(suggestion.SqlCandidates);
     }
 
     [Fact]
@@ -40,6 +40,12 @@ public sealed class SchemaSuggestionFactoryTests
     {
         SchemaIssue issue = SchemaAnalysisContractValidatorTestData.CreateIssue(
             issueId: "issue-fk",
+            evidence:
+            [
+                SchemaEvidenceFactory.MetadataFact("targetSchema", "public", 0.9),
+                SchemaEvidenceFactory.MetadataFact("targetTable", "customers", 0.9),
+                SchemaEvidenceFactory.MetadataFact("targetColumn", "id", 0.9),
+            ],
             suggestions: []
         ) with
         {
@@ -53,6 +59,37 @@ public sealed class SchemaSuggestionFactoryTests
 
         SchemaSuggestion suggestion = Assert.Single(suggestions);
         Assert.Equal("Review inferred foreign key", suggestion.Title);
+    }
+
+    [Fact]
+    public void CreateSuggestions_AttachesSqlCandidate_ForNonAmbiguousMissingFk()
+    {
+        SchemaIssue issue = SchemaAnalysisContractValidatorTestData.CreateIssue(
+            issueId: "issue-fk",
+            tableName: "orders",
+            columnName: "customer_id",
+            evidence:
+            [
+                SchemaEvidenceFactory.MetadataFact("targetSchema", "public", 0.9),
+                SchemaEvidenceFactory.MetadataFact("targetTable", "customers", 0.9),
+                SchemaEvidenceFactory.MetadataFact("targetColumn", "id", 0.9),
+            ],
+            suggestions: []
+        ) with
+        {
+            RuleCode = SchemaRuleCode.MISSING_FK,
+            Title = "Missing FK",
+            Message = "FK inferred",
+            IsAmbiguous = false,
+        };
+
+        IReadOnlyList<SchemaSuggestion> suggestions = _factory.CreateSuggestions(
+            issue,
+            DatabaseProvider.Postgres,
+            SchemaAnalysisContractValidatorTestData.CreateProfile()
+        );
+
+        Assert.NotEmpty(suggestions[0].SqlCandidates);
     }
 
     [Fact]
