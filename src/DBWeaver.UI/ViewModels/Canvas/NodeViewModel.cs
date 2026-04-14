@@ -57,6 +57,7 @@ public sealed class NodeViewModel : ViewModelBase, ICanvasTableNode, ICanvasLaye
     private Point _position;
     private bool _isSelected,
         _isHighlighted,
+        _isPrimaryFromSource,
         _isHovered,
         _isOrphan;
     private string? _alias;
@@ -347,6 +348,13 @@ public sealed class NodeViewModel : ViewModelBase, ICanvasTableNode, ICanvasLaye
             RaisePropertyChanged(nameof(NodeBorderBrush));
             RaisePropertyChanged(nameof(NodeShadow));
         }
+    }
+
+    /// <summary>True when this node is the primary FROM source used by SQL compilation.</summary>
+    public bool IsPrimaryFromSource
+    {
+        get => _isPrimaryFromSource;
+        set => Set(ref _isPrimaryFromSource, value);
     }
 
     /// <summary>True if the user is hovering over this node.</summary>

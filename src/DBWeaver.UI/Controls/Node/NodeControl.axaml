@@ -261,6 +261,19 @@
           <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
                       VerticalAlignment="Center" Margin="4,0,0,0">
 
+              <Border CornerRadius="{StaticResource RadiusXS}"
+                Background="{StaticResource AccentPrimaryHoverBrush}"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="1"
+                Padding="5,2"
+                IsVisible="{Binding IsPrimaryFromSource}">
+                <TextBlock Text="FROM"
+               FontSize="{StaticResource FontSizeMonoSmall}"
+               FontFamily="{StaticResource MonoFont}"
+               FontWeight="{StaticResource FontWeightMonoStrong}"
+               Foreground="{StaticResource TextInverseBrush}"/>
+              </Border>
+
             <!-- Inline preview toggle (TableSource only) -->
             <Button Classes="preview-toggle"
                     Name="PreviewToggleBtn"
