@@ -160,7 +160,7 @@ public class CanvasSerializerViewSubgraphPersistenceTests
 
         Assert.True(result.Success);
         NodeViewModel node = Assert.Single(queryVm.Nodes);
-        Assert.Equal(Enum.Parse<NodeType>("SelectOutput"), node.Type);
+        Assert.Equal(NodeType.ResultOutput, node.Type);
         Assert.NotNull(result.Warnings);
         Assert.Contains(
             result.Warnings!,

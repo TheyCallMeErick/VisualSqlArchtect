@@ -33,12 +33,10 @@ public class QueryDomainStrategyTests
     public void GetOutputNodes_ReturnsOnlyResultOutputs()
     {
         var strategy = new QueryDomainStrategy();
-        NodeType selectOutputType = Enum.Parse<NodeType>("SelectOutput");
         List<NodeViewModel> nodes =
         [
             new("public.orders", [], new Point(0, 0)),
             new(NodeDefinitionRegistry.Get(NodeType.ResultOutput), new Point(20, 0)),
-            new(NodeDefinitionRegistry.Get(selectOutputType), new Point(40, 0)),
         ];
 
         IReadOnlyList<NodeViewModel> outputs = strategy.GetOutputNodes(nodes);

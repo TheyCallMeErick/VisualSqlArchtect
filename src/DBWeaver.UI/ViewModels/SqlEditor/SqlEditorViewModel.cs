@@ -373,8 +373,7 @@ public sealed class SqlEditorViewModel : ViewModelBase
 
     public bool ShouldShowResultsSheet =>
         IsResultsSheetOpen
-        && CurrentResult is not null
-        && ((CurrentResult.Data?.Rows.Count ?? 0) > 0 || !string.IsNullOrWhiteSpace(CurrentResult.ErrorMessage));
+        && CurrentResult is not null;
     public bool CanReopenResultsSheet => !IsResultsSheetOpen && CurrentResult is not null;
     public string RestoreResultsButtonText => L("sqlEditor.results.restore", "Abrir resultados");
 

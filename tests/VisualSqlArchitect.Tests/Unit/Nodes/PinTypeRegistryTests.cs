@@ -36,13 +36,9 @@ public class PinTypeRegistryTests
     }
 
     [Fact]
-    public void GetType_ReportQuery_FallsBackToExpressionType()
+    public void PinDataType_ReportQuery_IsRemovedFromRuntimeContract()
     {
-        IPinDataType mapped = PinTypeRegistry.GetType(PinDataType.ReportQuery);
-
-        PinDataType result = PinTypeRegistry.GetEnum(mapped);
-
-        Assert.Equal(PinDataType.Expression, result);
+        Assert.False(Enum.TryParse<PinDataType>("ReportQuery", out _));
     }
 
     [Fact]

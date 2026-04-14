@@ -618,7 +618,7 @@ public sealed class SqlEditorViewModelTests
 
 
     [Fact]
-    public async Task ExecuteSelectionOrCurrent_WhenResultHasNoRows_DoesNotShowResultsSheet()
+    public async Task ExecuteSelectionOrCurrent_WhenResultHasNoRows_StillShowsResultsSheet()
     {
         ConnectionConfig config = new(
             DatabaseProvider.Postgres,
@@ -638,7 +638,7 @@ public sealed class SqlEditorViewModelTests
         Assert.True(result.Success);
         Assert.NotNull(sut.ResultRowsView);
         Assert.True(sut.HasResultRows);
-        Assert.False(sut.ShouldShowResultsSheet);
+        Assert.True(sut.ShouldShowResultsSheet);
         Assert.True(sut.CanExportReport);
     }
     [Fact]

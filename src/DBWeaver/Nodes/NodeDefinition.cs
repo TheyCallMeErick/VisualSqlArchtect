@@ -75,19 +75,9 @@ public sealed record NodeParameter(
 public static class NodeDefinitionRegistry
 {
     private static readonly Dictionary<NodeType, NodeDefinition> _map = BuildAll();
-    private static readonly HashSet<NodeType> LegacyNodeTypes =
-    [
-        NodeType.RawSqlQuery,
-        NodeType.SelectOutput,
-        NodeType.WhereOutput,
-        NodeType.ReportOutput,
-    ];
+    private static readonly HashSet<NodeType> LegacyNodeTypes = [];
 
-    private static readonly HashSet<NodeType> HiddenFromCatalogNodeTypes =
-    [
-        NodeType.RawSqlQuery,
-        NodeType.ReportOutput,
-    ];
+    private static readonly HashSet<NodeType> HiddenFromCatalogNodeTypes = [];
 
     public static NodeDefinition Get(NodeType type) =>
         _map.TryGetValue(type, out NodeDefinition? def)
@@ -1333,106 +1323,6 @@ public static class NodeDefinitionRegistry
                         "result",
                         PinDataType.ColumnSet,
                         desc: "Merged ColumnSet output"
-                    ),
-                ],
-                []
-            ),
-
-            [NodeType.SelectOutput] = new(
-                NodeType.SelectOutput,
-                NodeCategory.Output,
-                "Select Output",
-                "Legacy output sink for final SELECT projection",
-                [
-                    In(
-                        "top",
-                        PinDataType.ColumnSet,
-                        required: false,
-                        desc: "Connect a TOP / LIMIT node to restrict the number of rows"
-                    ),
-                    In(
-                        "where",
-                        PinDataType.Boolean,
-                        required: false,
-                        desc: "Connect a compiled WHERE condition"
-                    ),
-                    In(
-                        "having",
-                        PinDataType.Boolean,
-                        required: false,
-                        desc: "Connect a compiled HAVING condition (post-aggregation filter)"
-                    ),
-                    In(
-                        "qualify",
-                        PinDataType.Boolean,
-                        required: false,
-                        desc: "Connect a QUALIFY condition (post-window filter)"
-                    ),
-                    In(
-                        "order_by",
-                        PinDataType.ColumnRef,
-                        required: false,
-                        multi: true,
-                        desc: "Connect ORDER BY terms (ascending)"
-                    ),
-                    In(
-                        "order_by_desc",
-                        PinDataType.ColumnRef,
-                        required: false,
-                        multi: true,
-                        desc: "Connect ORDER BY terms (descending)"
-                    ),
-                    In(
-                        "group_by",
-                        PinDataType.ColumnRef,
-                        required: false,
-                        multi: true,
-                        desc: "Connect GROUP BY terms"
-                    ),
-                    In(
-                        "columns",
-                        PinDataType.ColumnSet,
-                        required: false,
-                        desc: "Connect ColumnList/ColumnSetBuilder output to include columns in SELECT"
-                    ),
-                    In(
-                        "column",
-                        PinDataType.ColumnRef,
-                        required: false,
-                        multi: true,
-                        desc: "Connect individual columns directly (without ColumnList)"
-                    ),
-                    In(
-                        "set_operation",
-                        PinDataType.ColumnSet,
-                        required: false,
-                        desc: "Connect Set Operation node to combine this SELECT with another query"
-                    ),
-                    Out(
-                        "result",
-                        PinDataType.ColumnSet,
-                        desc: "Connect to an Export node to generate an output file"
-                    ),
-                ],
-                []
-            ),
-
-            [NodeType.WhereOutput] = new(
-                NodeType.WhereOutput,
-                NodeCategory.Output,
-                "Where Output",
-                "Legacy WHERE sink for imported conditions",
-                [
-                    In(
-                        "condition",
-                        PinDataType.Boolean,
-                        required: false,
-                        desc: "Connect a boolean condition"
-                    ),
-                    Out(
-                        "result",
-                        PinDataType.Boolean,
-                        desc: "WHERE condition output"
                     ),
                 ],
                 []

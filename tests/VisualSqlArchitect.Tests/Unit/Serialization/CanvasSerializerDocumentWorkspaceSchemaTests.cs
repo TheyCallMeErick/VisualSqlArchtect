@@ -60,8 +60,6 @@ public class CanvasSerializerDocumentWorkspaceSchemaTests
     {
         using var queryVm = new CanvasViewModel();
         using var ddlVm = new CanvasViewModel(null, null, null, null, new DdlDomainStrategy());
-        NodeType rawSqlQueryType = Enum.Parse<NodeType>("RawSqlQuery");
-        NodeType reportOutputType = Enum.Parse<NodeType>("ReportOutput");
 
         var queryCanvas = new SavedCanvas(
             Version: CanvasSerializer.CurrentCanvasSchemaVersion,
@@ -74,7 +72,7 @@ public class CanvasSerializerDocumentWorkspaceSchemaTests
             [
                 new SavedNode(
                     NodeId: "raw_1",
-                    NodeType: rawSqlQueryType.ToString(),
+                    NodeType: "RawSqlQuery",
                     X: 40,
                     Y: 40,
                     ZOrder: 0,
@@ -87,7 +85,7 @@ public class CanvasSerializerDocumentWorkspaceSchemaTests
                     PinLiterals: []),
                 new SavedNode(
                     NodeId: "report_1",
-                    NodeType: reportOutputType.ToString(),
+                    NodeType: "ReportOutput",
                     X: 280,
                     Y: 40,
                     ZOrder: 1,

@@ -124,33 +124,28 @@ public class NodesListViewModelTests
     public void QueryCatalog_HidesLegacyReportNodes()
     {
         var vm = new NodesListViewModel((_, _) => { });
-        NodeType rawSqlType = Enum.Parse<NodeType>("RawSqlQuery");
-        NodeType reportOutputType = Enum.Parse<NodeType>("ReportOutput");
-
-        NodeType[] visibleTypes = vm.FilteredGroups
+        string[] visibleTitles = vm.FilteredGroups
             .SelectMany(g => g.Items)
-            .Select(i => i.Definition.Type)
+            .Select(i => i.Definition.DisplayName)
             .ToArray();
 
-        Assert.DoesNotContain(rawSqlType, visibleTypes);
-        Assert.DoesNotContain(reportOutputType, visibleTypes);
+        Assert.DoesNotContain("Raw SQL Query", visibleTitles, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Report Output", visibleTitles, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
     public void SearchQuery_DoesNotReturnHiddenLegacyReportNodes()
     {
         var vm = new NodesListViewModel((_, _) => { });
-        NodeType rawSqlType = Enum.Parse<NodeType>("RawSqlQuery");
-        NodeType reportOutputType = Enum.Parse<NodeType>("ReportOutput");
 
         vm.SearchQuery = "report";
 
-        NodeType[] visibleTypes = vm.FilteredGroups
+        string[] visibleTitles = vm.FilteredGroups
             .SelectMany(g => g.Items)
-            .Select(i => i.Definition.Type)
+            .Select(i => i.Definition.DisplayName)
             .ToArray();
 
-        Assert.DoesNotContain(rawSqlType, visibleTypes);
-        Assert.DoesNotContain(reportOutputType, visibleTypes);
+        Assert.DoesNotContain("Raw SQL Query", visibleTitles, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Report Output", visibleTitles, StringComparer.OrdinalIgnoreCase);
     }
 }

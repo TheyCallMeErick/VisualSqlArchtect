@@ -110,13 +110,6 @@ public static class NodeTagCatalog
         if (haystack.Contains("report", StringComparison.Ordinal))
             AddTag(map, "report");
 
-        bool isLegacyReportNode = string.Equals(definition.Type.ToString(), "RawSqlQuery", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(definition.Type.ToString(), "ReportOutput", StringComparison.OrdinalIgnoreCase);
-        if (isLegacyReportNode)
-        {
-            AddTag(map, "report");
-            AddTag(map, "sql");
-        }
     }
 
     private static void AddTag(IDictionary<string, NodeTag> map, string tagName, string? colorHex = null)
