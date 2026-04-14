@@ -3,6 +3,7 @@ using System.Windows.Input;
 using Avalonia;
 using DBWeaver.Metadata;
 using DBWeaver.Nodes;
+using DBWeaver.UI.Services.Search;
 using DBWeaver.UI.Services.Theming;
 
 namespace DBWeaver.UI.ViewModels;
@@ -13,6 +14,7 @@ namespace DBWeaver.UI.ViewModels;
 /// </summary>
 public sealed class SchemaViewModel : ViewModelBase
 {
+    private static readonly TextSearchService TextSearch = new();
     private string _filterQuery = string.Empty;
     private string? _selectedSchema;
     private bool _isLoading;
@@ -182,8 +184,6 @@ public sealed class SchemaViewModel : ViewModelBase
         var proceduresCategory = new SchemaCategoryViewModel("Procedures", "CodeBraces", UiColorConstants.C_FBBF24);
         var triggersCategory = new SchemaCategoryViewModel("Triggers", "Bolt", UiColorConstants.C_EC4899);
 
-        string filterLower = FilterQuery.ToLower();
-
         // Collect tables and views
         IEnumerable<SchemaMetadata> schemas = Metadata.Schemas;
         if (!string.IsNullOrWhiteSpace(SelectedSchema))
@@ -199,11 +199,13 @@ public sealed class SchemaViewModel : ViewModelBase
                 // Apply filter
                 if (!string.IsNullOrEmpty(FilterQuery))
                 {
-                    var tableMatch = table.Name.ToLower().Contains(filterLower);
-                    var schemaMatch = table.Schema?.ToLower().Contains(filterLower) ?? false;
-                    var columnMatch = table.Columns.Any(c => c.Name.ToLower().Contains(filterLower));
+                    bool matches = TextSearch.MatchesContainsAllTokens(
+                        FilterQuery,
+                        table.Name,
+                        table.Schema,
+                        string.Join(' ', table.Columns.Select(c => c.Name)));
 
-                    if (!tableMatch && !schemaMatch && !columnMatch)
+                    if (!matches)
                         continue;
                 }
 

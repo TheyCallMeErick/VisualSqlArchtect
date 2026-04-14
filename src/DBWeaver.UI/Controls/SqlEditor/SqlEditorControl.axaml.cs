@@ -32,6 +32,7 @@ public partial class SqlEditorControl : UserControl
 {
     private const int LargeEditorCompletionThreshold = 10_000;
     private const int CompletionDebounceMs = 80;
+    private const int HeavyMetadataAutoCompletionCooldownMs = 140;
     private const int HoverDocsDebounceMs = 400;
 
     private TextEditor? _editor;
@@ -58,6 +59,7 @@ public partial class SqlEditorControl : UserControl
     private DispatcherTimer? _hoverDocsDebounceTimer;
     private bool _completionOnDemandHintShown;
     private long _completionRequestVersion;
+    private long _lastHeavyMetadataAutoCompletionTickMs;
     private Point _lastHoverPointerPosition;
 
     public SqlEditorControl()
@@ -692,6 +694,13 @@ public partial class SqlEditorControl : UserControl
             return;
         }
 
+        if (autoTriggered && _vm.IsHeavyCompletionMetadataContext())
+        {
+            allowDebounce = true;
+            if (!CanScheduleHeavyMetadataAutoCompletion())
+                return;
+        }
+
         _completionOnDemandHintShown = false;
 
         if (!allowDebounce)
@@ -864,6 +873,19 @@ public partial class SqlEditorControl : UserControl
     private bool IsLargeEditorText()
     {
         return (_editor?.Text?.Length ?? 0) > LargeEditorCompletionThreshold;
+    }
+
+    private bool CanScheduleHeavyMetadataAutoCompletion()
+    {
+        long now = Environment.TickCount64;
+        if (_lastHeavyMetadataAutoCompletionTickMs > 0
+            && now - _lastHeavyMetadataAutoCompletionTickMs < HeavyMetadataAutoCompletionCooldownMs)
+        {
+            return false;
+        }
+
+        _lastHeavyMetadataAutoCompletionTickMs = now;
+        return true;
     }
 
     private void PublishCompletionOnDemandHintOnce()

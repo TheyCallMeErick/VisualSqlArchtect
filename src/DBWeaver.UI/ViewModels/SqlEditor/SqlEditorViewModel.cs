@@ -3,6 +3,7 @@ using DBWeaver.Metadata;
 using DBWeaver.UI.Services.Benchmark;
 using DBWeaver.UI.Services.Explain;
 using DBWeaver.UI.Services.Localization;
+using DBWeaver.UI.Services.Search;
 using DBWeaver.UI.Services.Settings;
 using DBWeaver.UI.Services.SqlEditor;
 using DBWeaver.UI.ViewModels;
@@ -21,8 +22,10 @@ public sealed class SqlEditorViewModel : ViewModelBase
     private const double MinResultsSheetHeight = 160;
     private const double MaxResultsSheetHeight = 720;
     private const int DraftMinimumTextLength = 5;
+    private const int HeavyCompletionMetadataTableThreshold = 300;
     private static readonly TimeSpan DraftAutoSaveDebounce = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan DraftAutoSaveInterval = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan CompletionMetadataSamplingInterval = TimeSpan.FromSeconds(2);
 
     private readonly SqlSelectionExtractor _selectionExtractor;
     private readonly SqlScriptStatementSplitter _statementSplitter;
@@ -47,6 +50,7 @@ public sealed class SqlEditorViewModel : ViewModelBase
     private readonly Func<DbMetadata?> _metadataResolver;
     private readonly SqlEditorExplainService _sqlEditorExplainService;
     private readonly SqlEditorBenchmarkService _sqlEditorBenchmarkService;
+    private readonly TextSearchService _textSearch = new();
     private CancellationTokenSource? _executionCts;
     private CancellationTokenSource? _benchmarkCts;
     private CancellationTokenSource? _explainCts;
@@ -86,6 +90,8 @@ public sealed class SqlEditorViewModel : ViewModelBase
     private BenchmarkRunResult? _latestBenchmarkResult;
     private Timer? _draftAutoSaveDebounceTimer;
     private Timer? _draftAutoSaveForcedTimer;
+    private DateTimeOffset _lastCompletionMetadataSamplingAt = DateTimeOffset.MinValue;
+    private bool _isHeavyCompletionMetadataContext;
     private bool _hasPendingDraftAutoSave;
     private bool _draftAutoSaveTimersStarted;
     private string? _sidebarSelectedConnectionProfileId;
@@ -566,7 +572,7 @@ public sealed class SqlEditorViewModel : ViewModelBase
 
             string needle = HistorySearchText.Trim();
             return ExecutionHistory
-                .Where(entry => entry.Sql.Contains(needle, StringComparison.OrdinalIgnoreCase))
+                .Where(entry => _textSearch.Matches(needle, entry.Sql))
                 .ToList();
         }
     }
@@ -671,10 +677,10 @@ public sealed class SqlEditorViewModel : ViewModelBase
             string needle = SchemaSearchText.Trim();
             return tables
                 .Where(table =>
-                    table.FullName.Contains(needle, StringComparison.OrdinalIgnoreCase)
-                    || table.Columns.Any(column =>
-                        column.Name.Contains(needle, StringComparison.OrdinalIgnoreCase)
-                        || column.DataType.Contains(needle, StringComparison.OrdinalIgnoreCase)))
+                    _textSearch.Matches(
+                        needle,
+                        table.FullName,
+                        string.Join(' ', table.Columns.Select(column => $"{column.Name} {column.DataType}"))))
                 .ToList();
         }
     }
@@ -1092,6 +1098,29 @@ public sealed class SqlEditorViewModel : ViewModelBase
             metadata,
             ActiveTabProvider,
             ActiveTabConnectionProfileId);
+    }
+
+    public bool IsHeavyCompletionMetadataContext()
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        if (now - _lastCompletionMetadataSamplingAt <= CompletionMetadataSamplingInterval)
+            return _isHeavyCompletionMetadataContext;
+
+        DbMetadata? metadata = _metadataResolver();
+        int tableCount = 0;
+        if (metadata is not null)
+        {
+            foreach (TableMetadata _ in metadata.AllTables)
+            {
+                tableCount++;
+                if (tableCount >= HeavyCompletionMetadataTableThreshold)
+                    break;
+            }
+        }
+
+        _isHeavyCompletionMetadataContext = tableCount >= HeavyCompletionMetadataTableThreshold;
+        _lastCompletionMetadataSamplingAt = now;
+        return _isHeavyCompletionMetadataContext;
     }
 
     public void RecordCompletionSuggestionAccepted(string? suggestionLabel)

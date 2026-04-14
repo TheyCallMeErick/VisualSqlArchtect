@@ -11,6 +11,8 @@ public sealed class SqlCompletionProvider
     private static readonly SqlSymbolTableBuilder SymbolTableBuilder = new();
     private readonly CompletionRankingEngine _rankingEngine;
     private readonly CompletionUsageStats _usageStats;
+    private readonly object _metadataCacheSync = new();
+    private MetadataCompletionCache? _metadataCache;
 
     public SqlCompletionProvider(
         CompletionRankingEngine? rankingEngine = null,
@@ -19,6 +21,14 @@ public sealed class SqlCompletionProvider
         _rankingEngine = rankingEngine ?? new CompletionRankingEngine();
         _usageStats = usageStats ?? new CompletionUsageStats();
     }
+
+    private sealed record MetadataCompletionCache(
+        DbMetadata Metadata,
+        IReadOnlyList<SqlCompletionSuggestion> TableSuggestions,
+        IReadOnlyDictionary<string, TableMetadata> TablesByFullName,
+        IReadOnlyDictionary<string, TableMetadata> TablesByName,
+        IReadOnlyDictionary<string, IReadOnlyList<ForeignKeyRelation>> ForeignKeysByChildTable,
+        IReadOnlyDictionary<string, IReadOnlyList<ForeignKeyRelation>> ForeignKeysByParentTable);
 
     private static readonly string[] Keywords =
     [
@@ -63,17 +73,19 @@ public sealed class SqlCompletionProvider
 
         if (metadata is not null)
         {
+            MetadataCompletionCache cache = GetOrBuildMetadataCache(metadata);
+
             if (ShouldOfferTableSuggestions(completionContext))
-                suggestions.AddRange(SuggestTables(metadata));
+                suggestions.AddRange(SuggestTables(cache));
 
             if (IsJoinContext(completionContext))
-                suggestions.AddRange(SuggestSmartJoins(metadata, symbolTable));
+                suggestions.AddRange(SuggestSmartJoins(cache, symbolTable));
 
             string? qualifier = TryGetQualifier(beforeCaret, prefixStart);
             if (!string.IsNullOrWhiteSpace(qualifier))
-                suggestions.AddRange(SuggestColumnsForQualifier(metadata, symbolTable, qualifier));
+                suggestions.AddRange(SuggestColumnsForQualifier(cache, symbolTable, qualifier));
             else if (ShouldOfferColumnSuggestions(completionContext, symbolTable, prefix))
-                suggestions.AddRange(SuggestColumnsInScope(metadata, symbolTable));
+                suggestions.AddRange(SuggestColumnsInScope(cache, symbolTable));
         }
 
         IReadOnlyList<SqlCompletionSuggestion> ranked = _rankingEngine.Rank(
@@ -174,23 +186,8 @@ public sealed class SqlCompletionProvider
             SqlCompletionKind.Snippet),
     ];
 
-    private static IEnumerable<SqlCompletionSuggestion> SuggestTables(DbMetadata metadata)
-    {
-        foreach (TableMetadata table in metadata.AllTables)
-        {
-            string alias = BuildAlias(table.Name);
-            yield return new SqlCompletionSuggestion(
-                table.FullName,
-                table.FullName,
-                $"Table ({table.Kind})",
-                SqlCompletionKind.Table);
-            yield return new SqlCompletionSuggestion(
-                $"{table.FullName} AS {alias}",
-                $"{table.FullName} AS {alias}",
-                $"Table ({table.Kind}) with alias",
-                SqlCompletionKind.Table);
-        }
-    }
+    private static IEnumerable<SqlCompletionSuggestion> SuggestTables(MetadataCompletionCache cache)
+        => cache.TableSuggestions;
 
     private static IEnumerable<SqlCompletionSuggestion> SuggestCtes(SqlSymbolTable symbolTable)
     {
@@ -211,7 +208,7 @@ public sealed class SqlCompletionProvider
     }
 
     private static IEnumerable<SqlCompletionSuggestion> SuggestColumnsForQualifier(
-        DbMetadata metadata,
+        MetadataCompletionCache cache,
         SqlSymbolTable symbolTable,
         string qualifier)
     {
@@ -223,7 +220,7 @@ public sealed class SqlCompletionProvider
             tableRef = binding.TableRef;
         }
 
-        TableMetadata? table = ResolveTable(metadata, tableRef);
+        TableMetadata? table = ResolveTable(cache, tableRef);
         if (table is null)
             yield break;
 
@@ -237,7 +234,7 @@ public sealed class SqlCompletionProvider
         }
     }
 
-    private static IEnumerable<SqlCompletionSuggestion> SuggestColumnsInScope(DbMetadata metadata, SqlSymbolTable symbolTable)
+    private static IEnumerable<SqlCompletionSuggestion> SuggestColumnsInScope(MetadataCompletionCache cache, SqlSymbolTable symbolTable)
     {
         if (symbolTable.BindingsInOrder.Count == 0)
             yield break;
@@ -247,7 +244,7 @@ public sealed class SqlCompletionProvider
             if (binding.IsSubquery)
                 continue;
 
-            TableMetadata? table = ResolveTable(metadata, binding.TableRef);
+            TableMetadata? table = ResolveTable(cache, binding.TableRef);
             if (table is null)
                 continue;
 
@@ -263,18 +260,18 @@ public sealed class SqlCompletionProvider
         }
     }
 
-    private static IEnumerable<SqlCompletionSuggestion> SuggestSmartJoins(DbMetadata metadata, SqlSymbolTable symbolTable)
+    private static IEnumerable<SqlCompletionSuggestion> SuggestSmartJoins(MetadataCompletionCache cache, SqlSymbolTable symbolTable)
     {
         SqlTableBindingSymbol? anchor = symbolTable.BindingsInOrder.LastOrDefault(static binding => !binding.IsSubquery);
         if (anchor is null)
             yield break;
 
-        TableMetadata? anchorTable = ResolveTable(metadata, anchor.TableRef);
+        TableMetadata? anchorTable = ResolveTable(cache, anchor.TableRef);
         if (anchorTable is null)
             yield break;
 
         var map = new Dictionary<string, SqlCompletionSuggestion>(StringComparer.OrdinalIgnoreCase);
-        foreach (ForeignKeyRelation fk in metadata.AllForeignKeys)
+        foreach (ForeignKeyRelation fk in GetAnchorForeignKeys(cache, anchorTable.FullName))
         {
             if (fk.ChildFullTable.Equals(anchorTable.FullName, StringComparison.OrdinalIgnoreCase))
             {
@@ -324,13 +321,15 @@ public sealed class SqlCompletionProvider
         return string.Concat(parts.Select(p => char.ToLowerInvariant(p[0])));
     }
 
-    private static TableMetadata? ResolveTable(DbMetadata metadata, string tableRef)
+    private static TableMetadata? ResolveTable(MetadataCompletionCache cache, string tableRef)
     {
         string normalized = tableRef.Trim();
-        return metadata.AllTables.FirstOrDefault(t =>
-                   t.FullName.Equals(normalized, StringComparison.OrdinalIgnoreCase))
-               ?? metadata.AllTables.FirstOrDefault(t =>
-                   t.Name.Equals(normalized, StringComparison.OrdinalIgnoreCase));
+        if (cache.TablesByFullName.TryGetValue(normalized, out TableMetadata? byFullName))
+            return byFullName;
+
+        return cache.TablesByName.TryGetValue(normalized, out TableMetadata? byName)
+            ? byName
+            : null;
     }
 
     private static bool IsTableContext(SqlCompletionContext context)
@@ -402,6 +401,88 @@ public sealed class SqlCompletionProvider
             start--;
 
         return start;
+    }
+
+    private MetadataCompletionCache GetOrBuildMetadataCache(DbMetadata metadata)
+    {
+        MetadataCompletionCache? cached = _metadataCache;
+        if (cached is not null && ReferenceEquals(cached.Metadata, metadata))
+            return cached;
+
+        lock (_metadataCacheSync)
+        {
+            cached = _metadataCache;
+            if (cached is not null && ReferenceEquals(cached.Metadata, metadata))
+                return cached;
+
+            MetadataCompletionCache rebuilt = BuildMetadataCache(metadata);
+            _metadataCache = rebuilt;
+            return rebuilt;
+        }
+    }
+
+    private static MetadataCompletionCache BuildMetadataCache(DbMetadata metadata)
+    {
+        var tableSuggestions = new List<SqlCompletionSuggestion>(metadata.AllTables.Count() * 2);
+        var tablesByFullName = new Dictionary<string, TableMetadata>(StringComparer.OrdinalIgnoreCase);
+        var tablesByName = new Dictionary<string, TableMetadata>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (TableMetadata table in metadata.AllTables)
+        {
+            string alias = BuildAlias(table.Name);
+            tableSuggestions.Add(new SqlCompletionSuggestion(
+                table.FullName,
+                table.FullName,
+                $"Table ({table.Kind})",
+                SqlCompletionKind.Table));
+            tableSuggestions.Add(new SqlCompletionSuggestion(
+                $"{table.FullName} AS {alias}",
+                $"{table.FullName} AS {alias}",
+                $"Table ({table.Kind}) with alias",
+                SqlCompletionKind.Table));
+
+            tablesByFullName[table.FullName] = table;
+            if (!tablesByName.ContainsKey(table.Name))
+                tablesByName[table.Name] = table;
+        }
+
+        var foreignKeysByChildTable = new Dictionary<string, IReadOnlyList<ForeignKeyRelation>>(StringComparer.OrdinalIgnoreCase);
+        var foreignKeysByParentTable = new Dictionary<string, IReadOnlyList<ForeignKeyRelation>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (IGrouping<string, ForeignKeyRelation> group in metadata.AllForeignKeys
+                     .GroupBy(static fk => fk.ChildFullTable, StringComparer.OrdinalIgnoreCase))
+        {
+            foreignKeysByChildTable[group.Key] = group.ToList();
+        }
+
+        foreach (IGrouping<string, ForeignKeyRelation> group in metadata.AllForeignKeys
+                     .GroupBy(static fk => fk.ParentFullTable, StringComparer.OrdinalIgnoreCase))
+        {
+            foreignKeysByParentTable[group.Key] = group.ToList();
+        }
+
+        return new MetadataCompletionCache(
+            metadata,
+            tableSuggestions,
+            tablesByFullName,
+            tablesByName,
+            foreignKeysByChildTable,
+            foreignKeysByParentTable);
+    }
+
+    private static IEnumerable<ForeignKeyRelation> GetAnchorForeignKeys(MetadataCompletionCache cache, string anchorTableFullName)
+    {
+        if (cache.ForeignKeysByChildTable.TryGetValue(anchorTableFullName, out IReadOnlyList<ForeignKeyRelation>? childRelations))
+        {
+            foreach (ForeignKeyRelation relation in childRelations)
+                yield return relation;
+        }
+
+        if (cache.ForeignKeysByParentTable.TryGetValue(anchorTableFullName, out IReadOnlyList<ForeignKeyRelation>? parentRelations))
+        {
+            foreach (ForeignKeyRelation relation in parentRelations)
+                yield return relation;
+        }
     }
 
 }

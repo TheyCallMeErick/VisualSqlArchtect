@@ -1,6 +1,7 @@
 using DBWeaver.Core;
 using DBWeaver.Metadata;
 using DBWeaver.UI.Services.SqlEditor;
+using System.Diagnostics;
 
 namespace DBWeaver.Tests.Unit.Services.SqlEditor;
 
@@ -294,6 +295,161 @@ public sealed class SqlCompletionProviderTests
 
         Assert.NotNull(request);
         Assert.NotEmpty(request.Suggestions);
+    }
+
+    [Fact]
+    public void GetSuggestions_WithLargeMetadata_WarmRequestsStayFastAndStable()
+    {
+        var sut = new SqlCompletionProvider();
+        DbMetadata metadata = BuildLargeMetadata(tableCount: 700, viewCount: 180);
+        const string sql = "SELECT * FROM public.table_0100 t JOIN public.table_0099 p ON t.parent_id = p.id WHERE t.";
+
+        var coldStopwatch = Stopwatch.StartNew();
+        SqlCompletionRequest coldRequest = sut.GetSuggestions(sql, sql.Length, metadata, DatabaseProvider.Postgres);
+        coldStopwatch.Stop();
+
+        Assert.Contains(coldRequest.Suggestions, s => s.Kind == SqlCompletionKind.Column && s.Label == "id");
+
+        const int iterations = 50;
+        var warmStopwatch = Stopwatch.StartNew();
+        for (int i = 0; i < iterations; i++)
+        {
+            SqlCompletionRequest request = sut.GetSuggestions(sql, sql.Length, metadata, DatabaseProvider.Postgres);
+            Assert.NotEmpty(request.Suggestions);
+        }
+
+        warmStopwatch.Stop();
+
+        double coldMs = Math.Max(1, coldStopwatch.Elapsed.TotalMilliseconds);
+        double warmAvgMs = warmStopwatch.Elapsed.TotalMilliseconds / iterations;
+
+        Assert.True(
+            warmAvgMs <= coldMs,
+            $"Expected warm average ({warmAvgMs:F2}ms) to be <= cold call ({coldMs:F2}ms)."
+        );
+        Assert.True(
+            warmStopwatch.Elapsed <= TimeSpan.FromSeconds(6),
+            $"Warm completion loop exceeded expected budget: {warmStopwatch.Elapsed.TotalMilliseconds:F0}ms"
+        );
+    }
+
+    [Fact]
+    public void GetSuggestions_WithLargeMetadata_TypingSequenceRemainsResponsive()
+    {
+        var sut = new SqlCompletionProvider();
+        DbMetadata metadata = BuildLargeMetadata(tableCount: 650, viewCount: 120);
+
+        string[] typingFrames =
+        [
+            "S",
+            "SE",
+            "SEL",
+            "SELE",
+            "SELEC",
+            "SELECT",
+            "SELECT ",
+            "SELECT * ",
+            "SELECT * FROM ",
+            "SELECT * FROM public.table_0001 t WHERE t.",
+            "SELECT * FROM public.table_0001 t WHERE t.cr",
+            "SELECT * FROM public.table_0001 t WHERE t.crea",
+            "SELECT * FROM public.table_0001 t JOIN public.table_0002 p ON t.parent_id = p.id WHERE p."
+        ];
+
+        SqlCompletionRequest? lastRequest = null;
+        var stopwatch = Stopwatch.StartNew();
+        for (int round = 0; round < 12; round++)
+        {
+            foreach (string frame in typingFrames)
+            {
+                lastRequest = sut.GetSuggestions(frame, frame.Length, metadata, DatabaseProvider.Postgres);
+                Assert.NotEmpty(lastRequest.Suggestions);
+            }
+        }
+
+        stopwatch.Stop();
+
+        Assert.NotNull(lastRequest);
+        Assert.Contains(lastRequest!.Suggestions, s => s.Kind == SqlCompletionKind.Column && s.Label == "created_at");
+        Assert.True(
+            stopwatch.Elapsed <= TimeSpan.FromSeconds(8),
+            $"Typing scenario exceeded expected budget: {stopwatch.Elapsed.TotalMilliseconds:F0}ms"
+        );
+    }
+
+    private static DbMetadata BuildLargeMetadata(int tableCount, int viewCount)
+    {
+        var tables = new List<TableMetadata>(tableCount + viewCount);
+        var foreignKeys = new List<ForeignKeyRelation>(Math.Max(0, tableCount - 1));
+
+        for (int i = 1; i <= tableCount; i++)
+        {
+            string tableName = $"table_{i:D4}";
+            var columns = new List<ColumnMetadata>
+            {
+                new("id", "int", "int", false, true, false, true, true, 1),
+                new("name", "text", "text", true, false, false, false, false, 2),
+                new("created_at", "timestamp", "timestamp", true, false, false, false, false, 3),
+            };
+
+            var outbound = new List<ForeignKeyRelation>();
+            if (i > 1)
+            {
+                string parentTableName = $"table_{i - 1:D4}";
+                columns.Add(new ColumnMetadata("parent_id", "int", "int", true, false, true, false, true, 4));
+
+                var fk = new ForeignKeyRelation(
+                    ConstraintName: $"fk_{tableName}_{parentTableName}",
+                    ChildSchema: "public",
+                    ChildTable: tableName,
+                    ChildColumn: "parent_id",
+                    ParentSchema: "public",
+                    ParentTable: parentTableName,
+                    ParentColumn: "id",
+                    OnDelete: ReferentialAction.NoAction,
+                    OnUpdate: ReferentialAction.NoAction,
+                    OrdinalPosition: 1);
+
+                foreignKeys.Add(fk);
+                outbound.Add(fk);
+            }
+
+            tables.Add(new TableMetadata(
+                Schema: "public",
+                Name: tableName,
+                Kind: TableKind.Table,
+                EstimatedRowCount: 1_000 + i,
+                Columns: columns,
+                Indexes: [],
+                OutboundForeignKeys: outbound,
+                InboundForeignKeys: []));
+        }
+
+        for (int i = 1; i <= viewCount; i++)
+        {
+            string viewName = $"view_{i:D4}";
+            tables.Add(new TableMetadata(
+                Schema: "public",
+                Name: viewName,
+                Kind: TableKind.View,
+                EstimatedRowCount: 0,
+                Columns:
+                [
+                    new ColumnMetadata("id", "int", "int", true, false, false, false, false, 1),
+                    new ColumnMetadata("name", "text", "text", true, false, false, false, false, 2),
+                ],
+                Indexes: [],
+                OutboundForeignKeys: [],
+                InboundForeignKeys: []));
+        }
+
+        return new DbMetadata(
+            DatabaseName: "large_test_db",
+            Provider: DatabaseProvider.Postgres,
+            ServerVersion: "16",
+            CapturedAt: DateTimeOffset.UtcNow,
+            Schemas: [new SchemaMetadata("public", tables)],
+            AllForeignKeys: foreignKeys);
     }
 
     private static DbMetadata BuildMetadata()

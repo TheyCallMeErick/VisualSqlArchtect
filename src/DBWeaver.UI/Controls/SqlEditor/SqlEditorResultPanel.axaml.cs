@@ -13,6 +13,7 @@ using Material.Icons;
 using Material.Icons.Avalonia;
 using DBWeaver.UI.Services.SqlEditor;
 using DBWeaver.UI.Services.Localization;
+using DBWeaver.UI.Services.Search;
 using DBWeaver.UI.Services.SqlEditor.Reports;
 using DBWeaver.UI.ViewModels;
 
@@ -20,6 +21,7 @@ namespace DBWeaver.UI.Controls.SqlEditor;
 
 public partial class SqlEditorResultPanel : UserControl
 {
+    private static readonly TextSearchService TextSearch = new();
     private SqlEditorViewModel? _viewModel;
     private object?[]? _lastSelectedRow;
     private int _lastSelectedColumnIndex = -1;
@@ -468,7 +470,7 @@ public partial class SqlEditorResultPanel : UserControl
     {
         for (int i = 0; i < table.Columns.Count; i++)
         {
-            if (SqlEditorResultCellContentFormatter.FormatCellValue(row, i).Contains(needle, StringComparison.OrdinalIgnoreCase))
+            if (TextSearch.Matches(needle, SqlEditorResultCellContentFormatter.FormatCellValue(row, i)))
                 return true;
         }
 

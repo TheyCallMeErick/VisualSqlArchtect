@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Windows.Input;
 using Avalonia;
 using DBWeaver.Nodes;
+using DBWeaver.UI.Services.Search;
 using DBWeaver.UI.ViewModels.Canvas;
 using DBWeaver.UI.Services.Theming;
 
@@ -15,6 +16,7 @@ public sealed class NodesListViewModel : ViewModelBase
 {
     private string _searchQuery = string.Empty;
     private CanvasContext _canvasContext = CanvasContext.Query;
+    private readonly TextSearchService _textSearch = new();
 
     /// <summary>
     /// The search query to filter node types.
@@ -98,11 +100,8 @@ public sealed class NodesListViewModel : ViewModelBase
                 continue;
 
             // Filter based on search
-            if (!string.IsNullOrEmpty(SearchQuery))
-            {
-                if (!NodeTagCatalog.MatchesSearch(def, SearchQuery))
-                    continue;
-            }
+            if (!MatchesSearch(def))
+                continue;
 
             // Ensure group exists for this category
             if (!groupsDict.TryGetValue(def.Category, out var group))
@@ -176,7 +175,13 @@ public sealed class NodesListViewModel : ViewModelBase
         if (string.IsNullOrEmpty(SearchQuery))
             return true;
 
-        return NodeTagCatalog.MatchesSearch(def, SearchQuery);
+        string tags = string.Join(' ', NodeTagCatalog.Resolve(def).Select(tag => tag.Name));
+        return _textSearch.MatchesContainsAllTokens(
+            SearchQuery,
+            def.DisplayName,
+            def.Description,
+            def.Category.ToString(),
+            tags);
     }
 
     private static (string Key, string Name, string Color, int Order) ClassifyDdlGroup(NodeType type)

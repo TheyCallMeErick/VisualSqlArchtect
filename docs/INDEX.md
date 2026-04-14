@@ -17,6 +17,7 @@ A documentação ativa está dividida em dois níveis:
 
 - **[CODE_CONVENTIONS.md](CODE_CONVENTIONS.md)** — Convenções de código, naming e estrutura geral
 - **[EXCEPTION_HANDLING_STRATEGY.md](EXCEPTION_HANDLING_STRATEGY.md)** — Estratégia de tratamento de erros e falhas
+- **[SEARCH_FILTERING_GUIDELINE.md](SEARCH_FILTERING_GUIDELINE.md)** — Padrão de busca textual centralizada (fuzzy vs estrito) para UI
 - **[MODAL_LAYOUT_GUIDELINE.md](MODAL_LAYOUT_GUIDELINE.md)** — Guideline normativa para estrutura de modais (header + body rolável + footer fixo)
 - **[MODAL_ADOPTION_MAP.md](MODAL_ADOPTION_MAP.md)** — Inventário de modais e status de adoção da guideline
 - **[SQL_EDITOR_UX_IMPROVEMENT_IMPLEMENTATION_SPRINT_PLAN.md](SQL_EDITOR_UX_IMPROVEMENT_IMPLEMENTATION_SPRINT_PLAN.md)** — Plano de execução e checklist concluído do review de UX do SQL Editor
@@ -88,4 +89,4 @@ A documentação ativa está dividida em dois níveis:
 
 ---
 
-*Última atualização: 13 de abril de 2026*
+*Última atualização: 14 de abril de 2026*

@@ -3,6 +3,7 @@ using DBWeaver.Ddl.SchemaAnalysis.Domain.Contracts;
 using DBWeaver.Ddl.SchemaAnalysis.Domain.Enums;
 using DBWeaver.Metadata;
 using DBWeaver.UI.Services.Localization;
+using DBWeaver.UI.Services.Search;
 
 namespace DBWeaver.UI.ViewModels;
 
@@ -21,6 +22,7 @@ public sealed class SchemaAnalysisPanelViewModel : ViewModelBase
 
     private readonly Action<string>? _copySql;
     private readonly Action<SqlFixCandidate>? _applyToCanvas;
+    private static readonly TextSearchService TextSearch = new();
 
     private readonly List<SchemaIssue> _rawIssues = [];
     private readonly List<SchemaRuleExecutionDiagnostic> _diagnostics = [];
@@ -751,7 +753,7 @@ public sealed class SchemaAnalysisPanelViewModel : ViewModelBase
         string table = issue.TableName ?? string.Empty;
         string value = string.IsNullOrWhiteSpace(schema) ? table : $"{schema}.{table}";
 
-        return value.Contains(filter, StringComparison.OrdinalIgnoreCase);
+        return TextSearch.Matches(filter, value);
     }
 
     private void RaiseSummaryCountersChanged()

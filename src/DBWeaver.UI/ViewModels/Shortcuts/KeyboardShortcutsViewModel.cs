@@ -1,4 +1,5 @@
 using DBWeaver.UI.Services.Input.ShortcutRegistry;
+using DBWeaver.UI.Services.Search;
 
 namespace DBWeaver.UI.ViewModels.Shortcuts;
 
@@ -8,6 +9,7 @@ namespace DBWeaver.UI.ViewModels.Shortcuts;
 public sealed class KeyboardShortcutsViewModel
 {
     private readonly IShortcutRegistry _shortcutRegistry;
+    private readonly TextSearchService _textSearch = new();
     private IReadOnlyList<ShortcutItemViewModel> _allItems = [];
     private string _searchText = string.Empty;
 
@@ -95,12 +97,14 @@ public sealed class KeyboardShortcutsViewModel
         if (!string.IsNullOrWhiteSpace(_searchText))
         {
             filtered = filtered.Where(item =>
-                item.Name.Contains(_searchText, StringComparison.OrdinalIgnoreCase)
-                || item.Description.Contains(_searchText, StringComparison.OrdinalIgnoreCase)
-                || item.Section.Contains(_searchText, StringComparison.OrdinalIgnoreCase)
-                || item.EffectiveGesture.Contains(_searchText, StringComparison.OrdinalIgnoreCase)
-                || item.DefaultGesture.Contains(_searchText, StringComparison.OrdinalIgnoreCase)
-                || item.Tags.Any(tag => tag.Contains(_searchText, StringComparison.OrdinalIgnoreCase)));
+                _textSearch.Matches(
+                    _searchText,
+                    item.Name,
+                    item.Description,
+                    item.Section,
+                    item.EffectiveGesture,
+                    item.DefaultGesture,
+                    string.Join(' ', item.Tags)));
         }
 
         Sections = filtered

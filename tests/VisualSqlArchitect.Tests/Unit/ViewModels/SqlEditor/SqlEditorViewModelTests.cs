@@ -651,7 +651,9 @@ public sealed class SqlEditorViewModelTests
             "db",
             "user",
             "pass");
-        var sut = new SqlEditorViewModel(connectionConfigResolver: () => config);
+        var sut = new SqlEditorViewModel(
+            executionService: new SqlEditorExecutionService(new CountingOrchestratorFactory()),
+            connectionConfigResolver: () => config);
         sut.ActiveTab.SqlText = "SELECT 1;";
 
         for (int i = 0; i < 600; i++)
