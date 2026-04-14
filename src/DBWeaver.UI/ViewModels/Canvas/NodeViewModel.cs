@@ -1247,6 +1247,9 @@ public sealed class NodeViewModel : ViewModelBase, ICanvasTableNode, ICanvasLaye
         [NodeCategory.Json] = Color.Parse(UiColorConstants.C_6D28D9),
         [NodeCategory.Aggregate] = Color.Parse(UiColorConstants.C_15803D),
         [NodeCategory.Conditional] = Color.Parse(UiColorConstants.C_0E7490),
+        [NodeCategory.ResultModifier] = Color.Parse(UiColorConstants.C_EC4899),
+        [NodeCategory.Output] = Color.Parse(UiColorConstants.C_10B981),
+        [NodeCategory.Literal] = Color.Parse(UiColorConstants.C_4A5568),
         [NodeCategory.Ddl] = Color.Parse(UiColorConstants.C_1D4ED8),
     };
 
@@ -1261,6 +1264,9 @@ public sealed class NodeViewModel : ViewModelBase, ICanvasTableNode, ICanvasLaye
         [NodeCategory.Json] = Color.Parse(UiColorConstants.C_A78BFA),
         [NodeCategory.Aggregate] = Color.Parse(UiColorConstants.C_4ADE80),
         [NodeCategory.Conditional] = Color.Parse(UiColorConstants.C_22D3EE),
+        [NodeCategory.ResultModifier] = Color.Parse(UiColorConstants.C_FB7185),
+        [NodeCategory.Output] = Color.Parse(UiColorConstants.C_34D399),
+        [NodeCategory.Literal] = Color.Parse(UiColorConstants.C_9CA3AF),
         [NodeCategory.Ddl] = Color.Parse(UiColorConstants.C_60A5FA),
     };
 

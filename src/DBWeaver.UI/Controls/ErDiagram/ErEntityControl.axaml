@@ -1,0 +1,80 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ervm="using:DBWeaver.UI.ViewModels.ErDiagram"
+             x:Class="DBWeaver.UI.Controls.ErDiagram.ErEntityControl"
+             x:DataType="ervm:ErEntityNodeViewModel">
+
+  <Border Width="220"
+          CornerRadius="{StaticResource RadiusMD}"
+          Background="{StaticResource Bg1Brush}"
+          BorderBrush="{StaticResource BorderBrush}"
+          BorderThickness="1">
+    <Grid RowDefinitions="36,*">
+      <Border Grid.Row="0"
+              Background="{StaticResource Bg2Brush}"
+              BorderBrush="{StaticResource BorderSubtleBrush}"
+              BorderThickness="0,0,0,1"
+              CornerRadius="{StaticResource RadiusMD}, {StaticResource RadiusMD}, 0, 0"
+              Padding="10,0">
+        <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+          <TextBlock Grid.Column="0"
+                     Classes="txt-label"
+                     Foreground="{StaticResource TextPrimaryBrush}"
+                     Text="{Binding DisplayName}"
+                     TextTrimming="CharacterEllipsis"
+                     VerticalAlignment="Center"/>
+
+          <Border Grid.Column="1"
+                  IsVisible="{Binding IsView}"
+                  Background="{StaticResource ControlActiveBgBrush}"
+                  CornerRadius="{StaticResource RadiusPill}"
+                  Padding="8,2"
+                  VerticalAlignment="Center">
+            <TextBlock Text="VIEW"
+                       FontSize="{StaticResource FontSizeCaption}"
+                       Foreground="{StaticResource TextAccentBrush}"/>
+          </Border>
+        </Grid>
+      </Border>
+
+      <ItemsControl Grid.Row="1" ItemsSource="{Binding Columns}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="ervm:ErColumnRowViewModel">
+            <Grid ColumnDefinitions="Auto,8,*,8,Auto"
+                  Height="22"
+                  Margin="10,0"
+                  VerticalAlignment="Center">
+              <Border Grid.Column="0"
+                      MinWidth="24"
+                      Background="{StaticResource Bg3Brush}"
+                      CornerRadius="{StaticResource RadiusPill}"
+                      Padding="6,1"
+                      IsVisible="{Binding HasBadge}"
+                      VerticalAlignment="Center">
+                <TextBlock Text="{Binding Badge}"
+                           FontSize="{StaticResource FontSizeCaption}"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           HorizontalAlignment="Center"/>
+              </Border>
+
+              <TextBlock Grid.Column="2"
+                         Classes="txt-body"
+                         Foreground="{StaticResource TextPrimaryBrush}"
+                         Text="{Binding ColumnName}"
+                         TextTrimming="CharacterEllipsis"
+                         VerticalAlignment="Center"/>
+
+              <TextBlock Grid.Column="4"
+                         FontFamily="{StaticResource MonoFont}"
+                         FontSize="{StaticResource FontSizeCaption}"
+                         Foreground="{StaticResource TextMutedBrush}"
+                         Text="{Binding DataType}"
+                         TextTrimming="CharacterEllipsis"
+                         VerticalAlignment="Center"/>
+            </Grid>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </Grid>
+  </Border>
+</UserControl>

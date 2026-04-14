@@ -23,7 +23,7 @@ internal sealed class QueryCompilationSourceResolver(
         if (preferredUpstream is not null)
         {
             if (preferredUpstream.Type == NodeType.TableSource)
-                return (preferredUpstream.Subtitle ?? preferredUpstream.Title, null);
+                return (BuildTableFromReference(preferredUpstream), null);
 
             if (preferredUpstream.Type == NodeType.CteSource)
             {
@@ -41,7 +41,7 @@ internal sealed class QueryCompilationSourceResolver(
         }
 
         if (upstreamTables.Count > 0)
-            return (upstreamTables[0].Subtitle ?? upstreamTables[0].Title, null);
+            return (BuildTableFromReference(upstreamTables[0]), null);
 
         if (upstreamCtes.Count > 0)
         {
@@ -61,7 +61,7 @@ internal sealed class QueryCompilationSourceResolver(
         }
 
         if (tableNodes.Count > 0)
-            return (tableNodes[0].Subtitle ?? tableNodes[0].Title, null);
+            return (BuildTableFromReference(tableNodes[0]), null);
 
         if (cteSourceNodes.Count > 0)
         {
@@ -91,6 +91,30 @@ internal sealed class QueryCompilationSourceResolver(
         return upstreamTables.FirstOrDefault(static node => node.IsPrimaryFromSource)
             ?? upstreamCtes.FirstOrDefault(static node => node.IsPrimaryFromSource)
             ?? upstreamSubqueries.FirstOrDefault(static node => node.IsPrimaryFromSource);
+    }
+
+    private static string BuildTableFromReference(NodeViewModel tableNode)
+    {
+        string source = !string.IsNullOrWhiteSpace(tableNode.Subtitle)
+            ? tableNode.Subtitle!.Trim()
+            : tableNode.Title.Trim();
+
+        string? alias = ResolveExplicitTableAlias(tableNode);
+        return string.IsNullOrWhiteSpace(alias) ? source : $"{source} {alias}";
+    }
+
+    private static string? ResolveExplicitTableAlias(NodeViewModel tableNode)
+    {
+        if (!string.IsNullOrWhiteSpace(tableNode.Alias))
+            return tableNode.Alias!.Trim();
+
+        if (tableNode.Parameters.TryGetValue("alias", out string? aliasParam)
+            && !string.IsNullOrWhiteSpace(aliasParam))
+        {
+            return aliasParam.Trim();
+        }
+
+        return null;
     }
 
     private (IReadOnlyList<NodeViewModel> Tables, IReadOnlyList<NodeViewModel> Ctes, IReadOnlyList<NodeViewModel> Subqueries) FilterUpstreamSources(

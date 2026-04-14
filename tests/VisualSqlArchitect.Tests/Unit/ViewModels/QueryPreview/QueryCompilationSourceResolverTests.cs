@@ -24,6 +24,24 @@ public class QueryCompilationSourceResolverTests
     }
 
     [Fact]
+    public void ResolveFromTable_WhenTableHasAlias_IncludesAliasInFrom()
+    {
+        var canvas = new CanvasViewModel();
+        var resolver = new QueryCompilationSourceResolver(canvas, (_, _) => null);
+        NodeViewModel table = QueryPreviewTestNodeFactory.Table("public.orders", "id");
+        table.Alias = "o";
+
+        (string fromTable, string? warning) = resolver.ResolveFromTable(
+            [table],
+            [],
+            [],
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+
+        Assert.Equal("public.orders o", fromTable);
+        Assert.Null(warning);
+    }
+
+    [Fact]
     public void ResolveFromTable_WhenCteSourceExists_UsesResolvedCteReference()
     {
         var canvas = new CanvasViewModel();
@@ -87,6 +105,39 @@ public class QueryCompilationSourceResolverTests
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
 
         Assert.Equal("public.customers", fromTable);
+        Assert.Null(warning);
+    }
+
+    [Fact]
+    public void ResolveFromTable_WhenPrimaryUpstreamTableHasAlias_UsesAliasedFrom()
+    {
+        var canvas = new CanvasViewModel();
+        var resolver = new QueryCompilationSourceResolver(canvas, (_, _) => null);
+
+        NodeViewModel tableA = QueryPreviewTestNodeFactory.Table("public.orders", "id", "customer_id");
+        NodeViewModel tableB = QueryPreviewTestNodeFactory.Table("public.customers", "id");
+        NodeViewModel result = QueryPreviewTestNodeFactory.Node(NodeType.ResultOutput);
+
+        tableB.Alias = "c";
+
+        canvas.Nodes.Add(tableA);
+        canvas.Nodes.Add(tableB);
+        canvas.Nodes.Add(result);
+
+        Connect(tableA, "id", result, "column", canvas);
+        Connect(tableA, "customer_id", result, "column", canvas);
+        Connect(tableB, "id", result, "column", canvas);
+
+        tableA.IsPrimaryFromSource = false;
+        tableB.IsPrimaryFromSource = true;
+
+        (string fromTable, string? warning) = resolver.ResolveFromTable(
+            [tableA, tableB],
+            [],
+            [],
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+
+        Assert.Equal("public.customers c", fromTable);
         Assert.Null(warning);
     }
 
