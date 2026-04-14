@@ -60,7 +60,7 @@ public static class GraphValidator
             .ToHashSet();
 
         // Rule: ResultOutput node must have at least one column connected
-        foreach (NodeViewModel? n in vm.Nodes.Where(n => n.Type is NodeType.ResultOutput or NodeType.SelectOutput))
+        foreach (NodeViewModel? n in vm.Nodes.Where(n => n.Type == NodeType.ResultOutput))
         {
             if (n.OutputColumnOrder.Count == 0)
                 issues.Add(

@@ -9,15 +9,18 @@ namespace DBWeaver.Tests.Unit.ViewModels.QueryPreview;
 public sealed class QueryGraphBuilderReportOutputTests
 {
     [Fact]
-    public void BuildSql_UsesRawSqlWhenOnlyReportFlowExists()
+    public void BuildSql_ReportOnlyLegacyFlow_ReturnsDiagnosticsInsteadOfRawSql()
     {
+        NodeType rawSqlType = Enum.Parse<NodeType>("RawSqlQuery");
+        NodeType reportOutputType = Enum.Parse<NodeType>("ReportOutput");
+
         var canvas = new CanvasViewModel();
         canvas.Nodes.Clear();
         canvas.Connections.Clear();
 
-        NodeViewModel rawSql = Node(NodeType.RawSqlQuery);
+        NodeViewModel rawSql = Node(rawSqlType);
         rawSql.Parameters["sql"] = "SELECT 42 AS answer";
-        NodeViewModel reportOutput = Node(NodeType.ReportOutput);
+        NodeViewModel reportOutput = Node(reportOutputType);
 
         canvas.Nodes.Add(rawSql);
         canvas.Nodes.Add(reportOutput);
@@ -28,12 +31,16 @@ public sealed class QueryGraphBuilderReportOutputTests
         (string sql, List<string> errors) = sut.BuildSql();
 
         Assert.Empty(errors);
-        Assert.Equal("SELECT 42 AS answer", sql);
+        Assert.Contains("Add a table", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("SELECT 42 AS answer", sql, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
     public void BuildSql_PrioritizesResultOutputWhenQueryAndReportFlowsCoexist()
     {
+        NodeType rawSqlType = Enum.Parse<NodeType>("RawSqlQuery");
+        NodeType reportOutputType = Enum.Parse<NodeType>("ReportOutput");
+
         var canvas = new CanvasViewModel();
         canvas.Nodes.Clear();
         canvas.Connections.Clear();
@@ -42,9 +49,9 @@ public sealed class QueryGraphBuilderReportOutputTests
         NodeViewModel resultOutput = Node(NodeType.ResultOutput);
         Connect(canvas, table, "id", resultOutput, "column");
 
-        NodeViewModel rawSql = Node(NodeType.RawSqlQuery);
+        NodeViewModel rawSql = Node(rawSqlType);
         rawSql.Parameters["sql"] = "SELECT should_not_be_used";
-        NodeViewModel reportOutput = Node(NodeType.ReportOutput);
+        NodeViewModel reportOutput = Node(reportOutputType);
         Connect(canvas, rawSql, "query", reportOutput, "query");
 
         canvas.Nodes.Add(table);

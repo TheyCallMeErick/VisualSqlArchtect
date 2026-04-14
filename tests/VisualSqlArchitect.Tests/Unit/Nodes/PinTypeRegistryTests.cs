@@ -25,7 +25,6 @@ public class PinTypeRegistryTests
     [InlineData(PinDataType.TypeDef)]
     [InlineData(PinDataType.SequenceDef)]
     [InlineData(PinDataType.AlterOp)]
-    [InlineData(PinDataType.ReportQuery)]
     [InlineData(PinDataType.Expression)]
     public void EnumToTypeToEnum_RoundTrip_PreservesValue(PinDataType type)
     {
@@ -34,6 +33,16 @@ public class PinTypeRegistryTests
         PinDataType result = PinTypeRegistry.GetEnum(mapped);
 
         Assert.Equal(type, result);
+    }
+
+    [Fact]
+    public void GetType_ReportQuery_FallsBackToExpressionType()
+    {
+        IPinDataType mapped = PinTypeRegistry.GetType(PinDataType.ReportQuery);
+
+        PinDataType result = PinTypeRegistry.GetEnum(mapped);
+
+        Assert.Equal(PinDataType.Expression, result);
     }
 
     [Fact]

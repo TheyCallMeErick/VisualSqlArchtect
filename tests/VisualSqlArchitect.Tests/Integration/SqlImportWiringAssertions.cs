@@ -57,8 +57,8 @@ internal static class SqlImportWiringAssertions
             bool hasWhereOutputCondition = canvas.Connections.Any(c =>
                 c.FromPin.Owner == subquery
                 && c.FromPin.Name.Equals("result", StringComparison.OrdinalIgnoreCase)
-                && c.ToPin?.Owner?.Type == NodeType.WhereOutput
-                && c.ToPin.Name.Equals("condition", StringComparison.OrdinalIgnoreCase));
+                && string.Equals(c.ToPin?.Owner?.Type.ToString(), "WhereOutput", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(c.ToPin?.Name, "condition", StringComparison.OrdinalIgnoreCase));
             bool hasRoutedCondition = canvas.Connections.Any(c =>
                 c.FromPin.Owner == subquery
                 && c.FromPin.Name.Equals("result", StringComparison.OrdinalIgnoreCase)

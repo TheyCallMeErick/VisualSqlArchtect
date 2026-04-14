@@ -119,7 +119,10 @@ public static partial class CanvasSerializer
         }
 
         WorkspaceDocumentType activeDocumentType = ResolveActiveDocumentType(workspace, documents);
-        return CanvasLoadResult.Ok(warnings.Count > 0 ? warnings : null, activeDocumentType);
+        return CanvasLoadResult.Ok(
+            warnings.Count > 0 ? warnings : null,
+            activeDocumentType,
+            queryLoad.SqlEditorSeedScripts);
     }
 
     private static CanvasLoadResult DeserializeLegacyWorkspace(
@@ -173,7 +176,10 @@ public static partial class CanvasSerializer
 
         warnings.Add("Legacy workspace envelope migrated to document-oriented workspace model during load.");
         WorkspaceDocumentType activeType = ResolveLegacyActiveDocumentType(workspace);
-        return CanvasLoadResult.Ok(warnings.Count > 0 ? warnings : null, activeType);
+        return CanvasLoadResult.Ok(
+            warnings.Count > 0 ? warnings : null,
+            activeType,
+            queryLoad.SqlEditorSeedScripts);
     }
 
     private static CanvasLoadResult ApplyDdlFromSavedCanvas(
@@ -211,6 +217,14 @@ public static partial class CanvasSerializer
 
         SavedCanvas saved = raw;
         var warnings = new List<string>();
+        IReadOnlyList<string> sqlEditorSeedScripts = allowedFamily == CanvasNodeFamily.Query
+            ? ExtractLegacyReportSqlScripts(saved)
+            : [];
+        if (sqlEditorSeedScripts.Count > 0)
+        {
+            warnings.Add(
+                $"Migrated {sqlEditorSeedScripts.Count} legacy report SQL script(s) to SQL Editor seed drafts during load.");
+        }
 
         vm.Connections.Clear();
         vm.Nodes.Clear();
@@ -289,7 +303,54 @@ public static partial class CanvasSerializer
                 nodeVm.SyncCteSourceColumns(vm.Connections);
         }
 
-        return CanvasLoadResult.Ok(warnings.Count > 0 ? warnings : null);
+        return CanvasLoadResult.Ok(
+            warnings.Count > 0 ? warnings : null,
+            activeDocumentType: null,
+            sqlEditorSeedScripts: sqlEditorSeedScripts.Count > 0 ? sqlEditorSeedScripts : null);
+    }
+
+    private static IReadOnlyList<string> ExtractLegacyReportSqlScripts(SavedCanvas saved)
+    {
+        Dictionary<string, SavedNode> nodesById = saved.Nodes
+            .ToDictionary(node => node.NodeId, StringComparer.Ordinal);
+
+        HashSet<string> scripts = [];
+        foreach (SavedNode reportOutput in saved.Nodes.Where(node =>
+                 string.Equals(node.NodeType, "ReportOutput", StringComparison.OrdinalIgnoreCase)))
+        {
+            foreach (SavedConnection wire in saved.Connections.Where(connection =>
+                         string.Equals(connection.ToNodeId, reportOutput.NodeId, StringComparison.Ordinal)
+                         && string.Equals(connection.ToPinName, "query", StringComparison.OrdinalIgnoreCase)))
+            {
+                if (!nodesById.TryGetValue(wire.FromNodeId, out SavedNode? sourceNode))
+                    continue;
+                if (!string.Equals(sourceNode.NodeType, "RawSqlQuery", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                string? sql = ResolveLegacyReportSql(sourceNode);
+                if (!string.IsNullOrWhiteSpace(sql))
+                    scripts.Add(sql.Trim());
+            }
+        }
+
+        return scripts.ToList();
+    }
+
+    private static string? ResolveLegacyReportSql(SavedNode rawSqlNode)
+    {
+        if (rawSqlNode.Parameters.TryGetValue("sql_text", out string? sqlText)
+            && !string.IsNullOrWhiteSpace(sqlText))
+        {
+            return sqlText;
+        }
+
+        if (rawSqlNode.Parameters.TryGetValue("sql", out string? sql)
+            && !string.IsNullOrWhiteSpace(sql))
+        {
+            return sql;
+        }
+
+        return null;
     }
 
     private static bool LooksLikeLegacyWorkspaceEnvelope(string json)

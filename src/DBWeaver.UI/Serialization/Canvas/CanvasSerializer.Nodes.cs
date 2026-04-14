@@ -16,6 +16,16 @@ public static partial class CanvasSerializer
         if (!Enum.TryParse<NodeType>(sn.NodeType, out NodeType nodeType))
             return (null, $"Unknown node type '{sn.NodeType}' (not supported in this version)");
 
+        NodeType rawSqlQueryType = Enum.Parse<NodeType>("RawSqlQuery");
+        NodeType reportOutputType = Enum.Parse<NodeType>("ReportOutput");
+        if (nodeType == rawSqlQueryType || nodeType == reportOutputType)
+        {
+            return (
+                null,
+                $"Node '{sn.NodeType}' migrated to SQL Editor script flow during load"
+            );
+        }
+
         if (!IsNodeTypeAllowed(nodeType, allowedFamily))
         {
             string familyName = allowedFamily == CanvasNodeFamily.Ddl ? "DDL" : "Query";

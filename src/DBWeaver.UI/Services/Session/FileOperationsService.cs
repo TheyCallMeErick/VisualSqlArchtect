@@ -27,6 +27,7 @@ public class FileOperationsService(
     Func<IReadOnlyList<OpenWorkspaceDocument>>? workspaceDocumentsResolver = null,
     Func<Guid?>? activeWorkspaceDocumentIdResolver = null,
     Action<SavedWorkspaceDocumentsCanvas>? applyWorkspaceDocumentsSnapshot = null,
+    Action<IReadOnlyList<string>>? applySqlEditorSeedScripts = null,
     Action? invalidateActiveCanvasWires = null,
     ILogger<FileOperationsService>? logger = null)
 {
@@ -46,6 +47,7 @@ public class FileOperationsService(
     private readonly Func<IReadOnlyList<OpenWorkspaceDocument>>? _workspaceDocumentsResolver = workspaceDocumentsResolver;
     private readonly Func<Guid?>? _activeWorkspaceDocumentIdResolver = activeWorkspaceDocumentIdResolver;
     private readonly Action<SavedWorkspaceDocumentsCanvas>? _applyWorkspaceDocumentsSnapshot = applyWorkspaceDocumentsSnapshot;
+    private readonly Action<IReadOnlyList<string>>? _applySqlEditorSeedScripts = applySqlEditorSeedScripts;
     private readonly Action? _invalidateActiveCanvasWires = invalidateActiveCanvasWires;
     private readonly ILogger<FileOperationsService> _logger = logger ?? NullLogger<FileOperationsService>.Instance;
 
@@ -172,6 +174,9 @@ public class FileOperationsService(
                 if (snapshot is not null)
                     _applyWorkspaceDocumentsSnapshot(snapshot);
             }
+
+            if (result.SqlEditorSeedScripts is { Count: > 0 })
+                _applySqlEditorSeedScripts?.Invoke(result.SqlEditorSeedScripts);
 
             if (result.ActiveDocumentType is WorkspaceDocumentType activeDocumentType)
                 _applyActiveDocumentType?.Invoke(activeDocumentType);

@@ -877,7 +877,7 @@ public sealed class PropertyPanelViewModel : ViewModelBase
                 return ("CTE source", "FROM CTERef AS alias");
             case NodeType.CteDefinition:
                 return ("CTE definition", "WITH CTERef AS (SELECT ... FROM source_table)");
-            case NodeType.WhereOutput or NodeType.CompileWhere:
+            case NodeType.CompileWhere:
             {
                 Match m = Regex.Match(sql,
                     @"WHERE\s+(.+?)(?=\s+(?:GROUP\s+BY|ORDER\s+BY|LIMIT|HAVING|$))",
@@ -897,7 +897,7 @@ public sealed class PropertyPanelViewModel : ViewModelBase
                     return ("Row count limit", m.Value.Trim());
                 break;
             }
-            case NodeType.ResultOutput or NodeType.SelectOutput:
+            case NodeType.ResultOutput:
             {
                 Match m = Regex.Match(sql,
                     @"SELECT\s+(.+?)\s+FROM",

@@ -530,6 +530,11 @@ public partial class MainWindow : Window
                 CurrentShell.RestoreWorkspaceDocuments(snapshot);
                 SyncModeToggleState();
             },
+            applySqlEditorSeedScripts: scripts =>
+            {
+                CurrentShell.ImportMigratedSqlScriptsToSqlEditor(scripts);
+                SyncModeToggleState();
+            },
             invalidateActiveCanvasWires: InvalidateActiveDiagramCanvasWires,
             logger: _services.GetService<ILogger<FileOperationsService>>()
         );

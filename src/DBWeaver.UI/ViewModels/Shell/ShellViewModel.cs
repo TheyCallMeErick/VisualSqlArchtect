@@ -549,6 +549,25 @@ public sealed class ShellViewModel : ViewModelBase
         SyncExtractedPanels();
     }
 
+    public void ImportMigratedSqlScriptsToSqlEditor(IReadOnlyList<string> scripts)
+    {
+        if (scripts is null || scripts.Count == 0)
+            return;
+
+        Guid documentId = OpenNewDocument(WorkspaceDocumentType.SqlEditor);
+        _workspaceRouter.TryActivate(documentId);
+        SyncStateFromActiveDocument();
+        RaiseActiveDocumentPropertiesChanged();
+
+        SqlEditorViewModel targetEditor = ActiveSqlEditorDocument ?? SqlEditor;
+        DatabaseProvider provider = ResolveSharedActiveConnectionConfig()?.Provider ?? DatabaseProvider.Postgres;
+        foreach (string script in scripts.Where(static s => !string.IsNullOrWhiteSpace(s)))
+            targetEditor.ReceiveFromCanvas(script, provider);
+
+        SetActiveDocumentType(WorkspaceDocumentType.SqlEditor);
+        SyncExtractedPanels();
+    }
+
     public void SetViewSubcanvasActive(bool isActive)
     {
         bool coerced = IsDdlDocumentPageActive && isActive;

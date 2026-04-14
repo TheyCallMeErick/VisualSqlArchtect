@@ -71,6 +71,7 @@ public sealed record NodeParameter(
 /// Static catalog of all Atomic Node definitions.
 /// The canvas sidebar queries this to populate the node picker.
 /// </summary>
+#pragma warning disable CS0618
 public static class NodeDefinitionRegistry
 {
     private static readonly Dictionary<NodeType, NodeDefinition> _map = BuildAll();
@@ -308,20 +309,6 @@ public static class NodeDefinitionRegistry
                 [
                     Param("cte_name", ParameterKind.Text, "cte_name", "CTE name to reference"),
                     Param("alias", ParameterKind.Text, "", "Optional alias for the CTE source"),
-                ]
-            ),
-
-            [NodeType.RawSqlQuery] = new(
-                NodeType.RawSqlQuery,
-                NodeCategory.DataSource,
-                "Raw SQL Query",
-                "Provides a raw SQL statement as report input",
-                [
-                    In("sql_text", PinDataType.Text, required: false),
-                    Out("query", PinDataType.ReportQuery, desc: "Connect to report nodes"),
-                ],
-                [
-                    Param("sql", ParameterKind.Text, "SELECT 1", "Raw SQL statement to execute in report flow"),
                 ]
             ),
 
@@ -1537,29 +1524,6 @@ public static class NodeDefinitionRegistry
                 ]
             ),
 
-            [NodeType.ReportOutput] = new(
-                NodeType.ReportOutput,
-                NodeCategory.Output,
-                "Report Output",
-                "Terminal report sink that executes a report query input",
-                [
-                    In(
-                        "query",
-                        PinDataType.ReportQuery,
-                        required: true,
-                        desc: "Connect a ReportQuery-producing node (e.g. Raw SQL Query)"
-                    ),
-                    Out(
-                        "result",
-                        PinDataType.ReportQuery,
-                        desc: "Report query output for downstream report/export handlers"
-                    ),
-                ],
-                [
-                    Param("report_name", ParameterKind.Text, "report", "Logical report identifier"),
-                ]
-            ),
-
             [NodeType.JsonExport] = new(
                 NodeType.JsonExport,
                 NodeCategory.Output,
@@ -2109,3 +2073,4 @@ public static class NodeDefinitionRegistry
         NodeParameter[] ps
     ) => new(t, c, name, desc, pins, ps);
 }
+#pragma warning restore CS0618

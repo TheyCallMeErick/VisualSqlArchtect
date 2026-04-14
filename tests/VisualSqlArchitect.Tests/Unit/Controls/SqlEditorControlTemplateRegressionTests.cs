@@ -16,9 +16,9 @@ public sealed class SqlEditorControlTemplateRegressionTests
         Assert.Contains("<ctrl:SqlEditorResultPanel", xaml);
         Assert.Contains("IsReadOnly=\"False\"", xaml);
         Assert.Contains("IsVisible=\"{Binding ShouldShowResultsSheet}\"", xaml);
-        Assert.Contains("Height=\"{Binding ResultsSheetHeight}\"", xaml);
-        Assert.Contains("<GridSplitter Grid.Row=\"0\"", xaml);
-        Assert.Contains("x:Name=\"ResultsResizeGrip\"", xaml);
+        Assert.Contains("Width=\"1040\"", xaml);
+        Assert.Contains("Height=\"640\"", xaml);
+        Assert.Contains("ResultsModalBackdrop_OnPointerPressed", xaml);
         Assert.Contains("Command=\"{Binding CloseResultsSheetCommand}\"", xaml);
         Assert.Contains("<ctrl:MutationConfirmDialog", xaml);
         Assert.Contains("Text=\"{Binding ExecutionStatusText}\"", xaml);

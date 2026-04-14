@@ -122,7 +122,7 @@ public sealed class NodeViewModel : ViewModelBase, ICanvasTableNode, ICanvasLaye
     // ── Type predicates ──────────────────────────────────────────────────────
 
     /// <summary>True if this node is the final result output.</summary>
-    public bool IsResultOutput => Type is NodeType.ResultOutput or NodeType.SelectOutput;
+    public bool IsResultOutput => Type == NodeType.ResultOutput;
 
     /// <summary>True if this node is a ColumnList (multiple column selector).</summary>
     public bool IsColumnList => Type == NodeType.ColumnList;

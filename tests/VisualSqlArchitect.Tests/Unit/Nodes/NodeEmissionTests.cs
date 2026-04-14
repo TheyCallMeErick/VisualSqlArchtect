@@ -2373,7 +2373,9 @@ public class QueryGeneratorServiceTests
         ArgumentNullException.ThrowIfNull(graph);
 
         NodeGraph normalizedGraph = NormalizeLegacyBindingsForGraphFirst(graph, fromTable);
-        bool hasExplicitOutputSink = graph.Nodes.Any(node => node.Type is NodeType.ResultOutput or NodeType.SelectOutput);
+        bool hasExplicitOutputSink = graph.Nodes.Any(node =>
+            node.Type == NodeType.ResultOutput
+            || string.Equals(node.Type.ToString(), "SelectOutput", StringComparison.OrdinalIgnoreCase));
         QueryGenerationStructure? structure = (string.IsNullOrWhiteSpace(fromTable) && joins is null) || (hasExplicitOutputSink && joins is null)
             ? null
             : new QueryGenerationStructure(fromTable, joins);
@@ -2387,7 +2389,9 @@ public class QueryGeneratorServiceTests
             .Select(cte => cte with { Graph = NormalizeLegacyBindingsForGraphFirst(cte.Graph, cte.FromTable) })
             .ToList();
 
-        bool hasOutputNode = graph.Nodes.Any(node => node.Type is NodeType.ResultOutput or NodeType.SelectOutput);
+        bool hasOutputNode = graph.Nodes.Any(node =>
+            node.Type == NodeType.ResultOutput
+            || string.Equals(node.Type.ToString(), "SelectOutput", StringComparison.OrdinalIgnoreCase));
         if (hasOutputNode)
         {
             return new NodeGraph
@@ -2687,20 +2691,30 @@ public class NodeDefinitionRegistryTests
     [Fact]
     public void LegacyNodeTypes_AreClassifiedInRegistry()
     {
-        Assert.True(NodeDefinitionRegistry.IsLegacy(NodeType.RawSqlQuery));
-        Assert.True(NodeDefinitionRegistry.IsLegacy(NodeType.SelectOutput));
-        Assert.True(NodeDefinitionRegistry.IsLegacy(NodeType.WhereOutput));
-        Assert.True(NodeDefinitionRegistry.IsLegacy(NodeType.ReportOutput));
+        NodeType rawSql = Enum.Parse<NodeType>("RawSqlQuery");
+        NodeType selectOutput = Enum.Parse<NodeType>("SelectOutput");
+        NodeType whereOutput = Enum.Parse<NodeType>("WhereOutput");
+        NodeType reportOutput = Enum.Parse<NodeType>("ReportOutput");
+
+        Assert.True(NodeDefinitionRegistry.IsLegacy(rawSql));
+        Assert.True(NodeDefinitionRegistry.IsLegacy(selectOutput));
+        Assert.True(NodeDefinitionRegistry.IsLegacy(whereOutput));
+        Assert.True(NodeDefinitionRegistry.IsLegacy(reportOutput));
         Assert.False(NodeDefinitionRegistry.IsLegacy(NodeType.ResultOutput));
     }
 
     [Fact]
     public void CatalogVisibility_HidesOnlySelectedLegacyNodes()
     {
-        Assert.False(NodeDefinitionRegistry.IsVisibleInCatalog(NodeType.RawSqlQuery));
-        Assert.False(NodeDefinitionRegistry.IsVisibleInCatalog(NodeType.ReportOutput));
-        Assert.True(NodeDefinitionRegistry.IsVisibleInCatalog(NodeType.SelectOutput));
-        Assert.True(NodeDefinitionRegistry.IsVisibleInCatalog(NodeType.WhereOutput));
+        NodeType rawSql = Enum.Parse<NodeType>("RawSqlQuery");
+        NodeType selectOutput = Enum.Parse<NodeType>("SelectOutput");
+        NodeType whereOutput = Enum.Parse<NodeType>("WhereOutput");
+        NodeType reportOutput = Enum.Parse<NodeType>("ReportOutput");
+
+        Assert.False(NodeDefinitionRegistry.IsVisibleInCatalog(rawSql));
+        Assert.False(NodeDefinitionRegistry.IsVisibleInCatalog(reportOutput));
+        Assert.True(NodeDefinitionRegistry.IsVisibleInCatalog(selectOutput));
+        Assert.True(NodeDefinitionRegistry.IsVisibleInCatalog(whereOutput));
         Assert.True(NodeDefinitionRegistry.IsVisibleInCatalog(NodeType.ResultOutput));
     }
 }

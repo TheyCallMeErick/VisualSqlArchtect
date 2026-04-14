@@ -12,6 +12,7 @@ public class ShellViewModelDdlModeTests
     public void Shell_StartsInQueryMode_WithoutDdlCanvas()
     {
         var vm = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
+        vm.EnterCanvas();
 
         Assert.Equal(ShellViewModel.AppMode.Query, vm.ActiveMode);
         Assert.True(vm.IsQueryModeActive);

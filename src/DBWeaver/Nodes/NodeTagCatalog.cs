@@ -110,8 +110,9 @@ public static class NodeTagCatalog
         if (haystack.Contains("report", StringComparison.Ordinal))
             AddTag(map, "report");
 
-        bool hasReportPin = definition.Pins.Any(p => p.DataType == PinDataType.ReportQuery);
-        if (hasReportPin)
+        bool isLegacyReportNode = string.Equals(definition.Type.ToString(), "RawSqlQuery", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(definition.Type.ToString(), "ReportOutput", StringComparison.OrdinalIgnoreCase);
+        if (isLegacyReportNode)
         {
             AddTag(map, "report");
             AddTag(map, "sql");

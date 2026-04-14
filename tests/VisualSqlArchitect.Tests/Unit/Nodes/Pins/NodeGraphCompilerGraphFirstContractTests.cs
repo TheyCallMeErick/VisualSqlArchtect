@@ -9,7 +9,8 @@ public sealed class NodeGraphCompilerGraphFirstContractTests
     [Fact]
     public void OutputDefinitions_ExposeGraphFirstOrderAndGroupPins()
     {
-        NodeDefinition selectOutput = NodeDefinitionRegistry.Get(NodeType.SelectOutput);
+        NodeType selectOutputType = Enum.Parse<NodeType>("SelectOutput");
+        NodeDefinition selectOutput = NodeDefinitionRegistry.Get(selectOutputType);
         NodeDefinition resultOutput = NodeDefinitionRegistry.Get(NodeType.ResultOutput);
 
         Assert.Contains(selectOutput.Pins, p => p.Direction == PinDirection.Input && p.Name == "order_by" && p.DataType == PinDataType.ColumnRef && p.AllowMultiple);
@@ -97,13 +98,14 @@ public sealed class NodeGraphCompilerGraphFirstContractTests
     }
 
     [Fact]
-    public void Compile_MultipleTopLevelOutputSinks_ThrowsInvalidOperationException()
+    public void Compile_LegacySelectOutputNode_ThrowsNotSupportedException()
     {
         NodeInstance table = CreateTableSource("tbl");
         NodeInstance resultOutput = CreateOutput("out_1");
+        NodeType selectOutputType = Enum.Parse<NodeType>("SelectOutput");
         NodeInstance selectOutput = new(
             "out_2",
-            NodeType.SelectOutput,
+            selectOutputType,
             new Dictionary<string, string>(),
             new Dictionary<string, string>());
 
@@ -117,10 +119,10 @@ public sealed class NodeGraphCompilerGraphFirstContractTests
             ],
         };
 
-        InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
+        NotSupportedException ex = Assert.Throws<NotSupportedException>(() =>
             new NodeGraphCompiler(graph, CreatePostgresContext()).Compile());
 
-        Assert.Contains("Multiple ResultOutput/SelectOutput", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("No compiler found for NodeType.SelectOutput", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

@@ -98,7 +98,7 @@ internal sealed class QueryCompilationSourceResolver(
     private NodeViewModel? ResolvePrimaryResultOutputNode()
     {
         IReadOnlyList<NodeViewModel> outputs = _canvas.Nodes
-            .Where(n => n.Type is NodeType.ResultOutput or NodeType.SelectOutput)
+            .Where(n => n.Type == NodeType.ResultOutput)
             .ToList();
         if (outputs.Count == 0)
             return null;

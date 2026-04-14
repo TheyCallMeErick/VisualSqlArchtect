@@ -22,7 +22,7 @@ public class ViewSubcanvasEditorTests
         Assert.True(vm.IsInCteEditor);
         Assert.Contains("View", vm.CteEditorBreadcrumb, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("v_orders", vm.CteEditorBreadcrumb, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(vm.Nodes, n => n.Type == NodeType.ResultOutput || n.Type == NodeType.SelectOutput);
+        Assert.Contains(vm.Nodes, n => n.Type == NodeType.ResultOutput || string.Equals(n.Type.ToString(), "SelectOutput", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

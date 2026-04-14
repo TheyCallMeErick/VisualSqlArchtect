@@ -25,7 +25,7 @@ internal sealed class QueryCompilationAliasAmbiguityValidator(CanvasViewModel ca
             ConnectionViewModel? queryWire = _canvas.Connections.FirstOrDefault(c =>
                 c.ToPin?.Owner == cteDefinition
                 && c.ToPin?.Name == "query"
-                && c.FromPin.Owner.Type is NodeType.ResultOutput or NodeType.SelectOutput
+                && c.FromPin.Owner.Type == NodeType.ResultOutput
             );
 
             if (queryWire?.FromPin.Owner is not NodeViewModel cteOutput)

@@ -13,7 +13,6 @@ public sealed class LogicalPlanner(NodeGraph graph, EmitContext emitContext)
         NodeType.TableSource,
         NodeType.CteSource,
         NodeType.Subquery,
-        NodeType.RawSqlQuery,
     ];
 
     public LogicalOutput Plan()
@@ -36,7 +35,7 @@ public sealed class LogicalPlanner(NodeGraph graph, EmitContext emitContext)
     private NodeInstance ResolveSingleOutputSink()
     {
         List<NodeInstance> outputNodes = _graph.Nodes
-            .Where(n => n.Type is NodeType.ResultOutput or NodeType.SelectOutput)
+            .Where(n => n.Type == NodeType.ResultOutput)
             .Where(n => !IsCteSubgraphOutputNode(n.Id))
             .ToList();
 
@@ -47,8 +46,8 @@ public sealed class LogicalPlanner(NodeGraph graph, EmitContext emitContext)
             nodeId: outputNodes.FirstOrDefault()?.Id ?? string.Empty,
             PlannerErrorKind.OutputSourceAmbiguous,
             outputNodes.Count == 0
-                ? "No top-level ResultOutput/SelectOutput node found."
-                : "Multiple top-level ResultOutput/SelectOutput nodes found."
+                ? "No top-level ResultOutput node found."
+                : "Multiple top-level ResultOutput nodes found."
         );
     }
 
@@ -390,7 +389,7 @@ public sealed class LogicalPlanner(NodeGraph graph, EmitContext emitContext)
                     node.Id,
                     PlannerErrorKind.DatasetNotReachableFromOutput,
                     $"CteSource '{node.Id}' has no cte_name."),
-            NodeType.Subquery or NodeType.RawSqlQuery => BuildSubquerySource(node),
+            NodeType.Subquery => BuildSubquerySource(node),
             _ => node.TableFullName
                 ?? node.Parameters.GetValueOrDefault("table_full_name")
                 ?? node.Parameters.GetValueOrDefault("table")
@@ -441,7 +440,7 @@ public sealed class LogicalPlanner(NodeGraph graph, EmitContext emitContext)
         {
             string? aliasSeed = tableNode.Type switch
             {
-                NodeType.Subquery or NodeType.RawSqlQuery => "subq",
+                NodeType.Subquery => "subq",
                 _ => tableNode.TableFullName,
             };
 

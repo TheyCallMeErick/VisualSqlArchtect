@@ -20,8 +20,7 @@ public sealed class DataSourceCompiler : INodeCompiler
             or NodeType.SubqueryReference
             or NodeType.Alias
             or NodeType.CteSource
-            or NodeType.CteDefinition
-            or NodeType.RawSqlQuery;
+            or NodeType.CteDefinition;
 
     public ISqlExpression Compile(NodeInstance node, INodeCompilationContext ctx, string pinName)
     {
@@ -38,26 +37,11 @@ public sealed class DataSourceCompiler : INodeCompiler
             NodeType.Alias => CompileAlias(node, ctx),
             NodeType.CteSource => CompileCteSource(node, pinName, ctx),
             NodeType.CteDefinition => CompileCteDefinition(),
-            NodeType.RawSqlQuery => CompileRawSqlQuery(node, ctx),
             _ => throw new NotSupportedException($"Cannot compile {node.Type}"),
         };
     }
 
     private static ISqlExpression CompileCteDefinition() => NullExpr.Instance;
-
-    private static ISqlExpression CompileRawSqlQuery(NodeInstance node, INodeCompilationContext ctx)
-    {
-        string? sqlFromInput = ResolveTextInput(node, "sql_text", ctx);
-        string sql =
-            !string.IsNullOrWhiteSpace(sqlFromInput)
-                ? sqlFromInput.Trim()
-                : node.Parameters.TryGetValue("sql", out string? configuredSql)
-                    && !string.IsNullOrWhiteSpace(configuredSql)
-                    ? configuredSql.Trim()
-                    : "SELECT 1";
-
-        return new RawSqlExpr(sql, PinDataType.ReportQuery);
-    }
 
     private static ISqlExpression CompileTableSource(NodeInstance node, string pinName)
     {

@@ -8,8 +8,10 @@ public sealed class ReportNodeGraphContractTests
     [Fact]
     public void NodeDefinitions_ExposeRawSqlAndReportOutputContracts()
     {
-        NodeDefinition rawSql = NodeDefinitionRegistry.Get(NodeType.RawSqlQuery);
-        NodeDefinition reportOutput = NodeDefinitionRegistry.Get(NodeType.ReportOutput);
+        NodeType rawSqlType = Enum.Parse<NodeType>("RawSqlQuery");
+        NodeType reportOutputType = Enum.Parse<NodeType>("ReportOutput");
+        NodeDefinition rawSql = NodeDefinitionRegistry.Get(rawSqlType);
+        NodeDefinition reportOutput = NodeDefinitionRegistry.Get(reportOutputType);
 
         Assert.Equal(NodeCategory.DataSource, rawSql.Category);
         Assert.Contains(rawSql.Pins, p => p.Direction == PinDirection.Output && p.Name == "query" && p.DataType == PinDataType.ReportQuery);
@@ -23,8 +25,10 @@ public sealed class ReportNodeGraphContractTests
     [Fact]
     public void PinCompatibility_ReportQueryOnlyConnectsToReportQuery()
     {
-        PinModel reportSource = CreatePin("raw", "query", PinDirection.Output, PinDataType.ReportQuery, NodeType.RawSqlQuery);
-        PinModel reportSink = CreatePin("output", "query", PinDirection.Input, PinDataType.ReportQuery, NodeType.ReportOutput);
+        NodeType rawSqlType = Enum.Parse<NodeType>("RawSqlQuery");
+        NodeType reportOutputType = Enum.Parse<NodeType>("ReportOutput");
+        PinModel reportSource = CreatePin("raw", "query", PinDirection.Output, PinDataType.ReportQuery, rawSqlType);
+        PinModel reportSink = CreatePin("output", "query", PinDirection.Input, PinDataType.ReportQuery, reportOutputType);
         PinModel numericSource = CreatePin("n1", "value", PinDirection.Output, PinDataType.Number, NodeType.ValueNumber);
 
         PinConnectionDecision validDecision = reportSink.CanConnect(reportSource, PinConnectionContext.ValidationOnly());

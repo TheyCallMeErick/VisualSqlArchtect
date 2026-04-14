@@ -661,8 +661,7 @@ internal sealed class SubCanvasEditingController
         IReadOnlyList<SavedSubqueryInputBinding> inputBindings)
     {
         string? resultOutputNodeId = editedNodes.FirstOrDefault(node =>
-            string.Equals(node.NodeType, nameof(NodeType.ResultOutput), StringComparison.OrdinalIgnoreCase)
-            || string.Equals(node.NodeType, nameof(NodeType.SelectOutput), StringComparison.OrdinalIgnoreCase))?.NodeId;
+            string.Equals(node.NodeType, nameof(NodeType.ResultOutput), StringComparison.OrdinalIgnoreCase))?.NodeId;
 
         var saved = new SavedSubquerySubgraph(
             editedNodes,

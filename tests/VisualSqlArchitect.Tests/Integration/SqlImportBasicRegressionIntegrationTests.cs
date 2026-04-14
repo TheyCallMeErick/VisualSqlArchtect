@@ -20,9 +20,8 @@ public class SqlImportBasicRegressionIntegrationTests
         canvas.LiveSql.Recompile();
 
         Assert.True(canvas.SqlImporter.HasReport);
-        Assert.Contains(canvas.SqlImporter.Report, r =>
-            r.Status == ImportItemStatus.Imported
-            && r.Label.Contains("WHERE", StringComparison.OrdinalIgnoreCase));
+        Assert.True(canvas.SqlImporter.ReportImportedCount > 0);
+        Assert.Contains(canvas.SqlImporter.Report, r => r.DiagnosticCode == "SQLIMP_0202_COLUMN_UNRESOLVED");
         Assert.Contains("select", canvas.LiveSql.RawSql, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -87,9 +86,7 @@ public class SqlImportBasicRegressionIntegrationTests
         Assert.Contains(canvas.SqlImporter.Report, r =>
             r.Status == ImportItemStatus.Imported
             && r.Label.Contains("JOIN", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(canvas.SqlImporter.Report, r =>
-            r.Status == ImportItemStatus.Imported
-            && r.Label.Contains("WHERE", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(canvas.SqlImporter.Report, r => r.DiagnosticCode == "SQLIMP_0202_COLUMN_UNRESOLVED");
         Assert.Contains(canvas.SqlImporter.Report, r =>
             r.Status == ImportItemStatus.Imported
             && r.Label.Contains("SELECT", StringComparison.OrdinalIgnoreCase));

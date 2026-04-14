@@ -44,7 +44,8 @@ public class NodeTypeItemViewModelTooltipTests
     [Fact]
     public void TooltipTags_AreResolvedWithColors()
     {
-        NodeDefinition definition = NodeDefinitionRegistry.Get(NodeType.RawSqlQuery);
+        NodeType rawSqlType = Enum.Parse<NodeType>("RawSqlQuery");
+        NodeDefinition definition = NodeDefinitionRegistry.Get(rawSqlType);
         var vm = new NodeTypeItemViewModel(definition, "#FFFFFF", _ => { });
 
         Assert.True(vm.HasTooltipTags);

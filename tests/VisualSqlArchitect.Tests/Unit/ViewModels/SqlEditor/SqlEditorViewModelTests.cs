@@ -736,6 +736,7 @@ public sealed class SqlEditorViewModelTests
         var sut = new SqlEditorViewModel(
             executionService: new SqlEditorExecutionService(factory),
             connectionConfigResolver: () => config);
+        sut.SetExecutionSafetyOptions(top1000WithoutWhereEnabled: true, protectMutationWithoutWhereEnabled: true);
         sut.ActiveTab.SqlText = "DELETE FROM orders;";
 
         SqlEditorResultSet result = await sut.ExecuteSelectionOrCurrentAsync(0, 0, 0);
@@ -769,6 +770,7 @@ public sealed class SqlEditorViewModelTests
         var sut = new SqlEditorViewModel(
             executionService: new SqlEditorExecutionService(factory),
             connectionConfigResolver: () => config);
+        sut.SetExecutionSafetyOptions(top1000WithoutWhereEnabled: true, protectMutationWithoutWhereEnabled: true);
         sut.ActiveTab.SqlText = "UPDATE orders SET status='x';";
         _ = await sut.ExecuteSelectionOrCurrentAsync(0, 0, 0);
 
@@ -796,14 +798,16 @@ public sealed class SqlEditorViewModelTests
         var sut = new SqlEditorViewModel(
             executionService: new SqlEditorExecutionService(factory),
             connectionConfigResolver: () => config);
+        sut.SetExecutionSafetyOptions(top1000WithoutWhereEnabled: true, protectMutationWithoutWhereEnabled: true);
         sut.ActiveTab.SqlText = "TRUNCATE orders;";
         _ = await sut.ExecuteSelectionOrCurrentAsync(0, 0, 0);
+        int executeCountBeforeCancel = factory.ExecuteCount;
 
         sut.CancelPendingMutation();
 
         Assert.False(sut.HasPendingMutationConfirmation);
         Assert.False(sut.HasPendingMutationDiff);
-        Assert.Equal(0, factory.ExecuteCount);
+        Assert.Equal(executeCountBeforeCancel, factory.ExecuteCount);
         AssertLocalized(
             sut.ExecutionStatusText,
             "Execucao da mutacao cancelada.",
@@ -814,6 +818,7 @@ public sealed class SqlEditorViewModelTests
     public async Task ExecuteSelectionOrCurrent_WhenNoConnection_LeavesMutationEstimateUnavailable()
     {
         var sut = new SqlEditorViewModel(connectionConfigResolver: () => null);
+        sut.SetExecutionSafetyOptions(top1000WithoutWhereEnabled: true, protectMutationWithoutWhereEnabled: true);
         sut.ActiveTab.SqlText = "DELETE FROM orders;";
 
         SqlEditorResultSet result = await sut.ExecuteSelectionOrCurrentAsync(0, 0, 0);
@@ -1040,6 +1045,7 @@ public sealed class SqlEditorViewModelTests
         var sut = new SqlEditorViewModel(
             executionService: new SqlEditorExecutionService(factory),
             connectionConfigResolver: () => config);
+        sut.SetExecutionSafetyOptions(top1000WithoutWhereEnabled: true, protectMutationWithoutWhereEnabled: true);
         sut.ActiveTab.SqlText = "SELECT 1; DELETE FROM orders; SELECT 2;";
 
         IReadOnlyList<SqlEditorResultSet> results = await sut.ExecuteAllAsync();
