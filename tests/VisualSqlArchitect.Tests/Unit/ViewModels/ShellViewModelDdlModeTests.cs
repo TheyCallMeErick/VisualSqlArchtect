@@ -20,25 +20,17 @@ public class ShellViewModelDdlModeTests
     }
 
     [Fact]
-    public void SetActiveMode_Ddl_InitializesStubCanvas()
+    public void SetActiveDocumentType_Ddl_InitializesStubCanvas()
     {
         var vm = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
 
-        vm.SetActiveMode(ShellViewModel.AppMode.Ddl);
+        vm.SetActiveDocumentType(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.DdlCanvas);
 
         Assert.Equal(ShellViewModel.AppMode.Ddl, vm.ActiveMode);
         Assert.False(vm.IsQueryModeActive);
         Assert.True(vm.IsDdlModeActive);
         Assert.NotNull(vm.DdlCanvas);
         Assert.True(vm.DdlCanvas!.IsEmpty);
-    }
-
-    [Fact]
-    public void SetActiveMode_InvalidValue_ThrowsExpectedError()
-    {
-        var vm = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
-
-        Assert.Throws<ArgumentOutOfRangeException>(() => vm.SetActiveMode((ShellViewModel.AppMode)999));
     }
 
     [Fact]
@@ -113,7 +105,7 @@ public class ShellViewModelDdlModeTests
 
         Assert.Equal(CanvasContext.Query, vm.ActiveCanvasContext);
 
-        vm.SetActiveMode(ShellViewModel.AppMode.Ddl);
+        vm.SetActiveDocumentType(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.DdlCanvas);
         Assert.Equal(CanvasContext.Ddl, vm.ActiveCanvasContext);
 
         vm.SetViewSubcanvasActive(true);
@@ -122,7 +114,7 @@ public class ShellViewModelDdlModeTests
         vm.SetViewSubcanvasActive(false);
         Assert.Equal(CanvasContext.Ddl, vm.ActiveCanvasContext);
 
-        vm.SetActiveMode(ShellViewModel.AppMode.Query);
+        vm.SetActiveDocumentType(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.QueryCanvas);
         Assert.Equal(CanvasContext.Query, vm.ActiveCanvasContext);
     }
 
@@ -136,7 +128,7 @@ public class ShellViewModelDdlModeTests
         Assert.Same(queryCanvas, vm.ActiveCanvas);
         Assert.Single(queryCanvas.Nodes);
 
-        vm.SetActiveMode(ShellViewModel.AppMode.Ddl);
+        vm.SetActiveDocumentType(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.DdlCanvas);
         CanvasViewModel ddlCanvas = Assert.IsType<CanvasViewModel>(vm.ActiveCanvas);
         Assert.Same(vm.DdlCanvas, ddlCanvas);
         Assert.Empty(ddlCanvas.Nodes);
@@ -145,7 +137,7 @@ public class ShellViewModelDdlModeTests
         Assert.Single(ddlCanvas.Nodes);
         Assert.Single(queryCanvas.Nodes);
 
-        vm.SetActiveMode(ShellViewModel.AppMode.Query);
+        vm.SetActiveDocumentType(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.QueryCanvas);
         Assert.Same(queryCanvas, vm.ActiveCanvas);
         Assert.Single(queryCanvas.Nodes);
         Assert.Single(ddlCanvas.Nodes);

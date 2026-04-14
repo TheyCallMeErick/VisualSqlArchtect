@@ -5,7 +5,7 @@ namespace DBWeaver.UI.Services.Validation;
 
 /// <summary>
 /// Detects nodes that have no contribution to the final query output
-/// (not reachable via backward traversal from ResultOutput / WhereOutput sink nodes).
+/// (not reachable via backward traversal from ResultOutput sink nodes).
 /// </summary>
 public static class OrphanNodeDetector
 {
@@ -18,12 +18,10 @@ public static class OrphanNodeDetector
         if (canvas.Nodes.Count == 0)
             return new HashSet<string>();
 
-        // Identify sink nodes: ResultOutput, WhereOutput, and Export nodes are terminal outputs
+        // Identify sink nodes: ResultOutput and Export nodes are terminal outputs
         var sinkIds = canvas
             .Nodes.Where(n =>
                 n.Type == NodeType.ResultOutput
-                || n.Type == NodeType.ReportOutput
-                || n.Type == NodeType.WhereOutput
                 || n.Type == NodeType.HtmlExport
                 || n.Type == NodeType.JsonExport
                 || n.Type == NodeType.CsvExport

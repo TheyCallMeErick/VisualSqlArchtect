@@ -31,20 +31,20 @@ public class ShellWorkspaceDocumentRoutingTests
     }
 
     [Fact]
-    public void SetActiveMode_SwitchesActiveWorkspaceDocumentByMode()
+    public void SetActiveDocumentType_SwitchesActiveWorkspaceDocumentByType()
     {
         var shell = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
         shell.EnterCanvas();
 
-        shell.SetActiveMode(ShellViewModel.AppMode.Ddl);
+        shell.SetActiveDocumentType(WorkspaceDocumentType.DdlCanvas);
         OpenWorkspaceDocument ddlActive = Assert.IsType<OpenWorkspaceDocument>(shell.ActiveWorkspaceDocument);
         Assert.Equal(WorkspaceDocumentType.DdlCanvas, ddlActive.Descriptor.DocumentType);
 
-        shell.SetActiveMode(ShellViewModel.AppMode.SqlEditor);
+        shell.SetActiveDocumentType(WorkspaceDocumentType.SqlEditor);
         OpenWorkspaceDocument sqlEditorActive = Assert.IsType<OpenWorkspaceDocument>(shell.ActiveWorkspaceDocument);
         Assert.Equal(WorkspaceDocumentType.SqlEditor, sqlEditorActive.Descriptor.DocumentType);
 
-        shell.SetActiveMode(ShellViewModel.AppMode.Query);
+        shell.SetActiveDocumentType(WorkspaceDocumentType.QueryCanvas);
         OpenWorkspaceDocument queryActive = Assert.IsType<OpenWorkspaceDocument>(shell.ActiveWorkspaceDocument);
         Assert.Equal(WorkspaceDocumentType.QueryCanvas, queryActive.Descriptor.DocumentType);
     }

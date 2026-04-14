@@ -43,7 +43,6 @@ internal sealed class QueryCompilationOutputSourceReachabilityValidator(CanvasVi
             or NodeType.CteSource
             or NodeType.Subquery
             or NodeType.SubqueryReference
-            or NodeType.SubqueryDefinition
-            or NodeType.RawSqlQuery;
+            or NodeType.SubqueryDefinition;
     }
 }

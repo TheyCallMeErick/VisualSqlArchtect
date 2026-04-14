@@ -240,6 +240,9 @@ public sealed class NodesListViewModel : ViewModelBase
 
     private bool IsDefinitionAllowedInContext(NodeDefinition def)
     {
+        if (!NodeDefinitionRegistry.IsVisibleInCatalog(def.Type))
+            return false;
+
         return CanvasContext switch
         {
             CanvasContext.Ddl => def.Category == NodeCategory.Ddl,

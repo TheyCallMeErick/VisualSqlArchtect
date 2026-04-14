@@ -122,7 +122,7 @@ public class CommandPaletteFactoryNewCanvasTests
         var queryVm = new CanvasViewModel();
         var shell = new ShellViewModel(queryVm, connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
         var ddlVm = shell.EnsureDdlCanvas();
-        shell.SetActiveMode(ShellViewModel.AppMode.Ddl);
+        shell.SetActiveDocumentType(WorkspaceDocumentType.DdlCanvas);
         var fileOps = new FileOperationsService(window, queryVm, ddlVm);
         var export = new ExportService(window, queryVm);
         var preview = new PreviewService(window, queryVm);
@@ -156,7 +156,7 @@ public class CommandPaletteFactoryNewCanvasTests
         var shell = new ShellViewModel(queryVm, connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
         var ensuredDdlCanvas = shell.EnsureDdlCanvas();
         var activeDdlCanvas = CreateValidDdlCanvas();
-        shell.SetActiveMode(ShellViewModel.AppMode.Ddl);
+        shell.SetActiveDocumentType(WorkspaceDocumentType.DdlCanvas);
 
         var fileOps = new FileOperationsService(window, queryVm, ensuredDdlCanvas);
         var export = new ExportService(window, queryVm);
@@ -191,7 +191,7 @@ public class CommandPaletteFactoryNewCanvasTests
         var queryVm = new CanvasViewModel();
         var shell = new ShellViewModel(queryVm, connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
         var ddlVm = CreateValidDdlCanvas();
-        shell.SetActiveMode(ShellViewModel.AppMode.Ddl);
+        shell.SetActiveDocumentType(WorkspaceDocumentType.DdlCanvas);
 
         // Ensure shell DDL canvas is the one with valid output graph.
         // We can't directly set DdlCanvas, so materialize then copy content.

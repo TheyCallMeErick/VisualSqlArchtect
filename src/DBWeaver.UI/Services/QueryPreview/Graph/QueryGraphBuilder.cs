@@ -41,15 +41,8 @@ public sealed class QueryGraphBuilder(CanvasViewModel canvas, DatabaseProvider p
         previewSql = null;
         errors = [];
 
-        if (TryResolveReportSql(out string reportSql))
-        {
-            previewSql = reportSql;
-            fromTable = "__raw_sql_report__";
-            return true;
-        }
-
         NodeViewModel? resultOutputNode = _canvas.Nodes.FirstOrDefault(n =>
-            n.Type is NodeType.ResultOutput or NodeType.SelectOutput
+            n.Type == NodeType.ResultOutput
         );
         if (resultOutputNode is null)
         {
@@ -113,56 +106,7 @@ public sealed class QueryGraphBuilder(CanvasViewModel canvas, DatabaseProvider p
 
     private (string Sql, List<string> Errors) BuildSqlCore()
     {
-        if (TryResolveReportSql(out string reportSql))
-            return (reportSql, []);
-
         return PipelineRunner.Execute();
-    }
-
-    private bool TryResolveReportSql(out string sql)
-    {
-        sql = string.Empty;
-
-        bool hasQueryOutput = _canvas.Nodes.Any(n => n.Type is NodeType.ResultOutput or NodeType.SelectOutput);
-        if (hasQueryOutput)
-            return false;
-
-        NodeViewModel? reportOutput = _canvas.Nodes.FirstOrDefault(n => n.Type == NodeType.ReportOutput);
-        if (reportOutput is null)
-            return false;
-
-        ConnectionViewModel? reportInputConnection = _canvas.Connections.FirstOrDefault(c =>
-            c.ToPin?.Owner?.Id == reportOutput.Id
-            && c.ToPin.Name.Equals("query", StringComparison.OrdinalIgnoreCase));
-        if (reportInputConnection is null)
-            return false;
-
-        NodeViewModel? sourceNode = reportInputConnection.FromPin?.Owner;
-        if (sourceNode is null || sourceNode.Type != NodeType.RawSqlQuery)
-            return false;
-
-        if (sourceNode.Parameters.TryGetValue("sql", out string? configuredSql)
-            && !string.IsNullOrWhiteSpace(configuredSql))
-        {
-            sql = configuredSql.Trim();
-            return true;
-        }
-
-        if (sourceNode.Parameters.TryGetValue("sql_text", out string? sqlText)
-            && !string.IsNullOrWhiteSpace(sqlText))
-        {
-            sql = sqlText.Trim();
-            return true;
-        }
-
-        if (sourceNode.PinLiterals.TryGetValue("sql_text", out string? pinLiteral)
-            && !string.IsNullOrWhiteSpace(pinLiteral))
-        {
-            sql = pinLiteral.Trim();
-            return true;
-        }
-
-        return false;
     }
 
     private (string FromTable, string? Warning) ResolveFromTable(

@@ -74,6 +74,19 @@ public sealed record NodeParameter(
 public static class NodeDefinitionRegistry
 {
     private static readonly Dictionary<NodeType, NodeDefinition> _map = BuildAll();
+    private static readonly HashSet<NodeType> LegacyNodeTypes =
+    [
+        NodeType.RawSqlQuery,
+        NodeType.SelectOutput,
+        NodeType.WhereOutput,
+        NodeType.ReportOutput,
+    ];
+
+    private static readonly HashSet<NodeType> HiddenFromCatalogNodeTypes =
+    [
+        NodeType.RawSqlQuery,
+        NodeType.ReportOutput,
+    ];
 
     public static NodeDefinition Get(NodeType type) =>
         _map.TryGetValue(type, out NodeDefinition? def)
@@ -84,6 +97,10 @@ public static class NodeDefinitionRegistry
 
     public static IReadOnlyList<NodeDefinition> ByCategory(NodeCategory cat) =>
         _map.Values.Where(d => d.Category == cat).ToList();
+
+    public static bool IsLegacy(NodeType type) => LegacyNodeTypes.Contains(type);
+
+    public static bool IsVisibleInCatalog(NodeType type) => !HiddenFromCatalogNodeTypes.Contains(type);
 
     // ── Builder helpers ───────────────────────────────────────────────────────
 
@@ -240,7 +257,8 @@ public static class NodeDefinitionRegistry
                     In("alias_text", PinDataType.Text, required: false),
                     Out("result", PinDataType.RowSet),
                 ],
-                [
+                [
+
                     Param("alias", ParameterKind.Text, "subq", "Alias for the subquery source"),
                 ]
             ),
@@ -317,7 +335,8 @@ public static class NodeDefinitionRegistry
                     In("query_text", PinDataType.Text, required: false),
                     Out("result", PinDataType.Boolean),
                 ],
-                [
+                [
+
                     Param("negate", ParameterKind.Boolean, "false", "Emit NOT EXISTS when true"),
                 ]
             ),
@@ -333,7 +352,8 @@ public static class NodeDefinitionRegistry
                     In("query_text", PinDataType.Text, required: false),
                     Out("result", PinDataType.Boolean),
                 ],
-                [
+                [
+
                     Param("negate", ParameterKind.Boolean, "false", "Emit NOT IN when true"),
                 ]
             ),
@@ -361,7 +381,8 @@ public static class NodeDefinitionRegistry
                         ">=",
                         "<",
                         "<="
-                    ),
+                    ),
+
                 ]
             ),
 

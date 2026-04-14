@@ -2683,4 +2683,24 @@ public class NodeDefinitionRegistryTests
         NodeDefinition dateFormat = NodeDefinitionRegistry.Get(NodeType.DateFormat);
         Assert.Contains(dateFormat.Parameters, p => p.Name == "format");
     }
+
+    [Fact]
+    public void LegacyNodeTypes_AreClassifiedInRegistry()
+    {
+        Assert.True(NodeDefinitionRegistry.IsLegacy(NodeType.RawSqlQuery));
+        Assert.True(NodeDefinitionRegistry.IsLegacy(NodeType.SelectOutput));
+        Assert.True(NodeDefinitionRegistry.IsLegacy(NodeType.WhereOutput));
+        Assert.True(NodeDefinitionRegistry.IsLegacy(NodeType.ReportOutput));
+        Assert.False(NodeDefinitionRegistry.IsLegacy(NodeType.ResultOutput));
+    }
+
+    [Fact]
+    public void CatalogVisibility_HidesOnlySelectedLegacyNodes()
+    {
+        Assert.False(NodeDefinitionRegistry.IsVisibleInCatalog(NodeType.RawSqlQuery));
+        Assert.False(NodeDefinitionRegistry.IsVisibleInCatalog(NodeType.ReportOutput));
+        Assert.True(NodeDefinitionRegistry.IsVisibleInCatalog(NodeType.SelectOutput));
+        Assert.True(NodeDefinitionRegistry.IsVisibleInCatalog(NodeType.WhereOutput));
+        Assert.True(NodeDefinitionRegistry.IsVisibleInCatalog(NodeType.ResultOutput));
+    }
 }

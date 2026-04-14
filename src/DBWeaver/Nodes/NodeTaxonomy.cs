@@ -35,6 +35,7 @@ public enum NodeType
     Alias,
     CteDefinition,
     CteSource,
+    [Obsolete("Legacy report flow node. Use SQL Editor flow or ResultOutput-based graph contracts.")]
     RawSqlQuery,
 
     // ── String Transforms ─────────────────────────────────────────────────────
@@ -134,9 +135,12 @@ public enum NodeType
     ColumnList, // Aggregates multiple columns for SELECT
     ColumnSetBuilder, // Explicit structural builder for ColumnSet from ColumnRef inputs
     ColumnSetMerge, // Merges multiple ColumnSet inputs into one
+    [Obsolete("Legacy terminal. Use ResultOutput as the single query output terminal.")]
     SelectOutput,
+    [Obsolete("Legacy terminal. Route conditions to ResultOutput.where or CompileWhere.")]
     WhereOutput,
     ResultOutput,
+    [Obsolete("Legacy report sink. Use SQL Editor flow or ResultOutput-based graph contracts.")]
     ReportOutput,
 
     // ── Export ────────────────────────────────────────────────────────────────
