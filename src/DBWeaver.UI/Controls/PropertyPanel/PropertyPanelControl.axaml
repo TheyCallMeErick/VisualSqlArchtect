@@ -177,6 +177,14 @@
                          FontSize="{StaticResource FontSizeCaption}"
                          Foreground="{StaticResource TextSecondaryBrush}"
                          TextTrimming="CharacterEllipsis"/>
+              <Button Margin="0,6,0,0"
+                      IsVisible="{Binding IsSelectedNodeSourceType}"
+                      IsEnabled="{Binding CanSetAsPrimaryFromSource}"
+                      Command="{Binding SetAsPrimaryFromSourceCommand}"
+                      Content="Definir como FROM"
+                      Classes="secondary"
+                      HorizontalAlignment="Left"
+                      FontSize="{StaticResource FontSizeCaption}"/>
             </StackPanel>
           </Grid>
         </Border>

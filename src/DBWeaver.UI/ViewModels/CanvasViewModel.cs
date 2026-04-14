@@ -95,6 +95,7 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable
     private Action? _propertyPanelWireStyleChangedHandler;
     private readonly HashSet<string> _pendingTableSourceReplacementConfirmations = [];
     private bool _isReplacingTableSourceNode;
+    private string? _primaryFromSourceOverrideNodeId;
 
     // â”€â”€ Canvas state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -306,7 +307,8 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable
             UndoRedo,
             () => Connections,
             () => DatabaseMetadata,
-            OnPropertyPanelParametersCommitted);
+            OnPropertyPanelParametersCommitted,
+            TrySetPrimaryFromSourceNode);
         PropertyPanel.SelectedWireCurveMode = WireCurveMode;
         _localizationService = localizationService ?? LocalizationService.Instance;
         _domainStrategy = domainStrategy ?? new QueryDomainStrategy();
@@ -672,6 +674,8 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable
 
         foreach (NodeViewModel node in Nodes)
             node.IsPrimaryFromSource = ReferenceEquals(node, primarySourceNode);
+
+        PropertyPanel.NotifySelectedNodePrimaryFromSourceChanged();
     }
 
     private NodeViewModel? ResolvePrimaryFromSourceNode()
@@ -681,6 +685,23 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable
         List<NodeViewModel> subqueryNodes = Nodes
             .Where(n => n.Type is NodeType.Subquery or NodeType.SubqueryReference)
             .ToList();
+
+        List<NodeViewModel> sourceCandidates =
+        [
+            .. tableNodes,
+            .. cteSourceNodes,
+            .. subqueryNodes,
+        ];
+
+        if (!string.IsNullOrWhiteSpace(_primaryFromSourceOverrideNodeId))
+        {
+            NodeViewModel? overridden = sourceCandidates.FirstOrDefault(node =>
+                string.Equals(node.Id, _primaryFromSourceOverrideNodeId, StringComparison.OrdinalIgnoreCase));
+            if (overridden is not null)
+                return overridden;
+
+            _primaryFromSourceOverrideNodeId = null;
+        }
 
         NodeViewModel? resultOutputNode = ResolvePrimaryResultOutputNode();
         if (resultOutputNode is not null)
@@ -697,6 +718,23 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable
         return tableNodes.FirstOrDefault()
             ?? cteSourceNodes.FirstOrDefault()
             ?? subqueryNodes.FirstOrDefault();
+    }
+
+    public bool CanSetPrimaryFromSource(NodeViewModel? node)
+    {
+        return node is not null
+            && node.Type is NodeType.TableSource or NodeType.CteSource or NodeType.Subquery or NodeType.SubqueryReference;
+    }
+
+    public bool TrySetPrimaryFromSourceNode(NodeViewModel? node)
+    {
+        if (!CanSetPrimaryFromSource(node))
+            return false;
+
+        _primaryFromSourceOverrideNodeId = node!.Id;
+        RefreshPrimaryFromSourceMarkers();
+        _validationManager.ScheduleValidation();
+        return true;
     }
 
     private HashSet<string> CollectUpstreamNodeIds(NodeViewModel sinkNode)

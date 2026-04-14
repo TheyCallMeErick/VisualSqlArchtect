@@ -38,6 +38,7 @@ public sealed class PropertyPanelViewModel : ViewModelBase
     private readonly Func<IEnumerable<ConnectionViewModel>> _connectionsResolver;
     private readonly Func<DbMetadata?> _metadataResolver;
     private readonly Action<NodeViewModel, IReadOnlyList<(string Name, string? Value)>>? _parametersCommitted;
+    private readonly Func<NodeViewModel, bool>? _setPrimaryFromSource;
     private readonly Dictionary<ParameterRowViewModel, PropertyChangedEventHandler> _parameterRowPropertyHandlers = [];
     private static readonly HashSet<string> SupportedConventions =
     [
@@ -54,12 +55,14 @@ public sealed class PropertyPanelViewModel : ViewModelBase
         UndoRedoStack undo,
         Func<IEnumerable<ConnectionViewModel>>? connectionsResolver = null,
         Func<DbMetadata?>? metadataResolver = null,
-        Action<NodeViewModel, IReadOnlyList<(string Name, string? Value)>>? parametersCommitted = null)
+        Action<NodeViewModel, IReadOnlyList<(string Name, string? Value)>>? parametersCommitted = null,
+        Func<NodeViewModel, bool>? setPrimaryFromSource = null)
     {
         _undo = undo;
         _connectionsResolver = connectionsResolver ?? (() => []);
         _metadataResolver = metadataResolver ?? (() => null);
         _parametersCommitted = parametersCommitted;
+        _setPrimaryFromSource = setPrimaryFromSource;
         _loc.PropertyChanged += (_, _) =>
         {
             RaisePropertyChanged(nameof(NodeAliasLabel));
@@ -70,10 +73,14 @@ public sealed class PropertyPanelViewModel : ViewModelBase
         SelectProjectSettingsTabCommand = new RelayCommand(() =>
             ActiveTab = PropertyPanelTab.ProjectSettings
         );
+        SetAsPrimaryFromSourceCommand = new RelayCommand(
+            SetAsPrimaryFromSource,
+            () => CanSetAsPrimaryFromSource);
     }
 
     public RelayCommand SelectPropertiesTabCommand { get; }
     public RelayCommand SelectProjectSettingsTabCommand { get; }
+    public RelayCommand SetAsPrimaryFromSourceCommand { get; }
 
     // ── Sub-collections ───────────────────────────────────────────────────────
     public ObservableCollection<ParameterRowViewModel> Parameters { get; } = [];
@@ -302,6 +309,15 @@ public sealed class PropertyPanelViewModel : ViewModelBase
     /// </summary>
     public bool ShowAliasEditor => SelectedNode is not null && SupportsAliasEditor(SelectedNode.Type);
 
+    public bool IsSelectedNodePrimaryFromSource => SelectedNode?.IsPrimaryFromSource == true;
+
+    public bool IsSelectedNodeSourceType => SelectedNode is not null && IsSourceAliasNode(SelectedNode.Type);
+
+    public bool CanSetAsPrimaryFromSource =>
+        IsSelectedNodeSourceType
+        && !IsSelectedNodePrimaryFromSource
+        && _setPrimaryFromSource is not null;
+
     public Avalonia.Media.LinearGradientBrush? HeaderGradient => SelectedNode?.HeaderGradient;
 
     public string CategoryIcon => SelectedNode?.CategoryIcon ?? string.Empty;
@@ -333,6 +349,9 @@ public sealed class PropertyPanelViewModel : ViewModelBase
         RaisePropertyChanged(nameof(NodeAlias));
         RaisePropertyChanged(nameof(NodeAliasLabel));
         RaisePropertyChanged(nameof(ShowAliasEditor));
+        RaisePropertyChanged(nameof(IsSelectedNodePrimaryFromSource));
+        RaisePropertyChanged(nameof(IsSelectedNodeSourceType));
+        RaisePropertyChanged(nameof(CanSetAsPrimaryFromSource));
         RaisePropertyChanged(nameof(HeaderGradient));
         RaisePropertyChanged(nameof(CategoryIcon));
         RaisePropertyChanged(nameof(CategoryIconKind));
@@ -341,6 +360,7 @@ public sealed class PropertyPanelViewModel : ViewModelBase
         RaisePropertyChanged(nameof(HasSelectedWire));
         RaisePropertyChanged(nameof(SelectedWireLabel));
         RaisePropertyChanged(nameof(ShowSelectNodeHint));
+        SetAsPrimaryFromSourceCommand.NotifyCanExecuteChanged();
     }
 
     public void ShowMultiSelection(IReadOnlyList<NodeViewModel> nodes)
@@ -368,11 +388,15 @@ public sealed class PropertyPanelViewModel : ViewModelBase
         RaisePropertyChanged(nameof(NodeTypeSubtitle));
         RaisePropertyChanged(nameof(NodeAliasLabel));
         RaisePropertyChanged(nameof(ShowAliasEditor));
+        RaisePropertyChanged(nameof(IsSelectedNodePrimaryFromSource));
+        RaisePropertyChanged(nameof(IsSelectedNodeSourceType));
+        RaisePropertyChanged(nameof(CanSetAsPrimaryFromSource));
         RaisePropertyChanged(nameof(ShowPropertiesTab));
         RaisePropertyChanged(nameof(ShowProjectSettingsTab));
         RaisePropertyChanged(nameof(HasSelectedWire));
         RaisePropertyChanged(nameof(SelectedWireLabel));
         RaisePropertyChanged(nameof(ShowSelectNodeHint));
+        SetAsPrimaryFromSourceCommand.NotifyCanExecuteChanged();
     }
 
     public void Clear()
@@ -397,11 +421,15 @@ public sealed class PropertyPanelViewModel : ViewModelBase
         RaisePropertyChanged(nameof(NodeTypeSubtitle));
         RaisePropertyChanged(nameof(NodeAliasLabel));
         RaisePropertyChanged(nameof(ShowAliasEditor));
+        RaisePropertyChanged(nameof(IsSelectedNodePrimaryFromSource));
+        RaisePropertyChanged(nameof(IsSelectedNodeSourceType));
+        RaisePropertyChanged(nameof(CanSetAsPrimaryFromSource));
         RaisePropertyChanged(nameof(ShowPropertiesTab));
         RaisePropertyChanged(nameof(ShowProjectSettingsTab));
         RaisePropertyChanged(nameof(HasSelectedWire));
         RaisePropertyChanged(nameof(SelectedWireLabel));
         RaisePropertyChanged(nameof(ShowSelectNodeHint));
+        SetAsPrimaryFromSourceCommand.NotifyCanExecuteChanged();
     }
 
     public void ShowWire(ConnectionViewModel wire)
@@ -420,6 +448,9 @@ public sealed class PropertyPanelViewModel : ViewModelBase
         RaisePropertyChanged(nameof(HasInputs));
         RaisePropertyChanged(nameof(HasOutputs));
         RaisePropertyChanged(nameof(ShowAliasEditor));
+        RaisePropertyChanged(nameof(IsSelectedNodePrimaryFromSource));
+        RaisePropertyChanged(nameof(IsSelectedNodeSourceType));
+        RaisePropertyChanged(nameof(CanSetAsPrimaryFromSource));
         RaisePropertyChanged(nameof(ShowSelectNodeHint));
 
         _selectedWire = wire;
@@ -428,6 +459,7 @@ public sealed class PropertyPanelViewModel : ViewModelBase
         RaisePropertyChanged(nameof(HasSelectedWire));
         RaisePropertyChanged(nameof(SelectedWireLabel));
         RaisePropertyChanged(nameof(ShowSelectNodeHint));
+        SetAsPrimaryFromSourceCommand.NotifyCanExecuteChanged();
     }
 
     public void ClearSelectedWire()
@@ -439,6 +471,28 @@ public sealed class PropertyPanelViewModel : ViewModelBase
         RaisePropertyChanged(nameof(HasSelectedWire));
         RaisePropertyChanged(nameof(SelectedWireLabel));
         RaisePropertyChanged(nameof(ShowSelectNodeHint));
+        RaisePropertyChanged(nameof(CanSetAsPrimaryFromSource));
+        SetAsPrimaryFromSourceCommand.NotifyCanExecuteChanged();
+    }
+
+    public void NotifySelectedNodePrimaryFromSourceChanged()
+    {
+        RaisePropertyChanged(nameof(IsSelectedNodePrimaryFromSource));
+        RaisePropertyChanged(nameof(CanSetAsPrimaryFromSource));
+        SetAsPrimaryFromSourceCommand.NotifyCanExecuteChanged();
+    }
+
+    private void SetAsPrimaryFromSource()
+    {
+        if (SelectedNode is null || _setPrimaryFromSource is null)
+            return;
+
+        if (!_setPrimaryFromSource(SelectedNode))
+            return;
+
+        RaisePropertyChanged(nameof(IsSelectedNodePrimaryFromSource));
+        RaisePropertyChanged(nameof(CanSetAsPrimaryFromSource));
+        SetAsPrimaryFromSourceCommand.NotifyCanExecuteChanged();
     }
 
     private static bool IsSourceAliasNode(NodeType? type) =>

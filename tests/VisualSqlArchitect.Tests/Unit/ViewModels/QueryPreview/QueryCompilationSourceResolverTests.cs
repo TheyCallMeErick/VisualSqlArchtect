@@ -58,5 +58,58 @@ public class QueryCompilationSourceResolverTests
         Assert.Equal("(SELECT 1) subq", fromTable);
         Assert.Contains("cannot contain spaces", warning, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void ResolveFromTable_WhenUpstreamTableMarkedAsPrimary_UsesMarkedNodeAsFrom()
+    {
+        var canvas = new CanvasViewModel();
+        var resolver = new QueryCompilationSourceResolver(canvas, (_, _) => null);
+
+        NodeViewModel tableA = QueryPreviewTestNodeFactory.Table("public.orders", "id", "customer_id");
+        NodeViewModel tableB = QueryPreviewTestNodeFactory.Table("public.customers", "id");
+        NodeViewModel result = QueryPreviewTestNodeFactory.Node(NodeType.ResultOutput);
+
+        canvas.Nodes.Add(tableA);
+        canvas.Nodes.Add(tableB);
+        canvas.Nodes.Add(result);
+
+        Connect(tableA, "id", result, "column", canvas);
+        Connect(tableA, "customer_id", result, "column", canvas);
+        Connect(tableB, "id", result, "column", canvas);
+
+        tableA.IsPrimaryFromSource = false;
+        tableB.IsPrimaryFromSource = true;
+
+        (string fromTable, string? warning) = resolver.ResolveFromTable(
+            [tableA, tableB],
+            [],
+            [],
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+
+        Assert.Equal("public.customers", fromTable);
+        Assert.Null(warning);
+    }
+
+    private static void Connect(
+        NodeViewModel fromNode,
+        string fromPinName,
+        NodeViewModel toNode,
+        string toPinName,
+        CanvasViewModel canvas)
+    {
+        PinViewModel fromPin = fromNode.OutputPins.First(pin =>
+            string.Equals(pin.Name, fromPinName, StringComparison.OrdinalIgnoreCase));
+        PinViewModel toPin = toNode.InputPins.First(pin =>
+            string.Equals(pin.Name, toPinName, StringComparison.OrdinalIgnoreCase));
+
+        var connection = new ConnectionViewModel(fromPin, default, default)
+        {
+            ToPin = toPin,
+        };
+
+        fromPin.IsConnected = true;
+        toPin.IsConnected = true;
+        canvas.Connections.Add(connection);
+    }
 }
 

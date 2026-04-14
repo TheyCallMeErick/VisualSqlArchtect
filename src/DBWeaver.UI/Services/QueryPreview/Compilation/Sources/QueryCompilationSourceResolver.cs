@@ -19,6 +19,27 @@ internal sealed class QueryCompilationSourceResolver(
                 ? ([], [], [])
                 : FilterUpstreamSources(resultOutputNode, tableNodes, cteSourceNodes, subqueryNodes);
 
+        NodeViewModel? preferredUpstream = ResolvePreferredSource(upstreamTables, upstreamCtes, upstreamSubqueries);
+        if (preferredUpstream is not null)
+        {
+            if (preferredUpstream.Type == NodeType.TableSource)
+                return (preferredUpstream.Subtitle ?? preferredUpstream.Title, null);
+
+            if (preferredUpstream.Type == NodeType.CteSource)
+            {
+                string? cteReference = _resolveCteSourceReference(preferredUpstream, cteDefinitionNamesById);
+                if (!string.IsNullOrWhiteSpace(cteReference))
+                    return (cteReference, null);
+            }
+
+            if (preferredUpstream.Type is NodeType.Subquery or NodeType.SubqueryReference)
+            {
+                (string? subqueryFrom, string? warning) = ResolveSubqueryFromSource(preferredUpstream);
+                if (!string.IsNullOrWhiteSpace(subqueryFrom))
+                    return (subqueryFrom, warning);
+            }
+        }
+
         if (upstreamTables.Count > 0)
             return (upstreamTables[0].Subtitle ?? upstreamTables[0].Title, null);
 
@@ -60,6 +81,16 @@ internal sealed class QueryCompilationSourceResolver(
         }
 
         return ("cte_name", null);
+    }
+
+    private static NodeViewModel? ResolvePreferredSource(
+        IReadOnlyList<NodeViewModel> upstreamTables,
+        IReadOnlyList<NodeViewModel> upstreamCtes,
+        IReadOnlyList<NodeViewModel> upstreamSubqueries)
+    {
+        return upstreamTables.FirstOrDefault(static node => node.IsPrimaryFromSource)
+            ?? upstreamCtes.FirstOrDefault(static node => node.IsPrimaryFromSource)
+            ?? upstreamSubqueries.FirstOrDefault(static node => node.IsPrimaryFromSource);
     }
 
     private (IReadOnlyList<NodeViewModel> Tables, IReadOnlyList<NodeViewModel> Ctes, IReadOnlyList<NodeViewModel> Subqueries) FilterUpstreamSources(

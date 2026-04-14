@@ -187,29 +187,52 @@ public sealed class ImportModelToCanvasBuilder(CanvasViewModel canvas)
                         out string joinOperator,
                         out string rightExpression))
                 {
-                    joinNode.Parameters["left_expr"] = ImportBuildUtilities.RewriteQualifierToAlias(leftExpression, context.Input.FromParts);
+                    string leftExpressionAliased = ImportBuildUtilities.RewriteQualifierToAlias(leftExpression, context.Input.FromParts);
+                    string rightExpressionAliased = ImportBuildUtilities.RewriteQualifierToAlias(rightExpression, context.Input.FromParts);
+                    int leftSourceIndex = ResolveSourceIndex(leftExpression, context.Input.FromParts);
+                    int rightSourceIndex = ResolveSourceIndex(rightExpression, context.Input.FromParts);
+
+                    if (ShouldSwapJoinSides(i, leftSourceIndex, rightSourceIndex))
+                    {
+                        (leftExpressionAliased, rightExpressionAliased) = (rightExpressionAliased, leftExpressionAliased);
+                    }
+
+                    joinNode.Parameters["left_expr"] = leftExpressionAliased;
                     joinNode.Parameters["operator"] = joinOperator == "!="
                         ? "<>"
                         : joinOperator;
-                    joinNode.Parameters["right_expr"] = ImportBuildUtilities.RewriteQualifierToAlias(rightExpression, context.Input.FromParts);
+                    joinNode.Parameters["right_expr"] = rightExpressionAliased;
 
+                    PinViewModel? leftPin = null;
+                    PinViewModel? rightPin = null;
                     if (ImportBuildUtilities.TryResolveExpressionPin(
                             leftExpression,
                             context.Input.FromParts,
                             context.State.TableNodes,
-                            out PinViewModel leftPin))
+                            out PinViewModel resolvedLeftPin))
                     {
-                        ImportBuildUtilities.SafeWire(leftPin.Owner, leftPin.Name, joinNode, "left", context.Canvas);
+                        leftPin = resolvedLeftPin;
                     }
 
                     if (ImportBuildUtilities.TryResolveExpressionPin(
                             rightExpression,
                             context.Input.FromParts,
                             context.State.TableNodes,
-                            out PinViewModel rightPin))
+                            out PinViewModel resolvedRightPin))
                     {
-                        ImportBuildUtilities.SafeWire(rightPin.Owner, rightPin.Name, joinNode, "right", context.Canvas);
+                        rightPin = resolvedRightPin;
                     }
+
+                    if (ShouldSwapJoinSides(i, leftSourceIndex, rightSourceIndex))
+                    {
+                        (leftPin, rightPin) = (rightPin, leftPin);
+                    }
+
+                    if (leftPin is not null)
+                        ImportBuildUtilities.SafeWire(leftPin.Owner, leftPin.Name, joinNode, "left", context.Canvas);
+
+                    if (rightPin is not null)
+                        ImportBuildUtilities.SafeWire(rightPin.Owner, rightPin.Name, joinNode, "right", context.Canvas);
                 }
                 else
                 {
@@ -226,32 +249,71 @@ public sealed class ImportModelToCanvasBuilder(CanvasViewModel canvas)
                             out string fallbackJoinOperator,
                             out string fallbackRightExpression))
                     {
-                        joinNode.Parameters["left_expr"] = fallbackLeftExpression;
+                        int fallbackLeftSourceIndex = ResolveSourceIndex(fallbackLeftExpression, context.Input.FromParts);
+                        int fallbackRightSourceIndex = ResolveSourceIndex(fallbackRightExpression, context.Input.FromParts);
+
+                        string fallbackLeftExpressionAliased = fallbackLeftExpression;
+                        string fallbackRightExpressionAliased = fallbackRightExpression;
+                        if (ShouldSwapJoinSides(i, fallbackLeftSourceIndex, fallbackRightSourceIndex))
+                        {
+                            (fallbackLeftExpressionAliased, fallbackRightExpressionAliased) = (fallbackRightExpressionAliased, fallbackLeftExpressionAliased);
+                        }
+
+                        joinNode.Parameters["left_expr"] = fallbackLeftExpressionAliased;
                         joinNode.Parameters["operator"] = fallbackJoinOperator == "!="
                             ? "<>"
                             : fallbackJoinOperator;
-                        joinNode.Parameters["right_expr"] = fallbackRightExpression;
+                        joinNode.Parameters["right_expr"] = fallbackRightExpressionAliased;
+
+                        PinViewModel? fallbackLeftPin = null;
+                        PinViewModel? fallbackRightPin = null;
 
                         if (ImportBuildUtilities.TryResolveExpressionPin(
                                 fallbackLeftExpression,
                                 context.Input.FromParts,
                                 context.State.TableNodes,
-                                out PinViewModel leftPin))
+                                out PinViewModel resolvedLeftPin))
                         {
-                            ImportBuildUtilities.SafeWire(leftPin.Owner, leftPin.Name, joinNode, "left", context.Canvas);
+                            fallbackLeftPin = resolvedLeftPin;
                         }
 
                         if (ImportBuildUtilities.TryResolveExpressionPin(
                                 fallbackRightExpression,
                                 context.Input.FromParts,
                                 context.State.TableNodes,
-                                out PinViewModel rightPin))
+                                out PinViewModel resolvedRightPin))
                         {
-                            ImportBuildUtilities.SafeWire(rightPin.Owner, rightPin.Name, joinNode, "right", context.Canvas);
+                            fallbackRightPin = resolvedRightPin;
                         }
+
+                        if (ShouldSwapJoinSides(i, fallbackLeftSourceIndex, fallbackRightSourceIndex))
+                        {
+                            (fallbackLeftPin, fallbackRightPin) = (fallbackRightPin, fallbackLeftPin);
+                        }
+
+                        if (fallbackLeftPin is not null)
+                            ImportBuildUtilities.SafeWire(fallbackLeftPin.Owner, fallbackLeftPin.Name, joinNode, "left", context.Canvas);
+
+                        if (fallbackRightPin is not null)
+                            ImportBuildUtilities.SafeWire(fallbackRightPin.Owner, fallbackRightPin.Name, joinNode, "right", context.Canvas);
                     }
                 }
             }
+        }
+
+        private static bool ShouldSwapJoinSides(int currentJoinSourceIndex, int leftSourceIndex, int rightSourceIndex)
+        {
+            return leftSourceIndex == currentJoinSourceIndex
+                && rightSourceIndex >= 0
+                && rightSourceIndex < currentJoinSourceIndex;
+        }
+
+        private static int ResolveSourceIndex(string expression, IReadOnlyList<ImportFromPart> fromParts)
+        {
+            if (!ImportBuildUtilities.TryResolveSourceAndColumn(expression, fromParts, out int sourceIndex, out _))
+                return -1;
+
+            return sourceIndex;
         }
     }
 

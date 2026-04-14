@@ -78,6 +78,8 @@ public static class OrphanNodeDetector
                         queue.Enqueue(upId);
         }
 
+        ExpandReachableThroughSemanticallyActiveJoins(canvas, reachable);
+
         // Orphans = every node NOT reached from a sink, except nodes whose output is optional
         // and that are semantically active in the query graph.
         return canvas.Nodes
@@ -85,6 +87,57 @@ public static class OrphanNodeDetector
             .Where(n => !IsOptionalOutputNodeWithSemanticContribution(canvas, n))
             .Select(n => n.Id)
             .ToHashSet();
+    }
+
+    private static void ExpandReachableThroughSemanticallyActiveJoins(CanvasViewModel canvas, HashSet<string> reachable)
+    {
+        if (reachable.Count == 0)
+            return;
+
+        HashSet<string> semanticallyActiveJoinIds = canvas.Nodes
+            .Where(node => node.Type == NodeType.Join)
+            .Where(node => IsJoinNodeSemanticallyActive(canvas, node))
+            .Select(node => node.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (semanticallyActiveJoinIds.Count == 0)
+            return;
+
+        var adjacency = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (ConnectionViewModel connection in canvas.Connections)
+        {
+            string fromId = connection.FromPin.Owner.Id;
+            string? toId = connection.ToPin?.Owner?.Id;
+            if (string.IsNullOrWhiteSpace(toId))
+                continue;
+
+            if (!adjacency.TryGetValue(fromId, out HashSet<string>? fromSet))
+                adjacency[fromId] = fromSet = [];
+            fromSet.Add(toId!);
+
+            if (!adjacency.TryGetValue(toId!, out HashSet<string>? toSet))
+                adjacency[toId!] = toSet = [];
+            toSet.Add(fromId);
+        }
+
+        var queue = new Queue<string>(reachable);
+        while (queue.Count > 0)
+        {
+            string current = queue.Dequeue();
+            if (!adjacency.TryGetValue(current, out HashSet<string>? neighbors))
+                continue;
+
+            foreach (string neighbor in neighbors)
+            {
+                bool canTraverse = semanticallyActiveJoinIds.Contains(current)
+                    || semanticallyActiveJoinIds.Contains(neighbor);
+                if (!canTraverse)
+                    continue;
+
+                if (reachable.Add(neighbor))
+                    queue.Enqueue(neighbor);
+            }
+        }
     }
 
     private static bool IsOptionalOutputNodeWithSemanticContribution(CanvasViewModel canvas, NodeViewModel node)

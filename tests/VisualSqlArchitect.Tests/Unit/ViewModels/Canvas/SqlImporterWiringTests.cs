@@ -141,6 +141,37 @@ public class SqlImporterWiringTests
     }
 
     [Fact]
+    public async Task ImportAsync_WithReversedJoinPredicate_KeepsExistingSourceOnLeftAndNewSourceOnRight()
+    {
+        var canvas = new CanvasViewModel
+        {
+            DatabaseMetadata = BuildMainSchemaMetadata(),
+        };
+
+        canvas.SqlImporter.ImportStartDelayMs = 0;
+        canvas.SqlImporter.ImportTimeout = TimeSpan.FromSeconds(5);
+        canvas.SqlImporter.SqlInput =
+            "SELECT e.id FROM main.employees e JOIN main.departments d ON d.id = e.department_id";
+
+        await canvas.SqlImporter.ImportAsync();
+
+        NodeViewModel joinNode = canvas.Nodes.First(n => n.Type == NodeType.Join);
+
+        Assert.Equal("e.department_id", joinNode.Parameters["left_expr"]);
+        Assert.Equal("d.id", joinNode.Parameters["right_expr"]);
+
+        Assert.Contains(canvas.Connections, connection =>
+            connection.ToPin?.Owner == joinNode
+            && string.Equals(connection.ToPin.Name, "left", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(connection.FromPin.Owner.Subtitle, "main.employees", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Contains(canvas.Connections, connection =>
+            connection.ToPin?.Owner == joinNode
+            && string.Equals(connection.ToPin.Name, "right", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(connection.FromPin.Owner.Subtitle, "main.departments", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task ImportAsync_WithUnqualifiedStarAndJoin_ProjectsWildcardFromAllSources()
     {
         var canvas = new CanvasViewModel

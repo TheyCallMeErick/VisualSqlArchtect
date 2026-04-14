@@ -974,6 +974,18 @@ public sealed partial class InfiniteCanvas
                     new RelayCommand(ViewModel.DeleteSelected))
             );
 
+            if (sel.Count == 1)
+            {
+                NodeViewModel selectedNode = sel[0];
+                bool canSetAsFrom = ViewModel.CanSetPrimaryFromSource(selectedNode);
+                menu.Items.Add(
+                    NewItem(
+                        L("context.setAsFromSource", "Definir como FROM"),
+                        MaterialIconKind.DatabaseArrowLeft,
+                        new RelayCommand(() => ViewModel.TrySetPrimaryFromSourceNode(selectedNode)),
+                        canSetAsFrom));
+            }
+
             if (sel.Count == 1 && sel[0].Type == NodeType.CteDefinition)
             {
                 NodeViewModel cteNode = sel[0];
