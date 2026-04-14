@@ -670,6 +670,12 @@ public sealed class ShellViewModel : ViewModelBase
             if (_observedDdlConnectionManager is not null)
                 _observedDdlConnectionManager.PropertyChanged += _activeConnectionManagerPropertyChanged;
         }
+
+        // Keep overlay bindings in sync even when managers were already visible
+        // before observer wiring completed.
+        RaisePropertyChanged(nameof(ActiveConnectionManager));
+        RaisePropertyChanged(nameof(IsConnectionManagerVisible));
+        RaisePropertyChanged(nameof(IsConnectionManagerOverlayVisible));
     }
 
     private ConnectionManagerViewModel? ResolveDocumentConnectionManager() =>

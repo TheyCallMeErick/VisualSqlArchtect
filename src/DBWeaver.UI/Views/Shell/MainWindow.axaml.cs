@@ -321,6 +321,13 @@ public partial class MainWindow : Window
         _connectionModule ??= new ConnectionWorkspaceModule(
             getConnectionManager: () =>
             {
+                ConnectionManagerViewModel? sidebarManager = CurrentShell.ActiveDiagramSidebar?.EffectiveConnectionManager;
+                if (sidebarManager is not null)
+                {
+                    WireConnectionActivation(sidebarManager);
+                    return sidebarManager;
+                }
+
                 if (CurrentShell.ActiveCanvas is not null)
                 {
                     WireConnectionActivation(CurrentShell.ActiveCanvas.ConnectionManager);
