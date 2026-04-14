@@ -1,5 +1,6 @@
 using DBWeaver.Ddl.SchemaAnalysis.Domain.Contracts;
 using DBWeaver.Ddl.SchemaAnalysis.Domain.Enums;
+using DBWeaver.Metadata;
 using DBWeaver.UI.Services.Localization;
 using DBWeaver.UI.ViewModels;
 
@@ -200,6 +201,39 @@ public sealed class SchemaAnalysisPanelViewModelTests
         Assert.True(vm.IncludeMissingFk);
         Assert.Equal(0d, vm.MinConfidenceFilter);
         Assert.Equal(string.Empty, vm.TableTextFilter);
+    }
+
+    [Fact]
+    public void AddIgnoredTableCommand_FiltersVisibleIssuesByTableName()
+    {
+        var vm = new SchemaAnalysisPanelViewModel();
+
+        SchemaIssue orders = CreateIssue("i-1", SchemaRuleCode.MISSING_FK, SchemaIssueSeverity.Warning, "public", "orders", 0.91d);
+        SchemaIssue customers = CreateIssue("i-2", SchemaRuleCode.MISSING_FK, SchemaIssueSeverity.Warning, "public", "customers", 0.91d);
+
+        vm.ApplyResult(CreateResult([orders, customers], SchemaAnalysisStatus.Completed));
+
+        vm.IgnoredTableInput = "public.orders";
+        vm.AddIgnoredTableCommand.Execute(null);
+
+        Assert.Single(vm.IgnoredTables);
+        Assert.Equal("public.orders", vm.IgnoredTables[0]);
+        Assert.Single(vm.VisibleIssues);
+        Assert.Equal("customers", vm.VisibleIssues[0].TableName);
+    }
+
+    [Fact]
+    public void ShouldIgnoreTableForAnalysis_RespectsIgnoreViewsAndBlacklist()
+    {
+        var vm = new SchemaAnalysisPanelViewModel();
+
+        vm.IgnoreViews = true;
+        vm.IgnoredTableInput = "public.orders";
+        vm.AddIgnoredTableCommand.Execute(null);
+
+        Assert.True(vm.ShouldIgnoreTableForAnalysis("public", "v_orders", TableKind.View));
+        Assert.True(vm.ShouldIgnoreTableForAnalysis("public", "orders", TableKind.Table));
+        Assert.False(vm.ShouldIgnoreTableForAnalysis("public", "customers", TableKind.Table));
     }
 
     [Fact]

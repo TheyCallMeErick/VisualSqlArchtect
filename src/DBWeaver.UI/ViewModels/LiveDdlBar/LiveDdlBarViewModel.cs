@@ -7,6 +7,7 @@ using DBWeaver.Ddl.SchemaAnalysis.Application;
 using DBWeaver.Ddl.SchemaAnalysis.Application.Validation;
 using DBWeaver.Nodes;
 using DBWeaver.Compilation;
+using DBWeaver.Metadata;
 using DBWeaver.UI.Services.Localization;
 
 namespace DBWeaver.UI.ViewModels;
@@ -249,9 +250,10 @@ public sealed class LiveDdlBarViewModel : ViewModelBase
             IsRunningSchemaAnalysis = true;
             SchemaAnalysisPanel.SetLoading();
 
+            DbMetadata analysisMetadata = BuildAnalysisMetadata(_canvas.DatabaseMetadata, SchemaAnalysisPanel);
             var profile = SchemaAnalysisProfileNormalizer.CreateDefaultProfile();
             var result = await _schemaAnalysisService.AnalyzeAsync(
-                _canvas.DatabaseMetadata,
+                analysisMetadata,
                 profile,
                 _schemaAnalysisCts.Token
             );
@@ -271,6 +273,50 @@ public sealed class LiveDdlBarViewModel : ViewModelBase
     public void CancelSchemaAnalysis()
     {
         _schemaAnalysisCts?.Cancel();
+    }
+
+    private static DbMetadata BuildAnalysisMetadata(DbMetadata metadata, SchemaAnalysisPanelViewModel panel)
+    {
+        IReadOnlyList<SchemaMetadata> filteredSchemas = metadata.Schemas
+            .Select(schema =>
+            {
+                IReadOnlyList<TableMetadata> tables = schema.Tables
+                    .Where(table => !panel.ShouldIgnoreTableForAnalysis(schema.Name, table.Name, table.Kind))
+                    .ToList();
+
+                return new SchemaMetadata(schema.Name, tables);
+            })
+            .Where(schema => schema.Tables.Count > 0)
+            .ToList();
+
+        if (filteredSchemas.Count == metadata.Schemas.Count
+            && filteredSchemas.SelectMany(static schema => schema.Tables).Count() == metadata.AllTables.Count())
+        {
+            return metadata;
+        }
+
+        HashSet<string> survivingTables = filteredSchemas
+            .SelectMany(schema => schema.Tables.Select(table => QualifyTable(schema.Name, table.Name)))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        IReadOnlyList<ForeignKeyRelation> filteredForeignKeys = metadata.AllForeignKeys
+            .Where(foreignKey =>
+                survivingTables.Contains(QualifyTable(foreignKey.ChildSchema, foreignKey.ChildTable))
+                && survivingTables.Contains(QualifyTable(foreignKey.ParentSchema, foreignKey.ParentTable)))
+            .ToList();
+
+        return metadata with
+        {
+            Schemas = filteredSchemas,
+            AllForeignKeys = filteredForeignKeys,
+        };
+    }
+
+    private static string QualifyTable(string? schema, string table)
+    {
+        return string.IsNullOrWhiteSpace(schema)
+            ? table
+            : $"{schema}.{table}";
     }
 
     private NodeGraph BuildNodeGraph()

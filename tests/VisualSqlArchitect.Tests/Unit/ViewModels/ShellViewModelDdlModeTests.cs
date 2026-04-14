@@ -1,5 +1,7 @@
 ﻿using DBWeaver.UI.Services.Benchmark;
 using Avalonia;
+using DBWeaver.Core;
+using DBWeaver.Metadata;
 using DBWeaver.Nodes;
 using DBWeaver.UI.ViewModels;
 using Xunit;
@@ -155,4 +157,66 @@ public class ShellViewModelDdlModeTests
         Assert.Same(vm.Toasts, queryCanvas.Toasts);
         Assert.Same(vm.Toasts, ddlCanvas.Toasts);
     }
+
+    [Fact]
+    public void EnsureDdlCanvas_InheritsMetadataAndConnection_FromQueryCanvasContext()
+    {
+        var vm = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
+
+        CanvasViewModel queryCanvas = vm.EnsureCanvas();
+        DbMetadata metadata = CreateMetadata();
+        ConnectionConfig config = new(
+            Provider: DatabaseProvider.Postgres,
+            Host: "localhost",
+            Port: 5432,
+            Database: "dbweaver",
+            Username: "user",
+            Password: "pwd"
+        );
+        queryCanvas.SetDatabaseContext(metadata, config);
+
+        CanvasViewModel ddlCanvas = vm.EnsureDdlCanvas();
+
+        Assert.Same(metadata, ddlCanvas.DatabaseMetadata);
+        Assert.Same(config, ddlCanvas.ActiveConnectionConfig);
+    }
+
+    [Fact]
+    public void EnsureDdlCanvas_WhenAlreadyCreated_SynchronizesMetadataFromQueryCanvas()
+    {
+        var vm = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
+
+        CanvasViewModel ddlCanvas = vm.EnsureDdlCanvas();
+        LiveDdlBarViewModel liveDdl = Assert.IsType<LiveDdlBarViewModel>(ddlCanvas.LiveDdl);
+        Assert.False(liveDdl.RunSchemaAnalysisCommand.CanExecute(null));
+
+        CanvasViewModel queryCanvas = vm.EnsureCanvas();
+        DbMetadata metadata = CreateMetadata();
+        ConnectionConfig config = new(
+            Provider: DatabaseProvider.Postgres,
+            Host: "localhost",
+            Port: 5432,
+            Database: "dbweaver",
+            Username: "user",
+            Password: "pwd"
+        );
+        queryCanvas.SetDatabaseContext(metadata, config);
+
+        CanvasViewModel ensuredDdl = vm.EnsureDdlCanvas();
+
+        Assert.Same(ddlCanvas, ensuredDdl);
+        Assert.Same(metadata, ensuredDdl.DatabaseMetadata);
+        Assert.Same(config, ensuredDdl.ActiveConnectionConfig);
+        Assert.True(liveDdl.RunSchemaAnalysisCommand.CanExecute(null));
+    }
+
+    private static DbMetadata CreateMetadata() =>
+        new(
+            DatabaseName: "dbweaver",
+            Provider: DatabaseProvider.Postgres,
+            ServerVersion: "16",
+            CapturedAt: DateTimeOffset.UtcNow,
+            Schemas: [new SchemaMetadata("public", [])],
+            AllForeignKeys: []
+        );
 }

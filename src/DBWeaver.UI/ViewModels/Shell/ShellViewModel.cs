@@ -376,7 +376,10 @@ public sealed class ShellViewModel : ViewModelBase
     public CanvasViewModel EnsureCanvas(Func<bool>? isDdlModeActiveResolver = null, Action<TableMetadata, Point>? importDdlTableAction = null)
     {
         if (ActiveQueryCanvasDocument is not null)
+        {
+            SyncCanvasConnectionContext(ActiveQueryCanvasDocument, ResolveKnownDdlCanvas());
             return ActiveQueryCanvasDocument;
+        }
 
         if (Canvas is null)
             Canvas = new CanvasViewModel(
@@ -388,13 +391,18 @@ public sealed class ShellViewModel : ViewModelBase
                 toastCenter: Toasts,
                 connectionManagerFactory: _connectionManagerViewModelFactory);
 
+        SyncCanvasConnectionContext(Canvas, ResolveKnownDdlCanvas());
+
         return Canvas;
     }
 
     public CanvasViewModel EnsureDdlCanvas()
     {
         if (ActiveDdlCanvasDocument is not null)
+        {
+            SyncCanvasConnectionContext(ActiveDdlCanvasDocument, ResolveKnownQueryCanvas());
             return ActiveDdlCanvasDocument;
+        }
 
         if (DdlCanvas is null)
             DdlCanvas = new CanvasViewModel(
@@ -405,6 +413,8 @@ public sealed class ShellViewModel : ViewModelBase
                 domainStrategy: new DdlDomainStrategy(),
                 toastCenter: Toasts,
                 connectionManagerFactory: _connectionManagerViewModelFactory);
+
+        SyncCanvasConnectionContext(DdlCanvas, ResolveKnownQueryCanvas());
 
         RegisterOrUpdateDdlDocument(DdlCanvas);
 
@@ -624,6 +634,36 @@ public sealed class ShellViewModel : ViewModelBase
 
         return asm.GetName().Version?.ToString() ?? "dev";
     }
+
+    private static void SyncCanvasConnectionContext(CanvasViewModel target, CanvasViewModel? source)
+    {
+        if (source is null)
+            return;
+
+        DbMetadata? metadata = source.DatabaseMetadata;
+        ConnectionConfig? config = source.ActiveConnectionConfig;
+        bool sourceHasContext = metadata is not null || config is not null;
+        bool targetNeedsContext = target.DatabaseMetadata is null || target.ActiveConnectionConfig is null;
+        if (!sourceHasContext || !targetNeedsContext)
+            return;
+
+        target.SetDatabaseContext(
+            target.DatabaseMetadata ?? metadata,
+            target.ActiveConnectionConfig ?? config
+        );
+    }
+
+    private CanvasViewModel? ResolveKnownQueryCanvas() =>
+        Canvas
+        ?? _workspaceRouter.OpenDocuments
+            .FirstOrDefault(document => document.Descriptor.DocumentType == WorkspaceDocumentType.QueryCanvas)
+            ?.DocumentViewModel as CanvasViewModel;
+
+    private CanvasViewModel? ResolveKnownDdlCanvas() =>
+        DdlCanvas
+        ?? _workspaceRouter.OpenDocuments
+            .FirstOrDefault(document => document.Descriptor.DocumentType == WorkspaceDocumentType.DdlCanvas)
+            ?.DocumentViewModel as CanvasViewModel;
 
     private void AttachCanvasObservers(CanvasViewModel? _)
     {

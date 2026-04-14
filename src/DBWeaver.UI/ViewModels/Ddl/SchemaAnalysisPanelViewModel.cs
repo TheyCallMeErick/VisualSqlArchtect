@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using DBWeaver.Ddl.SchemaAnalysis.Domain.Contracts;
 using DBWeaver.Ddl.SchemaAnalysis.Domain.Enums;
+using DBWeaver.Metadata;
 using DBWeaver.UI.Services.Localization;
 
 namespace DBWeaver.UI.ViewModels;
@@ -16,6 +17,7 @@ public sealed class SchemaAnalysisPanelViewModel : ViewModelBase
     private const string NoIssueSelectedMessageFallback = "Nenhuma issue selecionada.";
     private const string NoSqlCandidateMessageFallback = "Nenhum SQL candidate disponível.";
     private const string ActionBlockedTooltipFallback = "Ação indisponível para o nível de risco ou capacidade atual.";
+    private const string IgnoreTablePlaceholderFallback = "schema.tabela";
 
     private readonly Action<string>? _copySql;
     private readonly Action<SqlFixCandidate>? _applyToCanvas;
@@ -43,6 +45,10 @@ public sealed class SchemaAnalysisPanelViewModel : ViewModelBase
     private bool _includeNf1HintMultiValued = true;
     private bool _includeNf2HintPartialDependency = true;
     private bool _includeNf3HintTransitiveDependency = true;
+    private bool _ignoreViews;
+    private string _ignoredTableInput = string.Empty;
+    private string? _selectedIgnoredTable;
+    private SchemaIssueGroupViewModel? _selectedGroup;
 
     public SchemaAnalysisPanelViewModel(
         Action<string>? copySql = null,
@@ -71,9 +77,22 @@ public sealed class SchemaAnalysisPanelViewModel : ViewModelBase
         );
 
         ClearFiltersCommand = new RelayCommand(ClearFilters);
+        AddIgnoredTableCommand = new RelayCommand(AddIgnoredTable, () => CanAddIgnoredTable);
+        RemoveIgnoredTableCommand = new RelayCommand<string>(RemoveIgnoredTable);
+        ClearIgnoredTablesCommand = new RelayCommand(ClearIgnoredTables, () => IgnoredTables.Count > 0);
+        RemoveSelectedIgnoredTableCommand = new RelayCommand(
+            RemoveSelectedIgnoredTable,
+            () => CanRemoveSelectedIgnoredTable
+        );
+        SelectNextIssueCommand = new RelayCommand(SelectNextIssue, () => CanSelectNextIssue);
+        SelectPreviousIssueCommand = new RelayCommand(SelectPreviousIssue, () => CanSelectPreviousIssue);
     }
 
     public ObservableCollection<SchemaIssue> VisibleIssues { get; } = [];
+
+    public ObservableCollection<SchemaIssueGroupViewModel> GroupedIssues { get; } = [];
+
+    public ObservableCollection<string> IgnoredTables { get; } = [];
 
     public SchemaAnalysisViewState State
     {
@@ -98,9 +117,17 @@ public sealed class SchemaAnalysisPanelViewModel : ViewModelBase
                 return;
 
             SelectedSuggestion = value?.Suggestions.OrderByDescending(s => s.Confidence).ThenBy(s => s.Title, StringComparer.Ordinal).ThenBy(s => s.SuggestionId, StringComparer.Ordinal).FirstOrDefault();
+            SelectedGroup = value is null
+                ? null
+                : GroupedIssues.FirstOrDefault(group => group.Items.Contains(value));
             RaisePropertyChanged(nameof(SelectedIssueEvidence));
             RaisePropertyChanged(nameof(SelectedIssueDiagnostics));
             RaisePropertyChanged(nameof(DetailsMessage));
+            RaisePropertyChanged(nameof(HasSelectedIssue));
+            RaisePropertyChanged(nameof(SelectedIssuePath));
+            RaisePropertyChanged(nameof(SelectedIssueConfidencePercent));
+            SelectNextIssueCommand.NotifyCanExecuteChanged();
+            SelectPreviousIssueCommand.NotifyCanExecuteChanged();
         }
     }
 
@@ -115,6 +142,7 @@ public sealed class SchemaAnalysisPanelViewModel : ViewModelBase
             SelectedSqlCandidate = VisibleCandidates.FirstOrDefault();
             RaisePropertyChanged(nameof(VisibleCandidates));
             RaisePropertyChanged(nameof(SqlCandidatesMessage));
+            RaisePropertyChanged(nameof(HasSelectedSuggestion));
         }
     }
 
@@ -129,9 +157,16 @@ public sealed class SchemaAnalysisPanelViewModel : ViewModelBase
             RaisePropertyChanged(nameof(CanCopySql));
             RaisePropertyChanged(nameof(CanApplyToCanvas));
             RaisePropertyChanged(nameof(ActionBlockedTooltip));
+            RaisePropertyChanged(nameof(HasSelectedSqlCandidate));
             CopySqlCommand.NotifyCanExecuteChanged();
             ApplyToCanvasCommand.NotifyCanExecuteChanged();
         }
+    }
+
+    public SchemaIssueGroupViewModel? SelectedGroup
+    {
+        get => _selectedGroup;
+        set => Set(ref _selectedGroup, value);
     }
 
     public IReadOnlyList<SchemaEvidence> SelectedIssueEvidence =>
@@ -154,6 +189,39 @@ public sealed class SchemaAnalysisPanelViewModel : ViewModelBase
     public string DetailsMessage => SelectedIssue is null
         ? L("preview.schemaAnalysis.state.noIssueSelected", NoIssueSelectedMessageFallback)
         : SelectedIssue.Message;
+
+    public bool HasSelectedIssue => SelectedIssue is not null;
+
+    public bool HasSelectedSuggestion => SelectedSuggestion is not null;
+
+    public bool HasSelectedSqlCandidate => SelectedSqlCandidate is not null;
+
+    public string SelectedIssuePath
+    {
+        get
+        {
+            if (SelectedIssue is null)
+                return "-";
+
+            string schema = SelectedIssue.SchemaName ?? string.Empty;
+            string table = SelectedIssue.TableName ?? string.Empty;
+            string column = SelectedIssue.ColumnName ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(schema) && string.IsNullOrWhiteSpace(table) && string.IsNullOrWhiteSpace(column))
+                return "-";
+
+            if (string.IsNullOrWhiteSpace(schema))
+                return string.IsNullOrWhiteSpace(column) ? table : $"{table}.{column}";
+
+            return string.IsNullOrWhiteSpace(column)
+                ? $"{schema}.{table}"
+                : $"{schema}.{table}.{column}";
+        }
+    }
+
+    public string SelectedIssueConfidencePercent => SelectedIssue is null
+        ? "-"
+        : $"{Math.Round(SelectedIssue.Confidence * 100d, 0):0}%";
 
     public string SqlCandidatesMessage => VisibleCandidates.Count == 0
         ? L("preview.schemaAnalysis.state.noSqlCandidate", NoSqlCandidateMessageFallback)
@@ -178,6 +246,18 @@ public sealed class SchemaAnalysisPanelViewModel : ViewModelBase
 
     public RelayCommand ClearFiltersCommand { get; }
 
+    public RelayCommand AddIgnoredTableCommand { get; }
+
+    public RelayCommand<string> RemoveIgnoredTableCommand { get; }
+
+    public RelayCommand ClearIgnoredTablesCommand { get; }
+
+    public RelayCommand RemoveSelectedIgnoredTableCommand { get; }
+
+    public RelayCommand SelectNextIssueCommand { get; }
+
+    public RelayCommand SelectPreviousIssueCommand { get; }
+
     public int RawTotalIssues => _rawIssues.Count;
 
     public int RawInfoCount => _rawIssues.Count(static i => i.Severity == SchemaIssueSeverity.Info);
@@ -193,6 +273,52 @@ public sealed class SchemaAnalysisPanelViewModel : ViewModelBase
     public int FilteredWarningCount => VisibleIssues.Count(static i => i.Severity == SchemaIssueSeverity.Warning);
 
     public int FilteredCriticalCount => VisibleIssues.Count(static i => i.Severity == SchemaIssueSeverity.Critical);
+
+    public bool CanSelectNextIssue => TryGetSelectionIndex(out int index) && index < VisibleIssues.Count - 1;
+
+    public bool CanSelectPreviousIssue => TryGetSelectionIndex(out int index) && index > 0;
+
+    public bool IgnoreViews
+    {
+        get => _ignoreViews;
+        set => Set(ref _ignoreViews, value);
+    }
+
+    public string IgnoredTableInput
+    {
+        get => _ignoredTableInput;
+        set
+        {
+            string normalized = value?.Trim() ?? string.Empty;
+            if (!Set(ref _ignoredTableInput, normalized))
+                return;
+
+            RaisePropertyChanged(nameof(CanAddIgnoredTable));
+            AddIgnoredTableCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    public bool CanAddIgnoredTable => !string.IsNullOrWhiteSpace(NormalizeTablePattern(IgnoredTableInput));
+
+    public bool HasIgnoredTables => IgnoredTables.Count > 0;
+
+    public string? SelectedIgnoredTable
+    {
+        get => _selectedIgnoredTable;
+        set
+        {
+            if (!Set(ref _selectedIgnoredTable, value))
+                return;
+
+            RaisePropertyChanged(nameof(CanRemoveSelectedIgnoredTable));
+            RemoveSelectedIgnoredTableCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    public bool CanRemoveSelectedIgnoredTable => !string.IsNullOrWhiteSpace(SelectedIgnoredTable);
+
+    public string IgnoredTableInputPlaceholder =>
+        L("preview.schemaAnalysis.ignoreTable.placeholder", IgnoreTablePlaceholderFallback);
 
     public double MinConfidenceFilter
     {
@@ -423,6 +549,8 @@ public sealed class SchemaAnalysisPanelViewModel : ViewModelBase
         _tableTextFilter = string.Empty;
         RaisePropertyChanged(nameof(MinConfidenceFilter));
         RaisePropertyChanged(nameof(TableTextFilter));
+        IgnoreViews = false;
+        ClearIgnoredTables();
         RebuildSeverityFilterFromFlags(applyFilters: false);
         RebuildRuleFilterFromFlags(applyFilters: false);
         ApplyFilters();
@@ -433,6 +561,8 @@ public sealed class SchemaAnalysisPanelViewModel : ViewModelBase
         _rawIssues.Clear();
         _diagnostics.Clear();
         VisibleIssues.Clear();
+        GroupedIssues.Clear();
+        SelectedGroup = null;
         SelectedIssue = null;
         State = SchemaAnalysisViewState.Idle;
         StateMessage = L("preview.schemaAnalysis.state.metadataUnavailable", MetadataUnavailableMessageFallback);
@@ -507,11 +637,14 @@ public sealed class SchemaAnalysisPanelViewModel : ViewModelBase
             .Where(i => _ruleFilter.Count == 0 || _ruleFilter.Contains(i.RuleCode))
             .Where(i => i.Confidence >= MinConfidenceFilter)
             .Where(i => MatchesTableFilter(i, TableTextFilter))
+            .Where(i => !IsBlacklistedTable(i.SchemaName, i.TableName))
             .ToList();
 
         VisibleIssues.Clear();
         foreach (SchemaIssue issue in filtered)
             VisibleIssues.Add(issue);
+
+        RebuildGroups();
 
         ReconcileSelection();
         RaiseSummaryCountersChanged();
@@ -540,6 +673,73 @@ public sealed class SchemaAnalysisPanelViewModel : ViewModelBase
         {
             SelectedIssue = VisibleIssues[0];
         }
+
+        SelectNextIssueCommand.NotifyCanExecuteChanged();
+        SelectPreviousIssueCommand.NotifyCanExecuteChanged();
+    }
+
+    private void RebuildGroups()
+    {
+        GroupedIssues.Clear();
+
+        foreach (IGrouping<SchemaIssueSeverity, SchemaIssue> group in VisibleIssues
+                     .GroupBy(static issue => issue.Severity)
+                     .OrderBy(group => GetSeverityOrder(group.Key)))
+        {
+            string title = group.Key switch
+            {
+                SchemaIssueSeverity.Critical => L("preview.schemaAnalysis.severity.critical", "Critical"),
+                SchemaIssueSeverity.Warning => L("preview.schemaAnalysis.severity.warning", "Warning"),
+                _ => L("preview.schemaAnalysis.severity.info", "Info")
+            };
+
+            GroupedIssues.Add(new SchemaIssueGroupViewModel(group.Key, title, group.ToArray()));
+        }
+
+        if (SelectedIssue is not null)
+            SelectedGroup = GroupedIssues.FirstOrDefault(group => group.Items.Contains(SelectedIssue));
+        else
+            SelectedGroup = GroupedIssues.FirstOrDefault();
+    }
+
+    private static int GetSeverityOrder(SchemaIssueSeverity severity)
+    {
+        return severity switch
+        {
+            SchemaIssueSeverity.Critical => 0,
+            SchemaIssueSeverity.Warning => 1,
+            _ => 2
+        };
+    }
+
+    private bool TryGetSelectionIndex(out int index)
+    {
+        if (SelectedIssue is null)
+        {
+            index = -1;
+            return false;
+        }
+
+        index = VisibleIssues.IndexOf(SelectedIssue);
+        return index >= 0;
+    }
+
+    private void SelectNextIssue()
+    {
+        if (!TryGetSelectionIndex(out int index))
+            return;
+
+        if (index < VisibleIssues.Count - 1)
+            SelectedIssue = VisibleIssues[index + 1];
+    }
+
+    private void SelectPreviousIssue()
+    {
+        if (!TryGetSelectionIndex(out int index))
+            return;
+
+        if (index > 0)
+            SelectedIssue = VisibleIssues[index - 1];
     }
 
     private static bool MatchesTableFilter(SchemaIssue issue, string filter)
@@ -604,9 +804,146 @@ public sealed class SchemaAnalysisPanelViewModel : ViewModelBase
             ApplyFilters();
     }
 
+    public bool ShouldIgnoreTableForAnalysis(string? schemaName, string? tableName, TableKind tableKind)
+    {
+        if (IgnoreViews && tableKind != TableKind.Table)
+            return true;
+
+        return IsBlacklistedTable(schemaName, tableName);
+    }
+
+    private void AddIgnoredTable()
+    {
+        string normalized = NormalizeTablePattern(IgnoredTableInput);
+        if (string.IsNullOrWhiteSpace(normalized))
+            return;
+
+        if (IgnoredTables.Any(item => string.Equals(item, normalized, StringComparison.OrdinalIgnoreCase)))
+        {
+            IgnoredTableInput = string.Empty;
+            return;
+        }
+
+        IgnoredTables.Add(normalized);
+        IgnoredTableInput = string.Empty;
+        SelectedIgnoredTable ??= normalized;
+        RaisePropertyChanged(nameof(HasIgnoredTables));
+        ClearIgnoredTablesCommand.NotifyCanExecuteChanged();
+        RemoveSelectedIgnoredTableCommand.NotifyCanExecuteChanged();
+        ApplyFilters();
+    }
+
+    private void RemoveIgnoredTable(string? tablePattern)
+    {
+        string normalized = NormalizeTablePattern(tablePattern);
+        if (string.IsNullOrWhiteSpace(normalized))
+            return;
+
+        string? existing = IgnoredTables.FirstOrDefault(item =>
+            string.Equals(item, normalized, StringComparison.OrdinalIgnoreCase)
+        );
+        if (existing is null)
+            return;
+
+        IgnoredTables.Remove(existing);
+        if (string.Equals(SelectedIgnoredTable, existing, StringComparison.OrdinalIgnoreCase))
+            SelectedIgnoredTable = IgnoredTables.FirstOrDefault();
+        RaisePropertyChanged(nameof(HasIgnoredTables));
+        ClearIgnoredTablesCommand.NotifyCanExecuteChanged();
+        RemoveSelectedIgnoredTableCommand.NotifyCanExecuteChanged();
+        ApplyFilters();
+    }
+
+    private void ClearIgnoredTables()
+    {
+        if (IgnoredTables.Count == 0)
+            return;
+
+        IgnoredTables.Clear();
+        SelectedIgnoredTable = null;
+        RaisePropertyChanged(nameof(HasIgnoredTables));
+        ClearIgnoredTablesCommand.NotifyCanExecuteChanged();
+        RemoveSelectedIgnoredTableCommand.NotifyCanExecuteChanged();
+        ApplyFilters();
+    }
+
+    private void RemoveSelectedIgnoredTable()
+    {
+        RemoveIgnoredTable(SelectedIgnoredTable);
+    }
+
+    private bool IsBlacklistedTable(string? schemaName, string? tableName)
+    {
+        if (IgnoredTables.Count == 0)
+            return false;
+
+        string normalizedTable = NormalizeIdentifier(tableName);
+        if (string.IsNullOrWhiteSpace(normalizedTable))
+            return false;
+
+        string normalizedSchema = NormalizeIdentifier(schemaName);
+        string qualified = string.IsNullOrWhiteSpace(normalizedSchema)
+            ? normalizedTable
+            : $"{normalizedSchema}.{normalizedTable}";
+
+        return IgnoredTables.Any(item =>
+            string.Equals(item, normalizedTable, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(item, qualified, StringComparison.OrdinalIgnoreCase)
+        );
+    }
+
+    private static string NormalizeTablePattern(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return string.Empty;
+
+        string[] parts = raw
+            .Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(NormalizeIdentifier)
+            .Where(static part => !string.IsNullOrWhiteSpace(part))
+            .ToArray();
+
+        if (parts.Length == 0)
+            return string.Empty;
+
+        if (parts.Length == 1)
+            return parts[0];
+
+        return $"{parts[^2]}.{parts[^1]}";
+    }
+
+    private static string NormalizeIdentifier(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        return value
+            .Trim()
+            .Trim('[', ']', '"', '`')
+            .ToLowerInvariant();
+    }
+
     private static string L(string key, string fallback)
     {
         string value = LocalizationService.Instance[key];
         return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
     }
+}
+
+public sealed class SchemaIssueGroupViewModel
+{
+    public SchemaIssueGroupViewModel(SchemaIssueSeverity severity, string title, IReadOnlyList<SchemaIssue> items)
+    {
+        Severity = severity;
+        Title = title;
+        Items = items;
+    }
+
+    public SchemaIssueSeverity Severity { get; }
+
+    public string Title { get; }
+
+    public int Count => Items.Count;
+
+    public IReadOnlyList<SchemaIssue> Items { get; }
 }
