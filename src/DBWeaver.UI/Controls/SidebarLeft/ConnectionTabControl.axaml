@@ -15,7 +15,7 @@
   <UserControl.Styles>
     <Style Selector="TextBlock.section-header-accent">
       <Setter Property="FontSize"         Value="{StaticResource FontSizeCaption}"/>
-      <Setter Property="FontWeight"       Value="Bold"/>
+      <Setter Property="FontWeight"       Value="{StaticResource FontWeightHeading}"/>
       <Setter Property="Foreground"       Value="{StaticResource AccentPrimaryHoverBrush}"/>
       <Setter Property="LetterSpacing"     Value="1.5"/>
     </Style>
@@ -71,6 +71,9 @@
           ConnectionSubtitle="{Binding SidebarConnectionSubtitle}"
           AvailableConnections="{Binding Profiles}"
           SelectedConnection="{Binding SidebarSelectedConnection}"
+          AvailableDatabases="{Binding AvailableDatabases}"
+          SelectedDatabase="{Binding SelectedDatabase}"
+          IsDatabaseSelectionVisible="{Binding IsDatabaseSelectionVisible}"
           AvailableSchemas="{Binding AvailableSchemas}"
           SelectedSchema="{Binding SelectedSchema}"
           MetadataSummary="{Binding ActiveMetadataSummary}"
@@ -79,6 +82,7 @@
           IsReloading="{Binding IsBusy}"
           DisconnectCommand="{Binding DisconnectCommand}"
           SwitchConnectionCommand="{Binding SwitchConnectionCommand}"
+          SwitchDatabaseCommand="{Binding SwitchDatabaseCommand}"
           SwitchSchemaCommand="{Binding SwitchSchemaCommand}"
           Margin="0,0,0,6"/>
 

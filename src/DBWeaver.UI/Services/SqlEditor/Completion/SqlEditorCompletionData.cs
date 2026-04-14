@@ -155,14 +155,14 @@ public sealed class SqlEditorCompletionData : ICompletionData
         {
             Text = label,
             Foreground = labelForeground,
-            FontWeight = FontWeight.SemiBold,
+            FontWeight = ResolveFontWeight("FontWeightTitle", FontWeight.SemiBold),
         };
 
         var descriptionBlock = new TextBlock
         {
             Text = string.IsNullOrWhiteSpace(description) ? string.Empty : description,
             Foreground = CompletionDescriptionBrush,
-            FontSize = 11,
+            FontSize = ResolveFontSize("FontSizeCaption", 11),
             TextTrimming = TextTrimming.CharacterEllipsis,
             MaxWidth = 360,
             IsVisible = !string.IsNullOrWhiteSpace(description),
@@ -211,5 +211,29 @@ public sealed class SqlEditorCompletionData : ICompletionData
             SqlCompletionKind.Join => "[J]",
             _ => "[•]",
         };
+    }
+
+    private static double ResolveFontSize(string key, double fallback)
+    {
+        if (Application.Current?.TryGetResource(key, null, out object? resource) == true)
+        {
+            if (resource is double size)
+                return size;
+            if (resource is int intSize)
+                return intSize;
+        }
+
+        return fallback;
+    }
+
+    private static FontWeight ResolveFontWeight(string key, FontWeight fallback)
+    {
+        if (Application.Current?.TryGetResource(key, null, out object? resource) == true
+            && resource is FontWeight fontWeight)
+        {
+            return fontWeight;
+        }
+
+        return fallback;
     }
 }

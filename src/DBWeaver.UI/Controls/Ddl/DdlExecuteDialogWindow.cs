@@ -118,7 +118,7 @@ public sealed class DdlExecuteDialogWindow : Window
         {
             Text = L("ddl.dialog.reviewBeforeRun", "Review the DDL script before confirming."),
             Foreground = new SolidColorBrush(Color.Parse(UiColorConstants.C_C8D0DC)),
-            FontSize = 12,
+            FontSize = ResolveFontSize("FontSizeBody", 12),
         };
 
         ItemsControl statementList = new()
@@ -129,7 +129,7 @@ public sealed class DdlExecuteDialogWindow : Window
                 {
                     Text = item.CompactSql,
                     FontFamily = new FontFamily("JetBrains Mono,IBM Plex Mono,Cascadia Code,Consolas,monospace"),
-                    FontSize = 11,
+                    FontSize = ResolveFontSize("FontSizeCaption", 11),
                     Margin = new Thickness(0, 1, 0, 1),
                     Foreground = item.IsDestructive
                         ? new SolidColorBrush(Color.Parse(UiColorConstants.C_FCA5A5))
@@ -201,7 +201,7 @@ public sealed class DdlExecuteDialogWindow : Window
                                     Child = new TextBlock
                                     {
                                         Text = "!",
-                                        FontWeight = FontWeight.SemiBold,
+                                        FontWeight = ResolveFontWeight("FontWeightTitle", FontWeight.SemiBold),
                                         HorizontalAlignment = HorizontalAlignment.Center,
                                         VerticalAlignment = VerticalAlignment.Center,
                                         Foreground = ResolveBrush("StatusWarningBrush", UiColorConstants.C_FBBF24),
@@ -216,14 +216,14 @@ public sealed class DdlExecuteDialogWindow : Window
                                         new TextBlock
                                         {
                                             Text = L("ddl.dialog.title", "Execute DDL"),
-                                            FontSize = 14,
-                                            FontWeight = FontWeight.SemiBold,
+                                            FontSize = ResolveFontSize("FontSizeNodeTitle", 14),
+                                            FontWeight = ResolveFontWeight("FontWeightTitle", FontWeight.SemiBold),
                                             Foreground = ResolveBrush("TextPrimaryBrush", UiColorConstants.C_E8EAED),
                                         },
                                         new TextBlock
                                         {
                                             Text = L("ddl.dialog.subtitle", "Review and execute DDL changes safely"),
-                                            FontSize = 11,
+                                            FontSize = ResolveFontSize("FontSizeCaption", 11),
                                             Foreground = ResolveBrush("TextMutedBrush", UiColorConstants.C_9CA3AF),
                                         },
                                     },
@@ -247,15 +247,15 @@ public sealed class DdlExecuteDialogWindow : Window
                                     new TextBlock
                                     {
                                         Text = L("ddl.dialog.confirmQuestion", "Confirm DDL execution on the connected database?"),
-                                        FontSize = 18,
-                                        FontWeight = FontWeight.SemiBold,
+                                        FontSize = ResolveFontSize("FontSizeHeading", 18),
+                                        FontWeight = ResolveFontWeight("FontWeightTitle", FontWeight.SemiBold),
                                         Foreground = new SolidColorBrush(Color.Parse(UiColorConstants.C_E8EAED)),
                                     },
                                     new TextBlock
                                     {
                                         Text = L("ddl.dialog.irreversibleWarning", "This action can change the schema irreversibly."),
                                         Foreground = new SolidColorBrush(Color.Parse(UiColorConstants.C_FBBF24)),
-                                        FontSize = 12,
+                                        FontSize = ResolveFontSize("FontSizeBody", 12),
                                     },
                                     sqlPreview,
                                     _summaryText,
@@ -386,5 +386,29 @@ public sealed class DdlExecuteDialogWindow : Window
             return radius;
 
         return new CornerRadius(fallbackValue);
+    }
+
+    private static double ResolveFontSize(string key, double fallback)
+    {
+        if (Application.Current?.Resources.TryGetResource(key, null, out object? resource) == true)
+        {
+            if (resource is double size)
+                return size;
+            if (resource is int intSize)
+                return intSize;
+        }
+
+        return fallback;
+    }
+
+    private static FontWeight ResolveFontWeight(string key, FontWeight fallback)
+    {
+        if (Application.Current?.Resources.TryGetResource(key, null, out object? resource) == true
+            && resource is FontWeight fontWeight)
+        {
+            return fontWeight;
+        }
+
+        return fallback;
     }
 }

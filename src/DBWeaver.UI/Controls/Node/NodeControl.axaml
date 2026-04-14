@@ -155,15 +155,15 @@
       <Setter Property="BorderThickness"     Value="0"/>
       <Setter Property="RowBackground"       Value="Transparent"/>
       <Setter Property="Foreground"          Value="{StaticResource TextSecondaryBrush}"/>
-      <Setter Property="FontSize"            Value="10"/>
+      <Setter Property="FontSize"            Value="{StaticResource FontSizeCaption}"/>
       <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource BorderSubtleBrush}"/>
       <Setter Property="VerticalGridLinesBrush"   Value="{StaticResource BorderSubtleBrush}"/>
     </Style>
     <Style Selector="DataGrid.node-preview DataGridColumnHeader">
       <Setter Property="Background"      Value="{StaticResource Bg0Brush}"/>
       <Setter Property="Foreground"      Value="{StaticResource AccentPrimaryHoverBrush}"/>
-      <Setter Property="FontSize"        Value="9"/>
-      <Setter Property="FontWeight"      Value="SemiBold"/>
+      <Setter Property="FontSize"        Value="{StaticResource FontSizeCaption}"/>
+      <Setter Property="FontWeight"      Value="{StaticResource FontWeightTitle}"/>
       <Setter Property="Padding"         Value="6,4"/>
       <Setter Property="BorderBrush"     Value="{StaticResource BorderSubtleBrush}"/>
       <Setter Property="BorderThickness" Value="0,0,1,1"/>

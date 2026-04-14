@@ -45,7 +45,8 @@ public sealed class SqlEditorViewModel : ViewModelBase
     private readonly SqlSignatureHelpService _signatureHelpService;
     private readonly SqlHoverDocumentationService _hoverDocumentationService;
     private readonly Func<DbMetadata?> _metadataResolver;
-    private readonly IExplainExecutor _explainExecutor;
+    private readonly SqlEditorExplainService _sqlEditorExplainService;
+    private readonly SqlEditorBenchmarkService _sqlEditorBenchmarkService;
     private CancellationTokenSource? _executionCts;
     private CancellationTokenSource? _benchmarkCts;
     private CancellationTokenSource? _explainCts;
@@ -103,7 +104,9 @@ public sealed class SqlEditorViewModel : ViewModelBase
         SqlCompletionProvider? completionProvider = null,
         Func<DbMetadata?>? metadataResolver = null,
         Func<ConnectionManagerViewModel?>? sharedConnectionManagerResolver = null,
-        ISqlEditorSessionDraftStore? sessionDraftStore = null)
+        ISqlEditorSessionDraftStore? sessionDraftStore = null,
+        SqlEditorExplainService? sqlEditorExplainService = null,
+        SqlEditorBenchmarkService? sqlEditorBenchmarkService = null)
     {
         _localization = localization ?? LocalizationService.Instance;
         _selectionExtractor = selectionExtractor ?? new SqlSelectionExtractor();
@@ -132,7 +135,8 @@ public sealed class SqlEditorViewModel : ViewModelBase
         _signatureHelpService = new SqlSignatureHelpService();
         _hoverDocumentationService = new SqlHoverDocumentationService();
         _metadataResolver = metadataResolver ?? (() => null);
-        _explainExecutor = new ExplainExecutor();
+        _sqlEditorExplainService = sqlEditorExplainService ?? new SqlEditorExplainService();
+        _sqlEditorBenchmarkService = sqlEditorBenchmarkService ?? new SqlEditorBenchmarkService();
         _executionStatusText = L("sqlEditor.status.ready", "Pronto.");
         (bool top1000WithoutWhereEnabled, bool protectMutationWithoutWhereEnabled) = AppSettingsStore.LoadSqlEditorSafetySettings();
         _top1000WithoutWhereEnabled = top1000WithoutWhereEnabled;
@@ -176,6 +180,15 @@ public sealed class SqlEditorViewModel : ViewModelBase
         ExecuteHistoryEntryCommand = new RelayCommand<SqlEditorHistoryEntry>(
             entry => _ = ExecuteHistoryEntryAsync(entry),
             entry => !IsExecuting && entry is not null && !string.IsNullOrWhiteSpace(entry.Sql));
+        ExplainCommand = new RelayCommand<string>(
+            sql => _ = RunExplainForSqlAsync(sql),
+            _ => !IsExplainRunning);
+        BenchmarkCommand = new RelayCommand<string>(
+            sql => _ = RunBenchmarkForSqlAsync(sql),
+            _ => !IsBenchmarkRunning);
+        CancelBenchmarkCommand = new RelayCommand(
+            CancelBenchmark,
+            () => IsBenchmarkRunning);
         CloseResultsSheetCommand = new RelayCommand(
             CloseResultsSheet,
             () => IsResultsSheetOpen);
@@ -210,6 +223,9 @@ public sealed class SqlEditorViewModel : ViewModelBase
     public ICommand ApplySidebarConnectionToTabCommand { get; }
     public ICommand ApplySidebarConnectionToApplicationCommand { get; }
     public ICommand ExecuteHistoryEntryCommand { get; }
+    public ICommand ExplainCommand { get; }
+    public ICommand BenchmarkCommand { get; }
+    public ICommand CancelBenchmarkCommand { get; }
     public ICommand CloseResultsSheetCommand { get; }
     public ICommand ReopenResultsSheetCommand { get; }
     public IReadOnlyList<DatabaseProvider> AvailableProviders { get; } = Enum.GetValues<DatabaseProvider>();
@@ -1317,15 +1333,16 @@ public sealed class SqlEditorViewModel : ViewModelBase
         _explainCts?.Dispose();
         _explainCts = new CancellationTokenSource();
         IsExplainRunning = true;
+        NotifyCommands();
         ExplainSummaryText = L("sqlEditor.explain.running", "Executando explain...");
 
         try
         {
-            ExplainResult result = await _explainExecutor.RunAsync(
+            ExplainResult result = await _sqlEditorExplainService.RunAsync(
                 statement,
                 ActiveTabProvider,
                 ResolveConnectionConfigForActiveTab(),
-                new ExplainOptions(IncludeAnalyze: includeAnalyze, IncludeBuffers: false, Format: ExplainFormat.Text),
+                includeAnalyze,
                 _explainCts.Token);
 
             string planning = result.PlanningTimeMs.HasValue
@@ -1364,6 +1381,7 @@ public sealed class SqlEditorViewModel : ViewModelBase
         finally
         {
             IsExplainRunning = false;
+            NotifyCommands();
         }
     }
 
@@ -1389,21 +1407,18 @@ public sealed class SqlEditorViewModel : ViewModelBase
         _benchmarkCts?.Dispose();
         _benchmarkCts = new CancellationTokenSource();
         IsBenchmarkRunning = true;
+        NotifyCommands();
         BenchmarkProgressText = L("sqlEditor.benchmark.running", "Executando benchmark...");
         BenchmarkSummaryText = string.Empty;
 
-        var iterationExecutor = new AdaptiveBenchmarkIterationExecutor(
-            connectionResolver: ResolveConnectionConfigForActiveTab,
-            sqlResolver: () => statement);
-        var runner = new BenchmarkRunner(iterationExecutor);
-        var executionService = new BenchmarkExecutionService(runner);
-
         try
         {
-            BenchmarkRunConfiguration config = new(iterations, warmupIterations, intervalMs);
-            BenchmarkRunResult result = await executionService.ExecuteAsync(
-                runLabel: $"SQL Editor {DateTime.Now:HH:mm:ss}",
-                configuration: config,
+            BenchmarkRunResult result = await _sqlEditorBenchmarkService.ExecuteAsync(
+                statement,
+                ResolveConnectionConfigForActiveTab,
+                iterations,
+                warmupIterations,
+                intervalMs,
                 onProgress: progress =>
                 {
                     BenchmarkProgressText = $"{progress.Stage} {progress.Completed}/{progress.Total}";
@@ -1436,12 +1451,14 @@ public sealed class SqlEditorViewModel : ViewModelBase
         finally
         {
             IsBenchmarkRunning = false;
+            NotifyCommands();
         }
     }
 
     public void CancelBenchmark()
     {
         _benchmarkCts?.Cancel();
+        NotifyCommands();
     }
 
     public async Task<SqlEditorResultSet?> ExecuteHistoryEntryAsync(SqlEditorHistoryEntry? entry, int maxRows = 1000)
@@ -1702,6 +1719,9 @@ public sealed class SqlEditorViewModel : ViewModelBase
         (ApplySidebarConnectionToTabCommand as RelayCommand)?.NotifyCanExecuteChanged();
         (ApplySidebarConnectionToApplicationCommand as RelayCommand)?.NotifyCanExecuteChanged();
         (ExecuteHistoryEntryCommand as RelayCommand<SqlEditorHistoryEntry>)?.NotifyCanExecuteChanged();
+        (ExplainCommand as RelayCommand<string>)?.NotifyCanExecuteChanged();
+        (BenchmarkCommand as RelayCommand<string>)?.NotifyCanExecuteChanged();
+        (CancelBenchmarkCommand as RelayCommand)?.NotifyCanExecuteChanged();
     }
 
     private void RaiseSqlPanelPropertiesChanged()

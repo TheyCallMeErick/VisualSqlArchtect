@@ -19,17 +19,17 @@
     </Style>
     <Style Selector="TextBlock.h1">
       <Setter Property="FontSize" Value="{StaticResource FontSizeDisplay}"/>
-      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="FontWeight" Value="{StaticResource FontWeightTitle}"/>
       <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
     </Style>
     <Style Selector="TextBlock.h2">
       <Setter Property="FontSize" Value="{StaticResource FontSizeHeading}"/>
-      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="FontWeight" Value="{StaticResource FontWeightTitle}"/>
       <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
     </Style>
     <Style Selector="TextBlock.brand">
       <Setter Property="FontSize" Value="{StaticResource FontSizeHeading}"/>
-      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="FontWeight" Value="{StaticResource FontWeightTitle}"/>
       <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
     </Style>
     <Style Selector="TextBlock.nav">
@@ -37,7 +37,7 @@
       <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
     </Style>
     <Style Selector="TextBlock.nav.active">
-      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="FontWeight" Value="{StaticResource FontWeightTitle}"/>
       <Setter Property="Foreground" Value="{StaticResource AccentPrimaryBrush}"/>
     </Style>
     <Style Selector="TextBlock.meta">

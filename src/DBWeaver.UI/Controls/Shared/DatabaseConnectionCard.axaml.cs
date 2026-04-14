@@ -20,11 +20,17 @@ public partial class DatabaseConnectionCard : UserControl
     public static readonly StyledProperty<string?> SelectedSchemaProperty =
         AvaloniaProperty.Register<DatabaseConnectionCard, string?>(nameof(SelectedSchema));
 
+    public static readonly StyledProperty<string?> SelectedDatabaseProperty =
+        AvaloniaProperty.Register<DatabaseConnectionCard, string?>(nameof(SelectedDatabase));
+
     public static readonly StyledProperty<IEnumerable?> AvailableConnectionsProperty =
         AvaloniaProperty.Register<DatabaseConnectionCard, IEnumerable?>(nameof(AvailableConnections));
 
     public static readonly StyledProperty<IEnumerable?> AvailableSchemasProperty =
         AvaloniaProperty.Register<DatabaseConnectionCard, IEnumerable?>(nameof(AvailableSchemas));
+
+    public static readonly StyledProperty<IEnumerable?> AvailableDatabasesProperty =
+        AvaloniaProperty.Register<DatabaseConnectionCard, IEnumerable?>(nameof(AvailableDatabases));
 
     public static readonly StyledProperty<string?> MetadataSummaryProperty =
         AvaloniaProperty.Register<DatabaseConnectionCard, string?>(nameof(MetadataSummary));
@@ -50,6 +56,12 @@ public partial class DatabaseConnectionCard : UserControl
     public static readonly StyledProperty<ICommand?> SwitchSchemaCommandProperty =
         AvaloniaProperty.Register<DatabaseConnectionCard, ICommand?>(nameof(SwitchSchemaCommand));
 
+    public static readonly StyledProperty<ICommand?> SwitchDatabaseCommandProperty =
+        AvaloniaProperty.Register<DatabaseConnectionCard, ICommand?>(nameof(SwitchDatabaseCommand));
+
+    public static readonly StyledProperty<bool> IsDatabaseSelectionVisibleProperty =
+        AvaloniaProperty.Register<DatabaseConnectionCard, bool>(nameof(IsDatabaseSelectionVisible));
+
     public string? ConnectionName
     {
         get => GetValue(ConnectionNameProperty);
@@ -74,6 +86,12 @@ public partial class DatabaseConnectionCard : UserControl
         set => SetValue(SelectedSchemaProperty, value);
     }
 
+    public string? SelectedDatabase
+    {
+        get => GetValue(SelectedDatabaseProperty);
+        set => SetValue(SelectedDatabaseProperty, value);
+    }
+
     public IEnumerable? AvailableConnections
     {
         get => GetValue(AvailableConnectionsProperty);
@@ -84,6 +102,12 @@ public partial class DatabaseConnectionCard : UserControl
     {
         get => GetValue(AvailableSchemasProperty);
         set => SetValue(AvailableSchemasProperty, value);
+    }
+
+    public IEnumerable? AvailableDatabases
+    {
+        get => GetValue(AvailableDatabasesProperty);
+        set => SetValue(AvailableDatabasesProperty, value);
     }
 
     public string? MetadataSummary
@@ -134,6 +158,18 @@ public partial class DatabaseConnectionCard : UserControl
         set => SetValue(SwitchSchemaCommandProperty, value);
     }
 
+    public ICommand? SwitchDatabaseCommand
+    {
+        get => GetValue(SwitchDatabaseCommandProperty);
+        set => SetValue(SwitchDatabaseCommandProperty, value);
+    }
+
+    public bool IsDatabaseSelectionVisible
+    {
+        get => GetValue(IsDatabaseSelectionVisibleProperty);
+        set => SetValue(IsDatabaseSelectionVisibleProperty, value);
+    }
+
     public DatabaseConnectionCard()
     {
         InitializeComponent();
@@ -151,9 +187,21 @@ public partial class DatabaseConnectionCard : UserControl
             SwitchConnectionCommand.Execute(SelectedConnection);
     }
 
-    private void OnSchemaSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    private void OnDatabaseSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         if (!DatabaseComboBox.IsDropDownOpen)
+            return;
+
+        if (string.IsNullOrWhiteSpace(SelectedDatabase))
+            return;
+
+        if (SwitchDatabaseCommand?.CanExecute(SelectedDatabase) == true)
+            SwitchDatabaseCommand.Execute(SelectedDatabase);
+    }
+
+    private void OnSchemaSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (!SchemaComboBox.IsDropDownOpen)
             return;
 
         if (string.IsNullOrWhiteSpace(SelectedSchema))
@@ -162,7 +210,4 @@ public partial class DatabaseConnectionCard : UserControl
         if (SwitchSchemaCommand?.CanExecute(SelectedSchema) == true)
             SwitchSchemaCommand.Execute(SelectedSchema);
     }
-
-    private void OnDatabaseSelectionChanged(object? sender, SelectionChangedEventArgs e) =>
-        OnSchemaSelectionChanged(sender, e);
 }

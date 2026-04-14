@@ -11,7 +11,7 @@
     <!-- Section header -->
     <Style Selector="TextBlock.section-label">
       <Setter Property="FontSize"      Value="{StaticResource FontSizeCaption}"/>
-      <Setter Property="FontWeight"    Value="Bold"/>
+      <Setter Property="FontWeight"    Value="{StaticResource FontWeightHeading}"/>
       <Setter Property="Foreground"    Value="{StaticResource TextMutedBrush}"/>
       <Setter Property="LetterSpacing" Value="1.5"/>
       <Setter Property="Margin"        Value="0,0,0,6"/>

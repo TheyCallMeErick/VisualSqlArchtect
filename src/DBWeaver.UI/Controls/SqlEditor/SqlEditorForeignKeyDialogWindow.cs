@@ -51,8 +51,8 @@ public sealed class SqlEditorForeignKeyDialogWindow : Window
                             new TextBlock
                             {
                                 Text = relation.ConstraintName,
-                                FontWeight = FontWeight.SemiBold,
-                                Foreground = ResolveBrush("TextPrimaryBrush", Brushes.White),
+                                FontWeight = ResolveFontWeight("FontWeightTitle", FontWeight.SemiBold),
+                                Foreground = ResolveBrush("TextPrimaryBrush", new SolidColorBrush(Color.Parse("#E7ECFF"))),
                             },
                             new TextBlock
                             {
@@ -64,7 +64,7 @@ public sealed class SqlEditorForeignKeyDialogWindow : Window
                             {
                                 Text = $"ON DELETE {relation.OnDelete} | ON UPDATE {relation.OnUpdate}",
                                 Foreground = ResolveBrush("TextMutedBrush", Brushes.Gray),
-                                FontSize = 11,
+                                FontSize = ResolveFontSize("FontSizeCaption", 11),
                             },
                         },
                     },
@@ -116,6 +116,30 @@ public sealed class SqlEditorForeignKeyDialogWindow : Window
             && resource is IBrush brush)
         {
             return brush;
+        }
+
+        return fallback;
+    }
+
+    private static double ResolveFontSize(string key, double fallback)
+    {
+        if (Application.Current?.TryGetResource(key, theme: null, out object? resource) == true)
+        {
+            if (resource is double size)
+                return size;
+            if (resource is int intSize)
+                return intSize;
+        }
+
+        return fallback;
+    }
+
+    private static FontWeight ResolveFontWeight(string key, FontWeight fallback)
+    {
+        if (Application.Current?.TryGetResource(key, theme: null, out object? resource) == true
+            && resource is FontWeight fontWeight)
+        {
+            return fontWeight;
         }
 
         return fallback;

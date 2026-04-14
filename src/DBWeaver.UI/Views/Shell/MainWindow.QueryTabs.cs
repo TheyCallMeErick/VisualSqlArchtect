@@ -48,7 +48,7 @@ public partial class MainWindow
     {
         if (CurrentShell.ActiveWorkspaceDocumentType == WorkspaceDocumentType.SqlEditor)
         {
-            CurrentShell.SetActiveDocumentType(WorkspaceDocumentType.QueryCanvas);
+            CurrentShell.ActivateDocument(WorkspaceDocumentType.QueryCanvas);
             SyncModeToggleState();
         }
 

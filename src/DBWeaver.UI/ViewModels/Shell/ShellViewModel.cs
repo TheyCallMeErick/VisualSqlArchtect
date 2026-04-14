@@ -105,9 +105,9 @@ public sealed class ShellViewModel : ViewModelBase
             MetadataResolver = ResolveSharedMetadata,
             SharedConnectionManagerResolver = ResolveSharedConnectionManager,
         });
-        QueryModeCommand = new RelayCommand(() => SetActiveDocumentType(WorkspaceDocumentType.QueryCanvas));
-        DdlModeCommand = new RelayCommand(() => SetActiveDocumentType(WorkspaceDocumentType.DdlCanvas));
-        SqlEditorModeCommand = new RelayCommand(() => SetActiveDocumentType(WorkspaceDocumentType.SqlEditor));
+        QueryModeCommand = new RelayCommand(() => ActivateDocument(WorkspaceDocumentType.QueryCanvas));
+        DdlModeCommand = new RelayCommand(() => ActivateDocument(WorkspaceDocumentType.DdlCanvas));
+        SqlEditorModeCommand = new RelayCommand(() => ActivateDocument(WorkspaceDocumentType.SqlEditor));
         ShowDdlCanvasWorkspaceTabCommand = new RelayCommand(() => SetActiveDdlWorkspaceTab(DdlWorkspaceTab.Canvas));
         ShowDdlSchemaAnalysisWorkspaceTabCommand = new RelayCommand(() => SetActiveDdlWorkspaceTab(DdlWorkspaceTab.SchemaAnalysis));
         RefreshConnectionManagerObservers();
@@ -128,7 +128,7 @@ public sealed class ShellViewModel : ViewModelBase
         OutputPreview.PropertyChanged += _outputPreviewPropertyChanged;
         if (_canvas is not null)
             RegisterOrUpdateQueryDocument(_canvas);
-        ActivateDocument(WorkspaceDocumentType.QueryCanvas);
+        ActivateDocumentCore(WorkspaceDocumentType.QueryCanvas);
         SyncExtractedPanels();
     }
 
@@ -429,7 +429,7 @@ public sealed class ShellViewModel : ViewModelBase
         ActiveDdlWorkspaceTab = tab;
     }
 
-    public void SetActiveDocumentType(WorkspaceDocumentType documentType)
+    public void ActivateDocument(WorkspaceDocumentType documentType)
     {
         if (ActiveWorkspaceDocumentType == documentType)
             return;
@@ -574,7 +574,7 @@ public sealed class ShellViewModel : ViewModelBase
         foreach (string script in scripts.Where(static s => !string.IsNullOrWhiteSpace(s)))
             targetEditor.ReceiveFromCanvas(script, provider);
 
-        SetActiveDocumentType(WorkspaceDocumentType.SqlEditor);
+        ActivateDocument(WorkspaceDocumentType.SqlEditor);
         SyncExtractedPanels();
     }
 
@@ -589,10 +589,37 @@ public sealed class ShellViewModel : ViewModelBase
         SyncExtractedPanels();
     }
 
+    public bool TryOpenSqlExplainPreview(string sql, DatabaseProvider provider, ConnectionConfig? connectionConfig)
+    {
+        CanvasViewModel? bridgeCanvas = ResolveKnownQueryCanvas() ?? ResolveKnownDdlCanvas();
+        if (bridgeCanvas is null)
+            return false;
+
+        OutputPreview.OpenForSqlExplain(
+            canvas: bridgeCanvas,
+            sql: sql,
+            provider: provider,
+            connectionConfig: connectionConfig);
+        return true;
+    }
+
+    public bool TryOpenSqlBenchmarkPreview(string sql, ConnectionConfig? connectionConfig)
+    {
+        CanvasViewModel? bridgeCanvas = ResolveKnownQueryCanvas() ?? ResolveKnownDdlCanvas();
+        if (bridgeCanvas is null)
+            return false;
+
+        OutputPreview.OpenForSqlBenchmark(
+            canvas: bridgeCanvas,
+            sql: sql,
+            connectionConfig: connectionConfig);
+        return true;
+    }
+
     public void EnterCanvas()
     {
         EnsureCanvas();
-        ActivateDocument(ActiveWorkspaceDocumentType ?? WorkspaceDocumentType.QueryCanvas);
+        ActivateDocumentCore(ActiveWorkspaceDocumentType ?? WorkspaceDocumentType.QueryCanvas);
         IsStartVisible = false;
     }
 
@@ -772,7 +799,7 @@ public sealed class ShellViewModel : ViewModelBase
         };
     }
 
-    private void ActivateDocument(WorkspaceDocumentType documentType)
+    private void ActivateDocumentCore(WorkspaceDocumentType documentType)
     {
         if (documentType == WorkspaceDocumentType.DdlCanvas)
             EnsureDdlCanvas();

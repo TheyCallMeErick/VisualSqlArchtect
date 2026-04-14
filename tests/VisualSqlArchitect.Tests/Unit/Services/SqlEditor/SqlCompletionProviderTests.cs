@@ -67,6 +67,28 @@ public sealed class SqlCompletionProviderTests
     }
 
     [Fact]
+    public void GetSuggestions_ForMySql_IncludesProviderSpecificFunctions()
+    {
+        var sut = new SqlCompletionProvider();
+
+        SqlCompletionRequest request = sut.GetSuggestions("IF", 2, metadata: null, DatabaseProvider.MySql);
+
+        Assert.Contains(request.Suggestions, s => s.Kind == SqlCompletionKind.Function && s.Label == "IFNULL(, )");
+        Assert.DoesNotContain(request.Suggestions, s => s.Kind == SqlCompletionKind.Function && s.Label == "GETDATE()");
+    }
+
+    [Fact]
+    public void GetSuggestions_ForSqlite_IncludesProviderSpecificFunctions()
+    {
+        var sut = new SqlCompletionProvider();
+
+        SqlCompletionRequest request = sut.GetSuggestions("dat", 3, metadata: null, DatabaseProvider.SQLite);
+
+        Assert.Contains(request.Suggestions, s => s.Kind == SqlCompletionKind.Function && s.Label == "datetime('now')");
+        Assert.DoesNotContain(request.Suggestions, s => s.Kind == SqlCompletionKind.Function && s.Label == "GETDATE()");
+    }
+
+    [Fact]
     public void GetSuggestions_WithoutMetadata_DoesNotReturnJoinSuggestions()
     {
         var sut = new SqlCompletionProvider();

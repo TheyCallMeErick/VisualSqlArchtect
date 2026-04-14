@@ -148,10 +148,10 @@
                   <StackPanel Spacing="4">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                       <Border Background="#223E7BFF" CornerRadius="8" Padding="6,1" IsVisible="{Binding IsError, Converter={x:Static BoolConverters.Not}}">
-                        <TextBlock Text="{Binding LevelText}" FontSize="10" Foreground="{StaticResource TextPrimaryBrush}"/>
+                        <TextBlock Text="{Binding LevelText}" FontSize="{StaticResource FontSizeMonoSmall}" Foreground="{StaticResource TextPrimaryBrush}"/>
                       </Border>
                       <Border Background="#22FF6F7E" CornerRadius="8" Padding="6,1" IsVisible="{Binding IsError}">
-                        <TextBlock Text="{Binding LevelText}" FontSize="10" Foreground="{StaticResource TextPrimaryBrush}"/>
+                        <TextBlock Text="{Binding LevelText}" FontSize="{StaticResource FontSizeMonoSmall}" Foreground="{StaticResource TextPrimaryBrush}"/>
                       </Border>
                       <TextBlock Text="{Binding Source}" FontSize="{StaticResource FontSizeCaption}" Foreground="{StaticResource AccentPrimaryHoverBrush}"/>
                       <TextBlock Text="{Binding TimestampText}" FontSize="{StaticResource FontSizeCaption}" Foreground="{StaticResource TextMutedBrush}"/>

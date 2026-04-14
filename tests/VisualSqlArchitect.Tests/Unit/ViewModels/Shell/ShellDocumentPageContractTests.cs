@@ -11,7 +11,7 @@ public class ShellDocumentPageContractTests
     {
         var shell = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
         shell.EnterCanvas();
-        shell.SetActiveDocumentType(WorkspaceDocumentType.QueryCanvas);
+        shell.ActivateDocument(WorkspaceDocumentType.QueryCanvas);
 
         Assert.True(shell.IsQueryDocumentPageActive);
         Assert.True(shell.IsDiagramDocumentPageActive);
@@ -28,7 +28,7 @@ public class ShellDocumentPageContractTests
     {
         var shell = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
         shell.EnterCanvas();
-        shell.SetActiveDocumentType(WorkspaceDocumentType.DdlCanvas);
+        shell.ActivateDocument(WorkspaceDocumentType.DdlCanvas);
 
         Assert.True(shell.IsDdlDocumentPageActive);
         Assert.True(shell.IsDiagramDocumentPageActive);
@@ -45,7 +45,7 @@ public class ShellDocumentPageContractTests
     {
         var shell = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
         shell.EnterCanvas();
-        shell.SetActiveDocumentType(WorkspaceDocumentType.SqlEditor);
+        shell.ActivateDocument(WorkspaceDocumentType.SqlEditor);
 
         Assert.True(shell.IsSqlEditorDocumentPageActive);
         Assert.False(shell.IsDiagramDocumentPageActive);

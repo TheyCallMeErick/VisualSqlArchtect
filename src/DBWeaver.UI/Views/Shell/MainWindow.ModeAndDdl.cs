@@ -201,21 +201,21 @@ public partial class MainWindow
 
     private void QueryModeBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        CurrentShell.SetActiveDocumentType(WorkspaceDocumentType.QueryCanvas);
+        CurrentShell.ActivateDocument(WorkspaceDocumentType.QueryCanvas);
         SyncModeToggleState();
         e.Handled = true;
     }
 
     private void DdlModeBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        CurrentShell.SetActiveDocumentType(WorkspaceDocumentType.DdlCanvas);
+        CurrentShell.ActivateDocument(WorkspaceDocumentType.DdlCanvas);
         SyncModeToggleState();
         e.Handled = true;
     }
 
     private void SqlEditorModeBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        CurrentShell.SetActiveDocumentType(WorkspaceDocumentType.SqlEditor);
+        CurrentShell.ActivateDocument(WorkspaceDocumentType.SqlEditor);
         SyncModeToggleState();
         e.Handled = true;
     }
@@ -486,7 +486,7 @@ public partial class MainWindow
         ddlCanvas.Provider = payload.Provider;
         ddlCanvas.ReplaceGraph(payload.Nodes, payload.Connections);
 
-        CurrentShell.SetActiveDocumentType(WorkspaceDocumentType.DdlCanvas);
+        CurrentShell.ActivateDocument(WorkspaceDocumentType.DdlCanvas);
         SyncModeToggleState();
 
         if (payload.Result.TableCount == 0)
@@ -537,7 +537,7 @@ public partial class MainWindow
         var importer = new DdlSchemaImporter();
         DdlPartialImportResult result = importer.ImportTable(metadata, table.FullName, ddlCanvas, position);
 
-        CurrentShell.SetActiveDocumentType(WorkspaceDocumentType.DdlCanvas);
+        CurrentShell.ActivateDocument(WorkspaceDocumentType.DdlCanvas);
         SyncModeToggleState();
 
         if (!result.TableAdded)

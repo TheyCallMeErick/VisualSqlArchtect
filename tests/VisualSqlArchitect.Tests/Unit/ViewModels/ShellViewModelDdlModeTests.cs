@@ -27,7 +27,7 @@ public class ShellViewModelDdlModeTests
     {
         var vm = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
 
-        vm.SetActiveDocumentType(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.DdlCanvas);
+        vm.ActivateDocument(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.DdlCanvas);
 
         Assert.Equal(ShellViewModel.AppMode.Ddl, vm.ActiveMode);
         Assert.False(vm.IsQueryModeActive);
@@ -108,7 +108,7 @@ public class ShellViewModelDdlModeTests
 
         Assert.Equal(CanvasContext.Query, vm.ActiveCanvasContext);
 
-        vm.SetActiveDocumentType(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.DdlCanvas);
+        vm.ActivateDocument(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.DdlCanvas);
         Assert.Equal(CanvasContext.Ddl, vm.ActiveCanvasContext);
 
         vm.SetViewSubcanvasActive(true);
@@ -117,7 +117,7 @@ public class ShellViewModelDdlModeTests
         vm.SetViewSubcanvasActive(false);
         Assert.Equal(CanvasContext.Ddl, vm.ActiveCanvasContext);
 
-        vm.SetActiveDocumentType(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.QueryCanvas);
+        vm.ActivateDocument(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.QueryCanvas);
         Assert.Equal(CanvasContext.Query, vm.ActiveCanvasContext);
     }
 
@@ -131,7 +131,7 @@ public class ShellViewModelDdlModeTests
         Assert.Same(queryCanvas, vm.ActiveCanvas);
         Assert.Single(queryCanvas.Nodes);
 
-        vm.SetActiveDocumentType(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.DdlCanvas);
+        vm.ActivateDocument(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.DdlCanvas);
         CanvasViewModel ddlCanvas = Assert.IsType<CanvasViewModel>(vm.ActiveCanvas);
         Assert.Same(vm.DdlCanvas, ddlCanvas);
         Assert.Empty(ddlCanvas.Nodes);
@@ -140,7 +140,7 @@ public class ShellViewModelDdlModeTests
         Assert.Single(ddlCanvas.Nodes);
         Assert.Single(queryCanvas.Nodes);
 
-        vm.SetActiveDocumentType(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.QueryCanvas);
+        vm.ActivateDocument(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.QueryCanvas);
         Assert.Same(queryCanvas, vm.ActiveCanvas);
         Assert.Single(queryCanvas.Nodes);
         Assert.Single(ddlCanvas.Nodes);

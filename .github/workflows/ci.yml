@@ -15,6 +15,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -23,6 +25,29 @@ jobs:
 
       - name: Restore dependencies
         run: dotnet restore files.sln
+
+      - name: Lint UI hardcodes (changed files)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE_SHA="${{ github.event.before }}"
+            if [[ -z "$BASE_SHA" || "$BASE_SHA" == "0000000000000000000000000000000000000000" ]]; then
+              BASE_SHA="$(git rev-parse HEAD~1)"
+            fi
+          fi
+
+          mapfile -t CHANGED_FILES < <(git diff --name-only --diff-filter=ACMRTUXB "$BASE_SHA" "${{ github.sha }}")
+          if [[ ${#CHANGED_FILES[@]} -eq 0 ]]; then
+            echo "[ci] no changed files to lint"
+            exit 0
+          fi
+
+          chmod +x scripts/lint-ui-hardcodes.sh
+          ./scripts/lint-ui-hardcodes.sh "${CHANGED_FILES[@]}"
 
       - name: Build
         run: dotnet build files.sln --no-restore -p:Version=$CI_VERSION -p:InformationalVersion=$CI_INFORMATIONAL_VERSION

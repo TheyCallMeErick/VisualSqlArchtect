@@ -1105,6 +1105,34 @@ public sealed class SqlEditorViewModelTests
         Assert.Equal(1, draftStore.ClearDraftsCallCount);
     }
 
+    [Fact]
+    public void ExplainCommand_WithEmptySql_UpdatesExplainSummary()
+    {
+        var sut = new SqlEditorViewModel();
+
+        Assert.True(sut.ExplainCommand.CanExecute("   "));
+        sut.ExplainCommand.Execute("   ");
+
+        AssertLocalized(
+            sut.ExplainSummaryText,
+            "Nada para explicar. Escreva um SQL primeiro.",
+            "Nothing to explain. Write SQL first.");
+    }
+
+    [Fact]
+    public void BenchmarkCommand_WithEmptySql_UpdatesBenchmarkSummary()
+    {
+        var sut = new SqlEditorViewModel();
+
+        Assert.True(sut.BenchmarkCommand.CanExecute(""));
+        sut.BenchmarkCommand.Execute("");
+
+        AssertLocalized(
+            sut.BenchmarkSummaryText,
+            "Nada para medir. Escreva um SQL primeiro.",
+            "Nothing to benchmark. Write SQL first.");
+    }
+
     private sealed class FakeOrchestratorFactory : IDbOrchestratorFactory
     {
         public IDbOrchestrator Create(ConnectionConfig config) => new FakeOrchestrator(config);

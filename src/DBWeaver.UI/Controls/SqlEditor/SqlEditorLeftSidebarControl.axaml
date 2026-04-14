@@ -19,7 +19,7 @@
   <UserControl.Styles>
     <Style Selector="TextBlock.section-header-accent">
       <Setter Property="FontSize" Value="{StaticResource FontSizeCaption}"/>
-      <Setter Property="FontWeight" Value="Bold"/>
+      <Setter Property="FontWeight" Value="{StaticResource FontWeightHeading}"/>
       <Setter Property="Foreground" Value="{StaticResource AccentPrimaryHoverBrush}"/>
       <Setter Property="LetterSpacing" Value="1.5"/>
     </Style>
@@ -101,6 +101,9 @@
             ConnectionSubtitle="{Binding SharedConnectionManager.SidebarConnectionSubtitle}"
             AvailableConnections="{Binding SharedConnectionManager.Profiles}"
             SelectedConnection="{Binding SharedConnectionManager.SidebarSelectedConnection}"
+            AvailableDatabases="{Binding SharedConnectionManager.AvailableDatabases}"
+            SelectedDatabase="{Binding SharedConnectionManager.SelectedDatabase}"
+            IsDatabaseSelectionVisible="{Binding SharedConnectionManager.IsDatabaseSelectionVisible}"
             AvailableSchemas="{Binding SharedConnectionManager.AvailableSchemas}"
             SelectedSchema="{Binding SharedConnectionManager.SelectedSchema}"
             MetadataSummary="{Binding SharedConnectionManager.ActiveMetadataSummary}"
@@ -109,6 +112,7 @@
             IsReloading="{Binding SharedConnectionManager.IsBusy}"
             DisconnectCommand="{Binding SharedConnectionManager.DisconnectCommand}"
             SwitchConnectionCommand="{Binding SharedConnectionManager.SwitchConnectionCommand}"
+            SwitchDatabaseCommand="{Binding SharedConnectionManager.SwitchDatabaseCommand}"
             SwitchSchemaCommand="{Binding SharedConnectionManager.SwitchSchemaCommand}"
             Margin="0,0,0,6"/>
 

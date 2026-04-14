@@ -494,7 +494,7 @@ public partial class MainWindow : Window
             activeDocumentTypeResolver: () => CurrentShell.ActiveWorkspaceDocumentType ?? WorkspaceDocumentType.QueryCanvas,
             applyActiveDocumentType: documentType =>
             {
-                CurrentShell.SetActiveDocumentType(documentType);
+                CurrentShell.ActivateDocument(documentType);
                 SyncModeToggleState();
             },
             workspaceDocumentsResolver: () => CurrentShell.OpenWorkspaceDocuments,
@@ -513,14 +513,14 @@ public partial class MainWindow : Window
             {
                 if (!hasQueryContent && hasDdlContent)
                 {
-                    CurrentShell.SetActiveDocumentType(WorkspaceDocumentType.DdlCanvas);
+                    CurrentShell.ActivateDocument(WorkspaceDocumentType.DdlCanvas);
                     SyncModeToggleState();
                 }
             },
             activeDocumentTypeResolver: () => CurrentShell.ActiveWorkspaceDocumentType ?? WorkspaceDocumentType.QueryCanvas,
             applyActiveDocumentType: documentType =>
             {
-                CurrentShell.SetActiveDocumentType(documentType);
+                CurrentShell.ActivateDocument(documentType);
                 SyncModeToggleState();
             },
             workspaceDocumentsResolver: () => CurrentShell.OpenWorkspaceDocuments,

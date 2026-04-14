@@ -24,7 +24,7 @@ public sealed class SqlEditorCellExpandDialogWindow : Window
         var header = new TextBlock
         {
             Text = $"{columnName} ({columnType})",
-            FontWeight = FontWeight.SemiBold,
+            FontWeight = ResolveFontWeight("FontWeightTitle", FontWeight.SemiBold),
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
 
@@ -97,6 +97,17 @@ public sealed class SqlEditorCellExpandDialogWindow : Window
         }
 
         return new FontFamily(fallback);
+    }
+
+    private static FontWeight ResolveFontWeight(string key, FontWeight fallback)
+    {
+        if (Application.Current?.TryGetResource(key, null, out object? resource) == true
+            && resource is FontWeight fontWeight)
+        {
+            return fontWeight;
+        }
+
+        return fallback;
     }
 
     private static T PlaceAtRow<T>(T control, int row)

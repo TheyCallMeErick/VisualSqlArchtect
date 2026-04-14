@@ -20,7 +20,7 @@
     <!-- Keyword -->
     <Style Selector="TextBlock.tok-Keyword">
       <Setter Property="Foreground" Value="{StaticResource AccentSecondaryHoverBrush}"/>
-      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="FontWeight" Value="{StaticResource FontWeightHeading}"/>
     </Style>
     <!-- Identifier -->
     <Style Selector="TextBlock.tok-Identifier">
@@ -72,7 +72,7 @@
       <Setter Property="CornerRadius" Value="{StaticResource RadiusMD}"/>
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="FontSize" Value="{StaticResource FontSizeBody}"/>
-      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="FontWeight" Value="{StaticResource FontWeightStrong}"/>
       <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
       <Setter Property="Transitions">

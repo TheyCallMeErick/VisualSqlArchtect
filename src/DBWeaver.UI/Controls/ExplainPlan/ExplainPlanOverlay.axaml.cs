@@ -155,19 +155,19 @@ public sealed partial class ExplainPlanOverlay : UserControl
                         new TextBlock
                         {
                             Text = node.Operation,
-                            FontSize = 11,
+                            FontSize = ResourceFontSize("FontSizeBody", 12),
                             Foreground = ResourceBrush("TextPrimaryBrush", UiColorConstants.C_E7ECFF),
                         },
                         new TextBlock
                         {
                             Text = $"cost={node.CostText}",
-                            FontSize = 10,
+                            FontSize = ResourceFontSize("FontSizeMonoSmall", 11),
                             Foreground = ResourceBrush("TextSecondaryBrush", UiColorConstants.C_AEB9D9),
                         },
                         new TextBlock
                         {
                             Text = node.AlertLabel,
-                            FontSize = 9,
+                            FontSize = ResourceFontSize("FontSizeCaption", 11),
                             Foreground = ResourceBrush("StatusWarningBrush", UiColorConstants.C_D9A441),
                             IsVisible = node.HasAlert,
                         },
@@ -198,7 +198,7 @@ public sealed partial class ExplainPlanOverlay : UserControl
             await clipboard.SetTextAsync(suggestion.Sql);
 
         if (TopLevel.GetTopLevel(this)?.DataContext is ShellViewModel shell)
-            shell.SetActiveDocumentType(WorkspaceDocumentType.DdlCanvas);
+            shell.ActivateDocument(WorkspaceDocumentType.DdlCanvas);
     }
 
     private async Task CopyJsonAsync()
@@ -276,5 +276,18 @@ public sealed partial class ExplainPlanOverlay : UserControl
             return radius;
 
         return new CornerRadius(fallbackValue);
+    }
+
+    private static double ResourceFontSize(string key, double fallbackValue)
+    {
+        if (Application.Current?.Resources.TryGetResource(key, null, out object? resource) == true)
+        {
+            if (resource is double sized)
+                return sized;
+            if (resource is int sizei)
+                return sizei;
+        }
+
+        return fallbackValue;
     }
 }

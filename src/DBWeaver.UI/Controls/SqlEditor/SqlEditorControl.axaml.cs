@@ -226,6 +226,15 @@ public partial class SqlEditorControl : UserControl
             return;
         }
 
+        if (string.Equals(e.Text, "(", StringComparison.Ordinal)
+            || string.Equals(e.Text, ",", StringComparison.Ordinal))
+        {
+            TriggerCompletion(autoTriggered: true, allowDebounce: false);
+            if (shouldRefreshSignatureHelp)
+                UpdateSignatureHelpFromCaret();
+            return;
+        }
+
         if (string.Equals(e.Text, " ", StringComparison.Ordinal) && ShouldAutoTriggerCompletionAfterSpace())
         {
             TriggerCompletion(autoTriggered: true, allowDebounce: false);
@@ -983,13 +992,12 @@ public partial class SqlEditorControl : UserControl
         if (topLevel is not Window owner)
             return;
 
-        if (owner.DataContext is ShellViewModel shell && shell.Canvas is not null)
+        if (owner.DataContext is ShellViewModel shell
+            && shell.TryOpenSqlExplainPreview(
+                sql,
+                _vm.ActiveTabProvider,
+                _vm.GetActiveConnectionConfigForTools()))
         {
-            shell.OutputPreview.OpenForSqlExplain(
-                canvas: shell.Canvas,
-                sql: sql,
-                provider: _vm.ActiveTabProvider,
-                connectionConfig: _vm.GetActiveConnectionConfigForTools());
             return;
         }
 
@@ -1013,12 +1021,11 @@ public partial class SqlEditorControl : UserControl
         if (topLevel is not Window owner)
             return;
 
-        if (owner.DataContext is ShellViewModel shell && shell.Canvas is not null)
+        if (owner.DataContext is ShellViewModel shell
+            && shell.TryOpenSqlBenchmarkPreview(
+                sql,
+                _vm.GetActiveConnectionConfigForTools()))
         {
-            shell.OutputPreview.OpenForSqlBenchmark(
-                canvas: shell.Canvas,
-                sql: sql,
-                connectionConfig: _vm.GetActiveConnectionConfigForTools());
             return;
         }
 

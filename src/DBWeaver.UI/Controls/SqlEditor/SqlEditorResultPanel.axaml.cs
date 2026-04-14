@@ -660,7 +660,7 @@ public partial class SqlEditorResultPanel : UserControl
         titleRow.Children.Add(new TextBlock
         {
             Text = columnName,
-            FontWeight = FontWeight.SemiBold,
+            FontWeight = ResolveResourceFontWeight("FontWeightTitle", FontWeight.SemiBold),
         });
         if (schemaColumn?.IsPrimaryKey == true)
         {
@@ -710,7 +710,7 @@ public partial class SqlEditorResultPanel : UserControl
         header.Children.Add(new TextBlock
         {
             Text = columnTypeLabel,
-            FontSize = 11,
+            FontSize = ResolveResourceFontSize("FontSizeCaption", 11),
             Foreground = ResolveResourceBrush("TextMutedBrush", Brushes.Gray),
         });
 
@@ -777,6 +777,30 @@ public partial class SqlEditorResultPanel : UserControl
             && resource is IBrush brush)
         {
             return brush;
+        }
+
+        return fallback;
+    }
+
+    private static double ResolveResourceFontSize(string resourceKey, double fallback)
+    {
+        if (Application.Current?.TryGetResource(resourceKey, null, out object? resource) == true)
+        {
+            if (resource is double size)
+                return size;
+            if (resource is int intSize)
+                return intSize;
+        }
+
+        return fallback;
+    }
+
+    private static FontWeight ResolveResourceFontWeight(string resourceKey, FontWeight fallback)
+    {
+        if (Application.Current?.TryGetResource(resourceKey, null, out object? resource) == true
+            && resource is FontWeight fontWeight)
+        {
+            return fontWeight;
         }
 
         return fallback;

@@ -634,7 +634,7 @@ public sealed class BezierWireLayer : Control
             FlowDirection.LeftToRight,
             OverlayTypeface,
             size,
-            Brushes.White);
+            new SolidColorBrush(Color.Parse(UiColorConstants.C_E7ECFF)));
         return formatted.Width;
     }
 

@@ -51,13 +51,13 @@ public sealed class SqlEditorReportExportDialogWindow : Window
         _typeDescription = new TextBlock
         {
             Foreground = ResolveBrush("TextMutedBrush", UiColorConstants.C_8B95A8),
-            FontSize = 11,
+            FontSize = ResolveFontSize("FontSizeCaption", 11),
             TextWrapping = TextWrapping.Wrap,
         };
 
         _typeBadge = new TextBlock
         {
-            FontSize = 10,
+            FontSize = ResolveFontSize("FontSizeMonoSmall", 11),
             FontFamily = ResolveFontFamily("MonoFont", "JetBrains Mono,IBM Plex Mono,Cascadia Code,Consolas,monospace"),
             Foreground = ResolveBrush("StatusOkBrush", UiColorConstants.C_34D399),
         };
@@ -225,8 +225,8 @@ public sealed class SqlEditorReportExportDialogWindow : Window
                         {
                             Text = title,
                             Foreground = ResolveBrush("TextMutedBrush", UiColorConstants.C_8B95A8),
-                            FontWeight = FontWeight.Bold,
-                            FontSize = 10,
+                            FontWeight = ResolveFontWeight("FontWeightHeading", FontWeight.Bold),
+                            FontSize = ResolveFontSize("FontSizeMonoSmall", 11),
                             LetterSpacing = 1.3,
                         },
                         child,
@@ -281,14 +281,14 @@ public sealed class SqlEditorReportExportDialogWindow : Window
                                 {
                                     Text = L("sqlEditor.export.dialog.title", "Exportar Dados SQL"),
                                     Foreground = ResolveBrush("TextPrimaryBrush", UiColorConstants.C_E6EDF8),
-                                    FontWeight = FontWeight.SemiBold,
-                                    FontSize = 14,
+                                    FontWeight = ResolveFontWeight("FontWeightTitle", FontWeight.SemiBold),
+                                    FontSize = ResolveFontSize("FontSizeNodeTitle", 14),
                                 },
                                 new TextBlock
                                 {
                                     Text = L("sqlEditor.export.dialog.subtitle", "Escolha o formato e os metadados do artefato antes de exportar."),
                                     Foreground = ResolveBrush("TextMutedBrush", UiColorConstants.C_8B95A8),
-                                    FontSize = 11,
+                                    FontSize = ResolveFontSize("FontSizeCaption", 11),
                                 },
                             },
                         },
@@ -417,5 +417,29 @@ public sealed class SqlEditorReportExportDialogWindow : Window
             return font;
 
         return new FontFamily(fallbackFamily);
+    }
+
+    private static double ResolveFontSize(string key, double fallback)
+    {
+        if (Application.Current?.Resources.TryGetResource(key, null, out object? resource) == true)
+        {
+            if (resource is double size)
+                return size;
+            if (resource is int intSize)
+                return intSize;
+        }
+
+        return fallback;
+    }
+
+    private static FontWeight ResolveFontWeight(string key, FontWeight fallback)
+    {
+        if (Application.Current?.Resources.TryGetResource(key, null, out object? resource) == true
+            && resource is FontWeight fontWeight)
+        {
+            return fontWeight;
+        }
+
+        return fallback;
     }
 }

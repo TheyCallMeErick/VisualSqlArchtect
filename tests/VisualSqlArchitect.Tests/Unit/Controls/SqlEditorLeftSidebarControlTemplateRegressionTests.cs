@@ -13,6 +13,7 @@ public sealed class SqlEditorLeftSidebarControlTemplateRegressionTests
         Assert.Contains("Text=\"{Binding [sidebar.tab.connection], Source={x:Static loc:LocalizationService.Instance}}\"", xaml);
         Assert.Contains("shared:DatabaseConnectionCard", xaml);
         Assert.Contains("SwitchConnectionCommand=\"{Binding SharedConnectionManager.SwitchConnectionCommand}\"", xaml);
+        Assert.Contains("SwitchDatabaseCommand=\"{Binding SharedConnectionManager.SwitchDatabaseCommand}\"", xaml);
         Assert.Contains("SwitchSchemaCommand=\"{Binding SharedConnectionManager.SwitchSchemaCommand}\"", xaml);
         Assert.DoesNotContain("ShowDialectSelector", xaml);
         Assert.DoesNotContain("FallbackDialect", xaml);

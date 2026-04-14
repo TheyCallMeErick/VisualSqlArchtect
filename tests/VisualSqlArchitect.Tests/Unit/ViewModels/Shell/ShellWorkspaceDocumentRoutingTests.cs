@@ -1,6 +1,7 @@
 using DBWeaver.UI.Services.Workspace.Models;
 using DBWeaver.UI.Serialization;
 using DBWeaver.UI.ViewModels;
+using DBWeaver.Core;
 
 namespace DBWeaver.Tests.Unit.ViewModels.Shell;
 
@@ -36,15 +37,15 @@ public class ShellWorkspaceDocumentRoutingTests
         var shell = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
         shell.EnterCanvas();
 
-        shell.SetActiveDocumentType(WorkspaceDocumentType.DdlCanvas);
+        shell.ActivateDocument(WorkspaceDocumentType.DdlCanvas);
         OpenWorkspaceDocument ddlActive = Assert.IsType<OpenWorkspaceDocument>(shell.ActiveWorkspaceDocument);
         Assert.Equal(WorkspaceDocumentType.DdlCanvas, ddlActive.Descriptor.DocumentType);
 
-        shell.SetActiveDocumentType(WorkspaceDocumentType.SqlEditor);
+        shell.ActivateDocument(WorkspaceDocumentType.SqlEditor);
         OpenWorkspaceDocument sqlEditorActive = Assert.IsType<OpenWorkspaceDocument>(shell.ActiveWorkspaceDocument);
         Assert.Equal(WorkspaceDocumentType.SqlEditor, sqlEditorActive.Descriptor.DocumentType);
 
-        shell.SetActiveDocumentType(WorkspaceDocumentType.QueryCanvas);
+        shell.ActivateDocument(WorkspaceDocumentType.QueryCanvas);
         OpenWorkspaceDocument queryActive = Assert.IsType<OpenWorkspaceDocument>(shell.ActiveWorkspaceDocument);
         Assert.Equal(WorkspaceDocumentType.QueryCanvas, queryActive.Descriptor.DocumentType);
     }
@@ -55,8 +56,8 @@ public class ShellWorkspaceDocumentRoutingTests
         var shell = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
         shell.EnterCanvas();
 
-        shell.SetActiveDocumentType(WorkspaceDocumentType.SqlEditor);
-        shell.SetActiveDocumentType(WorkspaceDocumentType.SqlEditor);
+        shell.ActivateDocument(WorkspaceDocumentType.SqlEditor);
+        shell.ActivateDocument(WorkspaceDocumentType.SqlEditor);
 
         int sqlEditorDocumentCount = 0;
         foreach (OpenWorkspaceDocument document in shell.OpenWorkspaceDocuments)
@@ -101,7 +102,7 @@ public class ShellWorkspaceDocumentRoutingTests
         Assert.True(shell.IsConnectionManagerOverlayVisible);
         Assert.True(shell.IsOutputPreviewModalVisible);
 
-        shell.SetActiveDocumentType(WorkspaceDocumentType.SqlEditor);
+        shell.ActivateDocument(WorkspaceDocumentType.SqlEditor);
 
         Assert.False(shell.IsDiagramOverlayLayerVisible);
         Assert.False(shell.IsConnectionManagerOverlayVisible);
@@ -115,7 +116,7 @@ public class ShellWorkspaceDocumentRoutingTests
     {
         var shell = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
         shell.EnterCanvas();
-        shell.SetActiveDocumentType(WorkspaceDocumentType.DdlCanvas);
+        shell.ActivateDocument(WorkspaceDocumentType.DdlCanvas);
 
         CanvasViewModel ddlCanvas = Assert.IsType<CanvasViewModel>(shell.ActiveDdlCanvasDocument);
         ddlCanvas.ConnectionManager.Open();
@@ -130,7 +131,7 @@ public class ShellWorkspaceDocumentRoutingTests
     {
         var shell = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
         shell.EnterCanvas();
-        shell.SetActiveDocumentType(WorkspaceDocumentType.DdlCanvas);
+        shell.ActivateDocument(WorkspaceDocumentType.DdlCanvas);
 
         CanvasViewModel queryCanvas = shell.EnsureCanvas();
         queryCanvas.ConnectionManager.Open();
@@ -145,7 +146,7 @@ public class ShellWorkspaceDocumentRoutingTests
     {
         var shell = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
         shell.EnterCanvas();
-        shell.SetActiveDocumentType(WorkspaceDocumentType.SqlEditor);
+        shell.ActivateDocument(WorkspaceDocumentType.SqlEditor);
 
         CanvasViewModel queryCanvas = shell.EnsureCanvas();
         queryCanvas.ConnectionManager.Open();
@@ -153,6 +154,41 @@ public class ShellWorkspaceDocumentRoutingTests
         Assert.Same(queryCanvas.ConnectionManager, shell.ActiveConnectionManager);
         Assert.True(shell.IsConnectionManagerVisible);
         Assert.True(shell.IsConnectionManagerOverlayVisible);
+    }
+
+    [Fact]
+    public void SqlEditorMode_ExplainPreview_DoesNotRequireSwitchingToCanvas()
+    {
+        var shell = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
+        shell.EnterCanvas();
+        shell.ActivateDocument(WorkspaceDocumentType.SqlEditor);
+
+        bool opened = shell.TryOpenSqlExplainPreview(
+            sql: "SELECT 1",
+            provider: DatabaseProvider.Postgres,
+            connectionConfig: null);
+
+        Assert.True(opened);
+        Assert.Equal(WorkspaceDocumentType.SqlEditor, shell.ActiveWorkspaceDocumentType);
+        Assert.True(shell.OutputPreview.IsVisible);
+        Assert.True(shell.OutputPreview.IsSqlExplainMode);
+    }
+
+    [Fact]
+    public void SqlEditorMode_BenchmarkPreview_DoesNotRequireSwitchingToCanvas()
+    {
+        var shell = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
+        shell.EnterCanvas();
+        shell.ActivateDocument(WorkspaceDocumentType.SqlEditor);
+
+        bool opened = shell.TryOpenSqlBenchmarkPreview(
+            sql: "SELECT 1",
+            connectionConfig: null);
+
+        Assert.True(opened);
+        Assert.Equal(WorkspaceDocumentType.SqlEditor, shell.ActiveWorkspaceDocumentType);
+        Assert.True(shell.OutputPreview.IsVisible);
+        Assert.True(shell.OutputPreview.IsSqlBenchmarkMode);
     }
 
     [Fact]

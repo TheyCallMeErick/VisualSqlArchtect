@@ -38,8 +38,8 @@ public sealed class SqlToolOutputDialogWindow : Window
                 ? L("sqlEditor.tools.noSummary", "Sem resumo disponivel.")
                 : summary,
             TextWrapping = TextWrapping.Wrap,
-            Foreground = ResolveBrush("TextPrimaryBrush", Brushes.White),
-            FontWeight = FontWeight.SemiBold,
+            Foreground = ResolveBrush("TextPrimaryBrush", new SolidColorBrush(Color.Parse("#E7ECFF"))),
+            FontWeight = ResolveFontWeight("FontWeightTitle", FontWeight.SemiBold),
         };
 
         var detailsBox = new TextBox
@@ -98,6 +98,17 @@ public sealed class SqlToolOutputDialogWindow : Window
             && resource is IBrush brush)
         {
             return brush;
+        }
+
+        return fallback;
+    }
+
+    private static FontWeight ResolveFontWeight(string key, FontWeight fallback)
+    {
+        if (Application.Current?.TryGetResource(key, theme: null, out object? resource) == true
+            && resource is FontWeight fontWeight)
+        {
+            return fontWeight;
         }
 
         return fallback;

@@ -33,7 +33,7 @@
     </Style>
     <Style Selector="Button.modal-tab.active">
       <Setter Property="Foreground" Value="{StaticResource AccentPrimaryHoverBrush}"/>
-      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="FontWeight" Value="{StaticResource FontWeightTitle}"/>
       <Setter Property="Background" Value="{StaticResource Bg2Brush}"/>
       <Setter Property="CornerRadius" Value="{StaticResource RadiusSM}"/>
     </Style>

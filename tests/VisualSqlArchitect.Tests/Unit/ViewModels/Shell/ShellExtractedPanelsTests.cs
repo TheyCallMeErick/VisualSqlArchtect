@@ -10,7 +10,7 @@ public class ShellExtractedPanelsTests
         var shell = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
         CanvasViewModel query = shell.EnsureCanvas();
 
-        shell.SetActiveDocumentType(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.QueryCanvas);
+        shell.ActivateDocument(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.QueryCanvas);
 
         Assert.Same(query.Sidebar, shell.LeftSidebar.QuerySidebar);
         Assert.Same(query.PropertyPanel, shell.RightSidebar.PropertyPanel);
@@ -38,7 +38,7 @@ public class ShellExtractedPanelsTests
         var shell = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
         shell.EnsureCanvas();
 
-        shell.SetActiveDocumentType(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.DdlCanvas);
+        shell.ActivateDocument(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.DdlCanvas);
 
         CanvasViewModel ddl = Assert.IsType<CanvasViewModel>(shell.DdlCanvas);
         Assert.Same(ddl.Sidebar, shell.LeftSidebar.QuerySidebar);
@@ -53,7 +53,7 @@ public class ShellExtractedPanelsTests
         var shell = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
         shell.EnsureCanvas();
 
-        shell.SetActiveDocumentType(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.DdlCanvas);
+        shell.ActivateDocument(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.DdlCanvas);
         shell.SetViewSubcanvasActive(true);
 
         Assert.Equal(CanvasContext.ViewSubcanvas, shell.ActiveCanvasContext);
@@ -65,15 +65,15 @@ public class ShellExtractedPanelsTests
         var shell = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
         shell.EnsureCanvas();
 
-        shell.SetActiveDocumentType(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.DdlCanvas);
+        shell.ActivateDocument(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.DdlCanvas);
         shell.SetViewSubcanvasActive(true);
 
-        shell.SetActiveDocumentType(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.QueryCanvas);
+        shell.ActivateDocument(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.QueryCanvas);
         Assert.Equal(CanvasContext.Query, shell.ActiveCanvasContext);
         Assert.True(shell.LeftSidebar.IsVisible);
         Assert.True(shell.RightSidebar.IsVisible);
 
-        shell.SetActiveDocumentType(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.DdlCanvas);
+        shell.ActivateDocument(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.DdlCanvas);
         Assert.Equal(CanvasContext.Ddl, shell.ActiveCanvasContext);
         Assert.True(shell.LeftSidebar.IsVisible);
         Assert.True(shell.RightSidebar.IsVisible);
@@ -94,13 +94,13 @@ public class ShellExtractedPanelsTests
         var shell = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
         shell.EnsureCanvas();
 
-        shell.SetActiveDocumentType(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.QueryCanvas);
+        shell.ActivateDocument(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.QueryCanvas);
         Assert.True(shell.IsDiagramModeActive);
 
-        shell.SetActiveDocumentType(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.DdlCanvas);
+        shell.ActivateDocument(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.DdlCanvas);
         Assert.True(shell.IsDiagramModeActive);
 
-        shell.SetActiveDocumentType(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.SqlEditor);
+        shell.ActivateDocument(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.SqlEditor);
         Assert.False(shell.IsDiagramModeActive);
     }
 }
