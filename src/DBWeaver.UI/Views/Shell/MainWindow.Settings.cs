@@ -189,7 +189,7 @@ public partial class MainWindow
         mutationGuardToggle.IsChecked = protectMutationWithoutWhereEnabled;
         _isSyncingEditorSafetySettings = false;
 
-        CurrentShell.SqlEditor.SetExecutionSafetyOptions(top1000WithoutWhereEnabled, protectMutationWithoutWhereEnabled);
+        CurrentShell.SetSqlEditorExecutionSafetyOptions(top1000WithoutWhereEnabled, protectMutationWithoutWhereEnabled);
     }
 
     private void SettingsEditorTop1000Toggle_Changed(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -213,7 +213,7 @@ public partial class MainWindow
         bool protectMutationWithoutWhereEnabled = this.FindControl<CheckBox>("SettingsEditorMutationGuardToggle")?.IsChecked == true;
 
         AppSettingsStore.SaveSqlEditorSafetySettings(top1000WithoutWhereEnabled, protectMutationWithoutWhereEnabled);
-        CurrentShell.SqlEditor.SetExecutionSafetyOptions(top1000WithoutWhereEnabled, protectMutationWithoutWhereEnabled);
+        CurrentShell.SetSqlEditorExecutionSafetyOptions(top1000WithoutWhereEnabled, protectMutationWithoutWhereEnabled);
 
         string status = string.Format(
             "Editor atualizado: TOP 1000 sem WHERE {0}; protecao de mutacao sem WHERE {1}.",

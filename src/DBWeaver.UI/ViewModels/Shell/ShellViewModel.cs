@@ -631,6 +631,22 @@ public sealed class ShellViewModel : ViewModelBase
 
     public void SelectSettingsSection(ESettingsSection section) => SelectedSettingsSection = section;
 
+    public void SetSqlEditorExecutionSafetyOptions(bool top1000WithoutWhereEnabled, bool protectMutationWithoutWhereEnabled)
+    {
+        SqlEditor.SetExecutionSafetyOptions(top1000WithoutWhereEnabled, protectMutationWithoutWhereEnabled);
+
+        foreach (OpenWorkspaceDocument document in _workspaceRouter.OpenDocuments)
+        {
+            if (document.DocumentViewModel is not SqlEditorViewModel sqlEditor)
+                continue;
+
+            if (ReferenceEquals(sqlEditor, SqlEditor))
+                continue;
+
+            sqlEditor.SetExecutionSafetyOptions(top1000WithoutWhereEnabled, protectMutationWithoutWhereEnabled);
+        }
+    }
+
     public void SetCommandPalette(CommandPaletteViewModel viewModel)
     {
         ArgumentNullException.ThrowIfNull(viewModel);
