@@ -617,7 +617,7 @@ public partial class MainWindow : Window
         try
         {
             await OpenModeAwareOutputPreviewAsync();
-            CurrentShell.OutputPreview.ShowDiagnosticsTabCommand.Execute(null);
+            CurrentShell.OutputPreview.ShowCanvasDiagnosticsTabCommand.Execute(null);
         }
         catch (Exception ex)
         {

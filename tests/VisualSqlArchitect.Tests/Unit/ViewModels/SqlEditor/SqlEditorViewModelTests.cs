@@ -831,6 +831,75 @@ public sealed class SqlEditorViewModelTests
     }
 
     [Fact]
+    public async Task ExecuteSelectionOrCurrent_WhenMutationProtectionDisabled_ExecutesWithoutConfirmation()
+    {
+        ConnectionConfig config = new(
+            DatabaseProvider.Postgres,
+            "localhost",
+            5432,
+            "db",
+            "user",
+            "pass");
+        var factory = new CountingOrchestratorFactory();
+        var sut = new SqlEditorViewModel(
+            executionService: new SqlEditorExecutionService(factory),
+            connectionConfigResolver: () => config);
+        sut.SetExecutionSafetyOptions(top1000WithoutWhereEnabled: true, protectMutationWithoutWhereEnabled: false);
+        sut.ActiveTab.SqlText = "DELETE FROM orders;";
+
+        SqlEditorResultSet result = await sut.ExecuteSelectionOrCurrentAsync(0, 0, 0);
+
+        Assert.True(result.Success);
+        Assert.False(sut.HasPendingMutationConfirmation);
+        Assert.Equal(1, factory.ExecuteCount);
+        Assert.Single(sut.ExecutionHistory);
+    }
+
+    [Fact]
+    public async Task ExecuteSelectionOrCurrent_WhenTop1000LimiterEnabledForSelectWithoutWhere_CapsTo1000()
+    {
+        ConnectionConfig config = new(
+            DatabaseProvider.Postgres,
+            "localhost",
+            5432,
+            "db",
+            "user",
+            "pass");
+        var factory = new MaxRowsCapturingOrchestratorFactory();
+        var sut = new SqlEditorViewModel(
+            executionService: new SqlEditorExecutionService(factory),
+            connectionConfigResolver: () => config);
+        sut.SetExecutionSafetyOptions(top1000WithoutWhereEnabled: true, protectMutationWithoutWhereEnabled: true);
+        sut.ActiveTab.SqlText = "SELECT * FROM orders;";
+
+        _ = await sut.ExecuteSelectionOrCurrentAsync(0, 0, 0, maxRows: 5000);
+
+        Assert.Equal(1000, factory.LastRequestedMaxRows);
+    }
+
+    [Fact]
+    public async Task ExecuteSelectionOrCurrent_WhenTop1000LimiterDisabledForSelectWithoutWhere_UsesUnlimitedMaxRows()
+    {
+        ConnectionConfig config = new(
+            DatabaseProvider.Postgres,
+            "localhost",
+            5432,
+            "db",
+            "user",
+            "pass");
+        var factory = new MaxRowsCapturingOrchestratorFactory();
+        var sut = new SqlEditorViewModel(
+            executionService: new SqlEditorExecutionService(factory),
+            connectionConfigResolver: () => config);
+        sut.SetExecutionSafetyOptions(top1000WithoutWhereEnabled: false, protectMutationWithoutWhereEnabled: true);
+        sut.ActiveTab.SqlText = "SELECT * FROM orders;";
+
+        _ = await sut.ExecuteSelectionOrCurrentAsync(0, 0, 0, maxRows: 250);
+
+        Assert.Equal(int.MaxValue, factory.LastRequestedMaxRows);
+    }
+
+    [Fact]
     public async Task ExecuteAllAsync_ExecutesStatementsSequentially()
     {
         ConnectionConfig config = new(
@@ -1265,6 +1334,38 @@ public sealed class SqlEditorViewModelTests
 
             public Task<PreviewResult> ExecutePreviewAsync(string sql, int maxRows = PreviewExecutionOptions.UseConfiguredDefault, CancellationToken ct = default) =>
                 Task.FromResult(new PreviewResult(true, BuildTable(rows: 1), null, TimeSpan.FromMilliseconds(1), 1));
+
+            public Task<DdlExecutionResult> ExecuteDdlAsync(string sql, bool stopOnError = true, CancellationToken ct = default) =>
+                Task.FromResult(new DdlExecutionResult(true, []));
+
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class MaxRowsCapturingOrchestratorFactory : IDbOrchestratorFactory
+    {
+        public int LastRequestedMaxRows { get; private set; }
+
+        public IDbOrchestrator Create(ConnectionConfig config) => new MaxRowsCapturingOrchestrator(config, this);
+        public Func<ConnectionConfig, IDbOrchestrator>? Register(DatabaseProvider provider, Func<ConnectionConfig, IDbOrchestrator> factory) => null;
+        public bool IsRegistered(DatabaseProvider provider) => true;
+
+        private sealed class MaxRowsCapturingOrchestrator(ConnectionConfig config, MaxRowsCapturingOrchestratorFactory owner) : IDbOrchestrator
+        {
+            public DatabaseProvider Provider => config.Provider;
+            public ConnectionConfig Config => config;
+
+            public Task<ConnectionTestResult> TestConnectionAsync(CancellationToken ct = default) =>
+                Task.FromResult(new ConnectionTestResult(true));
+
+            public Task<DatabaseSchema> GetSchemaAsync(CancellationToken ct = default) =>
+                Task.FromResult(new DatabaseSchema("db", config.Provider, []));
+
+            public Task<PreviewResult> ExecutePreviewAsync(string sql, int maxRows = PreviewExecutionOptions.UseConfiguredDefault, CancellationToken ct = default)
+            {
+                owner.LastRequestedMaxRows = maxRows;
+                return Task.FromResult(new PreviewResult(true, BuildTable(rows: 1), null, TimeSpan.FromMilliseconds(1), 1));
+            }
 
             public Task<DdlExecutionResult> ExecuteDdlAsync(string sql, bool stopOnError = true, CancellationToken ct = default) =>
                 Task.FromResult(new DdlExecutionResult(true, []));

@@ -69,6 +69,11 @@ public class ShellViewModelDdlModeTests
     {
         var vm = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
 
+        vm.SelectSettingsSection(ShellViewModel.ESettingsSection.Editor);
+        Assert.True(vm.IsEditorSectionSelected);
+        Assert.False(string.IsNullOrWhiteSpace(vm.SettingsSectionTitle));
+        Assert.False(string.IsNullOrWhiteSpace(vm.SettingsSectionSubtitle));
+
         vm.SelectSettingsSection(ShellViewModel.ESettingsSection.DateTime);
         string dateTimeTitle = vm.SettingsSectionTitle;
         Assert.False(string.IsNullOrWhiteSpace(dateTimeTitle));

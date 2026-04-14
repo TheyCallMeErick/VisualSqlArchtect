@@ -9,6 +9,8 @@ namespace DBWeaver.UI.Services.Settings;
 public sealed class AppSettings
 {
     public string ThemeVariant { get; set; } = "Dark";
+    public bool SqlEditorTop1000WithoutWhereEnabled { get; set; } = true;
+    public bool SqlEditorProtectMutationWithoutWhereEnabled { get; set; } = true;
     public ShortcutSettingsSection Shortcuts { get; set; } = new();
     public double SqlEditorResultsSheetHeight { get; set; } = 260;
     public Dictionary<string, string> SqlEditorResultFiltersByTab { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -86,6 +88,23 @@ public static class AppSettingsStore
     {
         AppSettings settings = Load();
         settings.ThemeVariant = string.IsNullOrWhiteSpace(variant) ? "Dark" : variant;
+        Save(settings);
+    }
+
+    public static (bool Top1000WithoutWhereEnabled, bool ProtectMutationWithoutWhereEnabled) LoadSqlEditorSafetySettings()
+    {
+        AppSettings settings = Load();
+        return (
+            settings.SqlEditorTop1000WithoutWhereEnabled,
+            settings.SqlEditorProtectMutationWithoutWhereEnabled
+        );
+    }
+
+    public static void SaveSqlEditorSafetySettings(bool top1000WithoutWhereEnabled, bool protectMutationWithoutWhereEnabled)
+    {
+        AppSettings settings = Load();
+        settings.SqlEditorTop1000WithoutWhereEnabled = top1000WithoutWhereEnabled;
+        settings.SqlEditorProtectMutationWithoutWhereEnabled = protectMutationWithoutWhereEnabled;
         Save(settings);
     }
 

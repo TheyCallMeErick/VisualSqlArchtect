@@ -35,6 +35,7 @@ public sealed class ShellViewModel : ViewModelBase
     public enum ESettingsSection
     {
         Appearance,
+        Editor,
         LanguageRegion,
         DateTime,
         KeyboardShortcuts,
@@ -43,10 +44,17 @@ public sealed class ShellViewModel : ViewModelBase
         Accessibility,
     }
 
+    public enum DdlWorkspaceTab
+    {
+        Canvas,
+        SchemaAnalysis,
+    }
+
     private bool _isStartVisible = true;
     private bool _isSettingsVisible;
     private ESettingsSection _selectedSettingsSection = ESettingsSection.Appearance;
     private AppMode _activeMode = AppMode.Query;
+    private DdlWorkspaceTab _activeDdlWorkspaceTab = DdlWorkspaceTab.Canvas;
     private bool _isViewSubcanvasActive;
     private CanvasViewModel? _canvas;
     private CanvasViewModel? _ddlCanvas;
@@ -101,6 +109,8 @@ public sealed class ShellViewModel : ViewModelBase
         QueryModeCommand = new RelayCommand(() => SetActiveMode(AppMode.Query));
         DdlModeCommand = new RelayCommand(() => SetActiveMode(AppMode.Ddl));
         SqlEditorModeCommand = new RelayCommand(() => SetActiveMode(AppMode.SqlEditor));
+        ShowDdlCanvasWorkspaceTabCommand = new RelayCommand(() => SetActiveDdlWorkspaceTab(DdlWorkspaceTab.Canvas));
+        ShowDdlSchemaAnalysisWorkspaceTabCommand = new RelayCommand(() => SetActiveDdlWorkspaceTab(DdlWorkspaceTab.SchemaAnalysis));
         RefreshConnectionManagerObservers();
         _localizationPropertyChanged = (_, e) =>
         {
@@ -189,6 +199,10 @@ public sealed class ShellViewModel : ViewModelBase
 
     public RelayCommand SqlEditorModeCommand { get; }
 
+    public RelayCommand ShowDdlCanvasWorkspaceTabCommand { get; }
+
+    public RelayCommand ShowDdlSchemaAnalysisWorkspaceTabCommand { get; }
+
     public bool IsStartVisible
     {
         get => _isStartVisible;
@@ -229,6 +243,23 @@ public sealed class ShellViewModel : ViewModelBase
 
     public bool IsDiagramModeActive => IsDiagramDocumentPageActive;
 
+    public DdlWorkspaceTab ActiveDdlWorkspaceTab
+    {
+        get => _activeDdlWorkspaceTab;
+        private set
+        {
+            if (!Set(ref _activeDdlWorkspaceTab, value))
+                return;
+
+            RaisePropertyChanged(nameof(IsDdlCanvasWorkspaceTabActive));
+            RaisePropertyChanged(nameof(IsDdlSchemaAnalysisWorkspaceTabActive));
+        }
+    }
+
+    public bool IsDdlCanvasWorkspaceTabActive => ActiveDdlWorkspaceTab == DdlWorkspaceTab.Canvas;
+
+    public bool IsDdlSchemaAnalysisWorkspaceTabActive => ActiveDdlWorkspaceTab == DdlWorkspaceTab.SchemaAnalysis;
+
     public CanvasContext ActiveCanvasContext
     {
         get => _activeCanvasContext;
@@ -246,7 +277,7 @@ public sealed class ShellViewModel : ViewModelBase
     public bool IsDiagramOverlayLayerVisible => IsCanvasVisible && IsDiagramDocumentPageActive;
 
     public bool IsConnectionManagerOverlayVisible =>
-        ActiveConnectionManager?.IsVisible == true;
+        IsCanvasVisible && (Canvas?.ConnectionManager.IsVisible == true || DdlCanvas?.ConnectionManager.IsVisible == true);
 
     public bool IsOutputPreviewModalVisible =>
         IsCanvasVisible && OutputPreview.IsVisible;
@@ -255,13 +286,7 @@ public sealed class ShellViewModel : ViewModelBase
         ActiveWorkspaceDocument?.DocumentViewModel as CanvasViewModel;
 
     public ConnectionManagerViewModel? ActiveConnectionManager =>
-        ActiveWorkspaceDocumentType switch
-        {
-            WorkspaceDocumentType.DdlCanvas => DdlCanvas?.ConnectionManager ?? Canvas?.ConnectionManager,
-            WorkspaceDocumentType.QueryCanvas => Canvas?.ConnectionManager ?? DdlCanvas?.ConnectionManager,
-            WorkspaceDocumentType.SqlEditor => ResolveSharedConnectionManager(),
-            _ => ActiveCanvas?.ConnectionManager ?? ResolveSharedConnectionManager(),
-        };
+        ResolveVisibleConnectionManager() ?? ResolveDocumentConnectionManager();
 
     public SidebarViewModel? ActiveDiagramSidebar => ActiveCanvas?.Sidebar;
 
@@ -310,6 +335,7 @@ public sealed class ShellViewModel : ViewModelBase
                 return;
 
             RaisePropertyChanged(nameof(IsAppearanceSectionSelected));
+            RaisePropertyChanged(nameof(IsEditorSectionSelected));
             RaisePropertyChanged(nameof(IsLanguageRegionSectionSelected));
             RaisePropertyChanged(nameof(IsDateTimeSectionSelected));
             RaisePropertyChanged(nameof(IsKeyboardShortcutsSectionSelected));
@@ -324,6 +350,7 @@ public sealed class ShellViewModel : ViewModelBase
     public string SettingsSectionTitle => SelectedSettingsSection switch
     {
         ESettingsSection.Appearance => Localize("settings.section.appearance.title", "Themes"),
+        ESettingsSection.Editor => Localize("settings.section.editor.title", "Editor"),
         ESettingsSection.LanguageRegion => Localize("settings.section.languageRegion.title", "Language & Region"),
         ESettingsSection.DateTime => Localize("settings.section.dateTime.title", "Date & Time"),
         ESettingsSection.KeyboardShortcuts => Localize("settings.section.keyboard.title", "Keyboard Shortcuts"),
@@ -336,6 +363,7 @@ public sealed class ShellViewModel : ViewModelBase
     public string SettingsSectionSubtitle => SelectedSettingsSection switch
     {
         ESettingsSection.Appearance => Localize("settings.section.appearance.subtitle", "Choose your style or customize your theme"),
+        ESettingsSection.Editor => Localize("settings.section.editor.subtitle", "Control SQL safety defaults in editor execution."),
         ESettingsSection.LanguageRegion => Localize("settings.section.languageRegion.subtitle", "Manage language and regional formatting"),
         ESettingsSection.DateTime => Localize("settings.section.wip.subtitle", "Work in progress."),
         ESettingsSection.KeyboardShortcuts => Localize("settings.section.keyboard.subtitle", "Customize keyboard shortcuts used by command palette and canvas execution."),
@@ -346,6 +374,7 @@ public sealed class ShellViewModel : ViewModelBase
     };
 
     public bool IsAppearanceSectionSelected => SelectedSettingsSection == ESettingsSection.Appearance;
+    public bool IsEditorSectionSelected => SelectedSettingsSection == ESettingsSection.Editor;
     public bool IsLanguageRegionSectionSelected => SelectedSettingsSection == ESettingsSection.LanguageRegion;
     public bool IsDateTimeSectionSelected => SelectedSettingsSection == ESettingsSection.DateTime;
     public bool IsKeyboardShortcutsSectionSelected => SelectedSettingsSection == ESettingsSection.KeyboardShortcuts;
@@ -404,6 +433,14 @@ public sealed class ShellViewModel : ViewModelBase
         };
 
         SetActiveDocumentType(documentType);
+    }
+
+    public void SetActiveDdlWorkspaceTab(DdlWorkspaceTab tab)
+    {
+        if (!Enum.IsDefined(tab))
+            throw new ArgumentOutOfRangeException(nameof(tab), tab, "Unsupported DDL workspace tab.");
+
+        ActiveDdlWorkspaceTab = tab;
     }
 
     public void SetActiveDocumentType(WorkspaceDocumentType documentType)
@@ -604,6 +641,7 @@ public sealed class ShellViewModel : ViewModelBase
         {
             if (e.PropertyName == nameof(ConnectionManagerViewModel.IsVisible))
             {
+                RaisePropertyChanged(nameof(ActiveConnectionManager));
                 RaisePropertyChanged(nameof(IsConnectionManagerVisible));
                 RaisePropertyChanged(nameof(IsConnectionManagerOverlayVisible));
             }
@@ -632,6 +670,30 @@ public sealed class ShellViewModel : ViewModelBase
             if (_observedDdlConnectionManager is not null)
                 _observedDdlConnectionManager.PropertyChanged += _activeConnectionManagerPropertyChanged;
         }
+    }
+
+    private ConnectionManagerViewModel? ResolveDocumentConnectionManager() =>
+        ActiveWorkspaceDocumentType switch
+        {
+            WorkspaceDocumentType.DdlCanvas => DdlCanvas?.ConnectionManager ?? Canvas?.ConnectionManager,
+            WorkspaceDocumentType.QueryCanvas => Canvas?.ConnectionManager ?? DdlCanvas?.ConnectionManager,
+            WorkspaceDocumentType.SqlEditor => ResolveSharedConnectionManager(),
+            _ => ActiveCanvas?.ConnectionManager ?? ResolveSharedConnectionManager(),
+        };
+
+    private ConnectionManagerViewModel? ResolveVisibleConnectionManager()
+    {
+        ConnectionManagerViewModel? documentManager = ResolveDocumentConnectionManager();
+        if (documentManager?.IsVisible == true)
+            return documentManager;
+
+        if (Canvas?.ConnectionManager.IsVisible == true)
+            return Canvas.ConnectionManager;
+
+        if (DdlCanvas?.ConnectionManager.IsVisible == true)
+            return DdlCanvas.ConnectionManager;
+
+        return null;
     }
 
     private void SyncExtractedPanels()

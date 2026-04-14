@@ -17,6 +17,8 @@ public class AppSettingsStoreTests
         {
             AppSettings settings = AppSettingsStore.Load();
             Assert.Equal("Dark", settings.ThemeVariant);
+            Assert.True(settings.SqlEditorTop1000WithoutWhereEnabled);
+            Assert.True(settings.SqlEditorProtectMutationWithoutWhereEnabled);
         }
         finally
         {
@@ -189,6 +191,29 @@ public class AppSettingsStoreTests
 
             Assert.Empty(AppSettingsStore.LoadSqlEditorExecutionHistory("profile-a"));
             Assert.Single(AppSettingsStore.LoadSqlEditorExecutionHistory("profile-b"));
+        }
+        finally
+        {
+            AppSettingsStore.SettingsPathOverride = null;
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SaveAndLoadSqlEditorSafetySettings_RoundTripsFlags()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "vsa-settings-tests", Guid.NewGuid().ToString("N"));
+        string file = Path.Combine(root, "app.settings.json");
+        AppSettingsStore.SettingsPathOverride = file;
+
+        try
+        {
+            AppSettingsStore.SaveSqlEditorSafetySettings(top1000WithoutWhereEnabled: false, protectMutationWithoutWhereEnabled: false);
+            (bool top1000Enabled, bool guardEnabled) = AppSettingsStore.LoadSqlEditorSafetySettings();
+
+            Assert.False(top1000Enabled);
+            Assert.False(guardEnabled);
         }
         finally
         {

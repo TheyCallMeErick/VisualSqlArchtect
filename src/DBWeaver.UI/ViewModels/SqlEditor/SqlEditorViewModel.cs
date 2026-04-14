@@ -10,6 +10,7 @@ using System.Diagnostics;
 using System.Data;
 using System.IO;
 using System.Windows.Input;
+using System.Text.RegularExpressions;
 using Material.Icons;
 using DBWeaver.UI.Services.ConnectionManager.Models;
 
@@ -73,6 +74,8 @@ public sealed class SqlEditorViewModel : ViewModelBase
     private int _cursorColumn = 1;
     private string _signatureHelpText = string.Empty;
     private string _hoverDocumentationText = string.Empty;
+    private bool _top1000WithoutWhereEnabled;
+    private bool _protectMutationWithoutWhereEnabled;
     private bool _isExplainRunning;
     private string _explainSummaryText = string.Empty;
     private string _explainRawOutput = string.Empty;
@@ -131,6 +134,9 @@ public sealed class SqlEditorViewModel : ViewModelBase
         _metadataResolver = metadataResolver ?? (() => null);
         _explainExecutor = new ExplainExecutor();
         _executionStatusText = L("sqlEditor.status.ready", "Pronto.");
+        (bool top1000WithoutWhereEnabled, bool protectMutationWithoutWhereEnabled) = AppSettingsStore.LoadSqlEditorSafetySettings();
+        _top1000WithoutWhereEnabled = top1000WithoutWhereEnabled;
+        _protectMutationWithoutWhereEnabled = protectMutationWithoutWhereEnabled;
         _preferredResultsSheetHeight = ClampResultsSheetHeight(AppSettingsStore.LoadSqlEditorResultsSheetHeight());
         Tabs = new SqlEditorTabManagerViewModel(_localization);
         RestoreOrInitializeTabs(initialProvider, initialConnectionProfileId);
@@ -207,6 +213,19 @@ public sealed class SqlEditorViewModel : ViewModelBase
     public ICommand CloseResultsSheetCommand { get; }
     public ICommand ReopenResultsSheetCommand { get; }
     public IReadOnlyList<DatabaseProvider> AvailableProviders { get; } = Enum.GetValues<DatabaseProvider>();
+
+    public bool Top1000WithoutWhereEnabled
+    {
+        get => _top1000WithoutWhereEnabled;
+        private set => Set(ref _top1000WithoutWhereEnabled, value);
+    }
+
+    public bool ProtectMutationWithoutWhereEnabled
+    {
+        get => _protectMutationWithoutWhereEnabled;
+        private set => Set(ref _protectMutationWithoutWhereEnabled, value);
+    }
+
     public DatabaseProvider ActiveTabProvider
     {
         get => ResolveConnectionConfigForActiveTab()?.Provider ?? ActiveTab.Provider;
@@ -1588,11 +1607,13 @@ public sealed class SqlEditorViewModel : ViewModelBase
     private async Task<SqlEditorResultSet> ExecuteSqlAsync(string? sql, int maxRows, bool enforceMutationGuard)
     {
         ConnectionConfig? config = ResolveConnectionConfigForActiveTab();
+        int effectiveMaxRows = ResolveEffectiveMaxRows(sql, maxRows);
+        bool shouldEnforceMutationGuard = enforceMutationGuard && ProtectMutationWithoutWhereEnabled;
         SqlEditorMutationExecutionOutcome outcome = await _mutationExecutionOrchestrator.ExecuteAsync(
             sql,
             config,
-            maxRows,
-            enforceMutationGuard,
+            effectiveMaxRows,
+            shouldEnforceMutationGuard,
             BuildEstimateCacheKey(sql),
             _executionCts?.Token ?? CancellationToken.None);
 
@@ -1616,6 +1637,36 @@ public sealed class SqlEditorViewModel : ViewModelBase
         PendingMutationDiff = null;
         _pendingMutationSql = null;
         _pendingMutationEstimatedRows = null;
+    }
+
+    public void SetExecutionSafetyOptions(bool top1000WithoutWhereEnabled, bool protectMutationWithoutWhereEnabled)
+    {
+        Top1000WithoutWhereEnabled = top1000WithoutWhereEnabled;
+        ProtectMutationWithoutWhereEnabled = protectMutationWithoutWhereEnabled;
+    }
+
+    private int ResolveEffectiveMaxRows(string? sql, int requestedMaxRows)
+    {
+        int normalizedRequestedMaxRows = requestedMaxRows > 0 ? requestedMaxRows : 1000;
+        if (!Top1000WithoutWhereEnabled && IsSelectWithoutWhere(sql))
+            return int.MaxValue;
+
+        if (Top1000WithoutWhereEnabled && IsSelectWithoutWhere(sql))
+            return Math.Min(normalizedRequestedMaxRows, 1000);
+
+        return normalizedRequestedMaxRows;
+    }
+
+    private static bool IsSelectWithoutWhere(string? sql)
+    {
+        if (string.IsNullOrWhiteSpace(sql))
+            return false;
+
+        string statement = sql.TrimStart();
+        if (!Regex.IsMatch(statement, @"^(SELECT|WITH)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            return false;
+
+        return !Regex.IsMatch(statement, @"\bWHERE\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     }
 
     private void NotifyMutationCommands()

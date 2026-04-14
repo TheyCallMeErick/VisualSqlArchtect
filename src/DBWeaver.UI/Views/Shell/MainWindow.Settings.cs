@@ -13,6 +13,8 @@ namespace DBWeaver.UI;
 
 public partial class MainWindow
 {
+    private bool _isSyncingEditorSafetySettings;
+
     private void SettingsBackdrop_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
         GetSettingsModule().CloseSettings();
@@ -38,6 +40,7 @@ public partial class MainWindow
     {
         GetSettingsModule().OpenSettings(keepStartVisible);
         SyncLanguageComboSelection();
+        SyncEditorSafetySettingsToggles();
         EnsureKeyboardShortcutsSettingsPanel();
     }
 
@@ -170,6 +173,53 @@ public partial class MainWindow
             GetKeyboardShortcutsViewModel(),
             showHeader: false,
             statusCallback: (message, isError) => SetSettingsStatus(message, isError));
+    }
+
+    private void SyncEditorSafetySettingsToggles()
+    {
+        CheckBox? top1000Toggle = this.FindControl<CheckBox>("SettingsEditorTop1000Toggle");
+        CheckBox? mutationGuardToggle = this.FindControl<CheckBox>("SettingsEditorMutationGuardToggle");
+        if (top1000Toggle is null || mutationGuardToggle is null)
+            return;
+
+        (bool top1000WithoutWhereEnabled, bool protectMutationWithoutWhereEnabled) = AppSettingsStore.LoadSqlEditorSafetySettings();
+
+        _isSyncingEditorSafetySettings = true;
+        top1000Toggle.IsChecked = top1000WithoutWhereEnabled;
+        mutationGuardToggle.IsChecked = protectMutationWithoutWhereEnabled;
+        _isSyncingEditorSafetySettings = false;
+
+        CurrentShell.SqlEditor.SetExecutionSafetyOptions(top1000WithoutWhereEnabled, protectMutationWithoutWhereEnabled);
+    }
+
+    private void SettingsEditorTop1000Toggle_Changed(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        ApplyEditorSafetySettingsFromToggles();
+        e.Handled = true;
+    }
+
+    private void SettingsEditorMutationGuardToggle_Changed(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        ApplyEditorSafetySettingsFromToggles();
+        e.Handled = true;
+    }
+
+    private void ApplyEditorSafetySettingsFromToggles()
+    {
+        if (_isSyncingEditorSafetySettings)
+            return;
+
+        bool top1000WithoutWhereEnabled = this.FindControl<CheckBox>("SettingsEditorTop1000Toggle")?.IsChecked == true;
+        bool protectMutationWithoutWhereEnabled = this.FindControl<CheckBox>("SettingsEditorMutationGuardToggle")?.IsChecked == true;
+
+        AppSettingsStore.SaveSqlEditorSafetySettings(top1000WithoutWhereEnabled, protectMutationWithoutWhereEnabled);
+        CurrentShell.SqlEditor.SetExecutionSafetyOptions(top1000WithoutWhereEnabled, protectMutationWithoutWhereEnabled);
+
+        string status = string.Format(
+            "Editor atualizado: TOP 1000 sem WHERE {0}; protecao de mutacao sem WHERE {1}.",
+            top1000WithoutWhereEnabled ? "ON" : "OFF",
+            protectMutationWithoutWhereEnabled ? "ON" : "OFF");
+        SetSettingsStatus(status, isError: false);
     }
 
     private void SetSettingsStatus(string message, bool isError)

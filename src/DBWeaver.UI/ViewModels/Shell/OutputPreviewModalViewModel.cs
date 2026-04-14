@@ -19,7 +19,8 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
     public enum EOutputPreviewTab
     {
         Primary,
-        Diagnostics,
+        CanvasDiagnostics,
+        StructureDiagnostics,
     }
 
     private bool _isVisible;
@@ -43,11 +44,15 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
     {
         CloseCommand = new RelayCommand(Close);
         ShowPrimaryTabCommand = new RelayCommand(() => ActiveTab = EOutputPreviewTab.Primary);
-        ShowDiagnosticsTabCommand = new RelayCommand(() => ActiveTab = EOutputPreviewTab.Diagnostics);
+        ShowCanvasDiagnosticsTabCommand = new RelayCommand(() => ActiveTab = EOutputPreviewTab.CanvasDiagnostics);
+        ShowStructureDiagnosticsTabCommand = new RelayCommand(() => ActiveTab = EOutputPreviewTab.StructureDiagnostics);
+        ShowDiagnosticsTabCommand = new RelayCommand(() => ActiveTab = EOutputPreviewTab.CanvasDiagnostics);
     }
 
     public RelayCommand CloseCommand { get; }
     public RelayCommand ShowPrimaryTabCommand { get; }
+    public RelayCommand ShowCanvasDiagnosticsTabCommand { get; }
+    public RelayCommand ShowStructureDiagnosticsTabCommand { get; }
     public RelayCommand ShowDiagnosticsTabCommand { get; }
 
     public bool IsVisible
@@ -71,9 +76,13 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
             RaisePropertyChanged(nameof(IsUnavailableMode));
             RaisePropertyChanged(nameof(Title));
             RaisePropertyChanged(nameof(PrimaryTabLabel));
-            RaisePropertyChanged(nameof(HasDiagnostics));
+            RaisePropertyChanged(nameof(CanvasDiagnosticsTabLabel));
+            RaisePropertyChanged(nameof(StructureDiagnosticsTabLabel));
+            RaisePropertyChanged(nameof(HasCanvasDiagnostics));
+            RaisePropertyChanged(nameof(HasStructureDiagnostics));
             RaisePropertyChanged(nameof(ShowPrimaryContent));
-            RaisePropertyChanged(nameof(ShowDiagnosticsContent));
+            RaisePropertyChanged(nameof(ShowCanvasDiagnosticsContent));
+            RaisePropertyChanged(nameof(ShowStructureDiagnosticsContent));
             RaisePropertyChanged(nameof(ShowQueryPrimaryContent));
             RaisePropertyChanged(nameof(ShowDdlPrimaryContent));
             RaisePropertyChanged(nameof(ShowSqlBenchmarkPrimaryContent));
@@ -98,7 +107,8 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
                 return;
 
             RaisePropertyChanged(nameof(ShowPrimaryContent));
-            RaisePropertyChanged(nameof(ShowDiagnosticsContent));
+            RaisePropertyChanged(nameof(ShowCanvasDiagnosticsContent));
+            RaisePropertyChanged(nameof(ShowStructureDiagnosticsContent));
             RaisePropertyChanged(nameof(ShowQueryPrimaryContent));
             RaisePropertyChanged(nameof(ShowDdlPrimaryContent));
             RaisePropertyChanged(nameof(ShowSqlBenchmarkPrimaryContent));
@@ -120,8 +130,13 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
         private set => Set(ref _primaryTabLabel, value);
     }
 
+    public string CanvasDiagnosticsTabLabel => "Diagnosticos do canvas";
+
+    public string StructureDiagnosticsTabLabel => "Diagnosticos de estrutura";
+
     public bool ShowPrimaryContent => ActiveTab == EOutputPreviewTab.Primary;
-    public bool ShowDiagnosticsContent => HasDiagnostics && ActiveTab == EOutputPreviewTab.Diagnostics;
+    public bool ShowCanvasDiagnosticsContent => HasCanvasDiagnostics && ActiveTab == EOutputPreviewTab.CanvasDiagnostics;
+    public bool ShowStructureDiagnosticsContent => HasStructureDiagnostics && ActiveTab == EOutputPreviewTab.StructureDiagnostics;
     public bool ShowQueryPrimaryContent => IsQueryMode && ShowPrimaryContent;
     public bool ShowDdlPrimaryContent => IsDdlMode && ShowPrimaryContent;
     public bool ShowSqlBenchmarkPrimaryContent => IsSqlBenchmarkMode && ShowPrimaryContent;
@@ -137,12 +152,14 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
             if (!Set(ref _diagnostics, value))
                 return;
 
-            RaisePropertyChanged(nameof(HasDiagnostics));
-            RaisePropertyChanged(nameof(ShowDiagnosticsContent));
+            RaisePropertyChanged(nameof(HasCanvasDiagnostics));
+            RaisePropertyChanged(nameof(ShowCanvasDiagnosticsContent));
         }
     }
 
-    public bool HasDiagnostics => Diagnostics is not null;
+    public bool HasCanvasDiagnostics => Diagnostics is not null;
+
+    public bool HasStructureDiagnostics => IsDdlMode && DdlTool is not null;
 
     public string QuerySqlText
     {
@@ -195,7 +212,14 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
     public LiveDdlBarViewModel? DdlTool
     {
         get => _ddlTool;
-        private set => Set(ref _ddlTool, value);
+        private set
+        {
+            if (!Set(ref _ddlTool, value))
+                return;
+
+            RaisePropertyChanged(nameof(HasStructureDiagnostics));
+            RaisePropertyChanged(nameof(ShowStructureDiagnosticsContent));
+        }
     }
 
     public string UnavailableMessage

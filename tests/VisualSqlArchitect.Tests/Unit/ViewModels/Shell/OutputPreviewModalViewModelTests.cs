@@ -25,7 +25,8 @@ public class OutputPreviewModalViewModelTests
         Assert.True(vm.IsVisible);
         Assert.True(vm.IsDdlMode);
         Assert.False(vm.HasDdlSql);
-        Assert.True(vm.HasDiagnostics);
+        Assert.True(vm.HasCanvasDiagnostics);
+        Assert.True(vm.HasStructureDiagnostics);
         Assert.Same(liveDdl, vm.DdlTool);
     }
 
@@ -49,7 +50,8 @@ public class OutputPreviewModalViewModelTests
         Assert.True(vm.IsVisible);
         Assert.True(vm.IsDdlMode);
         Assert.False(vm.HasDdlSql);
-        Assert.True(vm.HasDiagnostics);
+        Assert.True(vm.HasCanvasDiagnostics);
+        Assert.True(vm.HasStructureDiagnostics);
         Assert.Same(liveDdl, vm.DdlTool);
     }
 
@@ -63,7 +65,8 @@ public class OutputPreviewModalViewModelTests
         Assert.True(vm.IsVisible);
         Assert.True(vm.IsUnavailableMode);
         Assert.True(vm.ShowUnavailablePrimaryContent);
-        Assert.False(vm.HasDiagnostics);
+        Assert.False(vm.HasCanvasDiagnostics);
+        Assert.False(vm.HasStructureDiagnostics);
         Assert.Null(vm.DdlTool);
         Assert.Equal("Preview indisponível para este documento.", vm.UnavailableMessage);
     }

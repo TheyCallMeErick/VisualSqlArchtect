@@ -1,0 +1,300 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:DBWeaver.UI.ViewModels"
+             xmlns:loc="using:DBWeaver.UI.Services.Localization"
+             xmlns:mi="using:Material.Icons.Avalonia"
+             x:Class="DBWeaver.UI.Controls.Shell.DdlSchemaAnalysisWorkspaceControl"
+             x:DataType="vm:LiveDdlBarViewModel">
+
+  <UserControl.Styles>
+    <Style Selector="Border.analysis-panel">
+      <Setter Property="Background" Value="{StaticResource Bg1Brush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderSubtleBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="{StaticResource RadiusMD}"/>
+    </Style>
+    <Style Selector="Button.analysis-filter-chip">
+      <Setter Property="Padding" Value="10,5"/>
+      <Setter Property="CornerRadius" Value="{StaticResource RadiusPill}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderSubtleBrush}"/>
+      <Setter Property="Background" Value="{StaticResource Bg2Brush}"/>
+      <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Button.analysis-filter-chip:pointerover">
+      <Setter Property="BorderBrush" Value="{StaticResource AccentPrimaryHoverBrush}"/>
+      <Setter Property="Background" Value="{StaticResource Bg3Brush}"/>
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*" Margin="8">
+    <Border Grid.Row="0"
+            Classes="analysis-panel"
+            Padding="12"
+            Margin="0,0,0,8">
+      <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" RowDefinitions="Auto,Auto">
+        <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="8" Margin="0,0,12,0">
+          <mi:MaterialIcon Kind="Radar" Width="16" Height="16" VerticalAlignment="Center" Foreground="{StaticResource AccentPrimaryHoverBrush}"/>
+          <TextBlock Text="{Binding [preview.schemaAnalysis.issues], Source={x:Static loc:LocalizationService.Instance}}"
+                     FontWeight="{StaticResource FontWeightTitle}"
+                     Foreground="{StaticResource TextPrimaryBrush}"
+                     VerticalAlignment="Center"/>
+        </StackPanel>
+
+        <Button Grid.Row="0" Grid.Column="1"
+                Margin="0,0,8,0"
+                Command="{Binding RunSchemaAnalysisCommand}"
+                Classes="secondary"
+                Content="{Binding [preview.schemaAnalysis.run], Source={x:Static loc:LocalizationService.Instance}}"/>
+
+        <TextBlock Grid.Row="0" Grid.Column="2"
+                   Text="{Binding SchemaAnalysisPanel.StateMessage}"
+                   TextTrimming="CharacterEllipsis"
+                   VerticalAlignment="Center"
+                   Foreground="{StaticResource TextSecondaryBrush}"/>
+
+        <Button Grid.Row="0" Grid.Column="3"
+                Margin="8,0,0,0"
+                Command="{Binding CancelSchemaAnalysisCommand}"
+                Classes="secondary"
+                Content="{Binding [preview.schemaAnalysis.cancel], Source={x:Static loc:LocalizationService.Instance}}"/>
+
+        <TextBlock Grid.Row="0" Grid.Column="4"
+                   Margin="8,0,0,0"
+                   Text="{Binding SchemaAnalysisPanel.State}"
+                   VerticalAlignment="Center"
+                   Foreground="{StaticResource TextMutedBrush}"/>
+
+        <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="5"
+                   Margin="0,8,0,0"
+                   FontSize="{StaticResource FontSizeCaption}"
+                   Foreground="{StaticResource TextMutedBrush}">
+          <Run Text="{Binding [preview.schemaAnalysis.summary.issues], Source={x:Static loc:LocalizationService.Instance}}"/>
+          <Run Text=" "/>
+          <Run Text="{Binding SchemaAnalysisPanel.FilteredTotalIssues}"/>
+          <Run Text=" "/>
+          <Run Text="{Binding [preview.schemaAnalysis.summary.rawPrefix], Source={x:Static loc:LocalizationService.Instance}}"/>
+          <Run Text="{Binding SchemaAnalysisPanel.RawTotalIssues}"/>
+          <Run Text=" "/>
+          <Run Text="{Binding [preview.schemaAnalysis.summary.critical], Source={x:Static loc:LocalizationService.Instance}}"/>
+          <Run Text=" "/>
+          <Run Text="{Binding SchemaAnalysisPanel.FilteredCriticalCount}"/>
+          <Run Text=" "/>
+          <Run Text="{Binding [preview.schemaAnalysis.summary.warning], Source={x:Static loc:LocalizationService.Instance}}"/>
+          <Run Text=" "/>
+          <Run Text="{Binding SchemaAnalysisPanel.FilteredWarningCount}"/>
+          <Run Text=" "/>
+          <Run Text="{Binding [preview.schemaAnalysis.summary.info], Source={x:Static loc:LocalizationService.Instance}}"/>
+          <Run Text=" "/>
+          <Run Text="{Binding SchemaAnalysisPanel.FilteredInfoCount}"/>
+        </TextBlock>
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="1" ColumnDefinitions="320,*">
+      <Border Grid.Column="0"
+              Classes="analysis-panel"
+              Padding="10">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="10">
+            <Button Command="{Binding SchemaAnalysisPanel.ClearFiltersCommand}"
+                    Classes="analysis-filter-chip"
+                    HorizontalAlignment="Left"
+                    Content="{Binding [preview.schemaAnalysis.clearFilters], Source={x:Static loc:LocalizationService.Instance}}"/>
+
+            <TextBlock Text="{Binding [preview.schemaAnalysis.severity], Source={x:Static loc:LocalizationService.Instance}}"
+                       FontSize="{StaticResource FontSizeCaption}"
+                       Foreground="{StaticResource TextMutedBrush}"/>
+            <WrapPanel Orientation="Horizontal" ItemHeight="28" ItemWidth="96">
+              <CheckBox Content="Info" IsChecked="{Binding SchemaAnalysisPanel.IncludeInfo, Mode=TwoWay}"/>
+              <CheckBox Content="Warning" IsChecked="{Binding SchemaAnalysisPanel.IncludeWarning, Mode=TwoWay}"/>
+              <CheckBox Content="Critical" IsChecked="{Binding SchemaAnalysisPanel.IncludeCritical, Mode=TwoWay}"/>
+            </WrapPanel>
+
+            <TextBlock Text="{Binding [preview.schemaAnalysis.rule], Source={x:Static loc:LocalizationService.Instance}}"
+                       FontSize="{StaticResource FontSizeCaption}"
+                       Foreground="{StaticResource TextMutedBrush}"/>
+            <StackPanel Spacing="4">
+              <CheckBox Content="FK_CATALOG_INCONSISTENT" IsChecked="{Binding SchemaAnalysisPanel.IncludeFkCatalogInconsistent, Mode=TwoWay}"/>
+              <CheckBox Content="MISSING_FK" IsChecked="{Binding SchemaAnalysisPanel.IncludeMissingFk, Mode=TwoWay}"/>
+              <CheckBox Content="NAMING_CONVENTION_VIOLATION" IsChecked="{Binding SchemaAnalysisPanel.IncludeNamingConventionViolation, Mode=TwoWay}"/>
+              <CheckBox Content="LOW_SEMANTIC_NAME" IsChecked="{Binding SchemaAnalysisPanel.IncludeLowSemanticName, Mode=TwoWay}"/>
+              <CheckBox Content="MISSING_REQUIRED_COMMENT" IsChecked="{Binding SchemaAnalysisPanel.IncludeMissingRequiredComment, Mode=TwoWay}"/>
+              <CheckBox Content="NF1_HINT_MULTI_VALUED" IsChecked="{Binding SchemaAnalysisPanel.IncludeNf1HintMultiValued, Mode=TwoWay}"/>
+              <CheckBox Content="NF2_HINT_PARTIAL_DEPENDENCY" IsChecked="{Binding SchemaAnalysisPanel.IncludeNf2HintPartialDependency, Mode=TwoWay}"/>
+              <CheckBox Content="NF3_HINT_TRANSITIVE_DEPENDENCY" IsChecked="{Binding SchemaAnalysisPanel.IncludeNf3HintTransitiveDependency, Mode=TwoWay}"/>
+            </StackPanel>
+
+            <TextBlock Text="{Binding [preview.schemaAnalysis.minConfidence], Source={x:Static loc:LocalizationService.Instance}}"
+                       FontSize="{StaticResource FontSizeCaption}"
+                       Foreground="{StaticResource TextMutedBrush}"/>
+            <Grid ColumnDefinitions="*,Auto">
+              <Slider Grid.Column="0"
+                      Minimum="0"
+                      Maximum="1"
+                      Value="{Binding SchemaAnalysisPanel.MinConfidenceFilter, Mode=TwoWay}"/>
+              <TextBlock Grid.Column="1"
+                         Text="{Binding SchemaAnalysisPanel.MinConfidenceFilter, StringFormat={}{0:F2}}"
+                         VerticalAlignment="Center"
+                         Foreground="{StaticResource TextMutedBrush}"/>
+            </Grid>
+
+            <TextBlock Text="{Binding [preview.schemaAnalysis.tableFilter], Source={x:Static loc:LocalizationService.Instance}}"
+                       FontSize="{StaticResource FontSizeCaption}"
+                       Foreground="{StaticResource TextMutedBrush}"/>
+            <TextBox Watermark="{Binding [preview.schemaAnalysis.tableFilterWatermark], Source={x:Static loc:LocalizationService.Instance}}"
+                     Text="{Binding SchemaAnalysisPanel.TableTextFilter, Mode=TwoWay}"/>
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+
+      <Grid Grid.Column="1" ColumnDefinitions="1.2*,1*,1*">
+        <Border Grid.Column="0" Classes="analysis-panel" Padding="10">
+          <Grid RowDefinitions="Auto,*">
+            <TextBlock Grid.Row="0"
+                       Text="{Binding [preview.schemaAnalysis.issues], Source={x:Static loc:LocalizationService.Instance}}"
+                       FontWeight="{StaticResource FontWeightTitle}"
+                       Foreground="{StaticResource TextSecondaryBrush}"/>
+            <ListBox Grid.Row="1"
+                     ItemsSource="{Binding SchemaAnalysisPanel.VisibleIssues}"
+                     SelectedItem="{Binding SchemaAnalysisPanel.SelectedIssue, Mode=TwoWay}">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <StackPanel Spacing="2" Margin="0,4">
+                    <TextBlock FontSize="{StaticResource FontSizeCaption}"
+                               Foreground="{StaticResource TextMutedBrush}">
+                      <Run Text="{Binding Severity}"/>
+                      <Run Text=" | "/>
+                      <Run Text="{Binding RuleCode}"/>
+                      <Run Text=" | "/>
+                      <Run Text="{Binding Confidence}"/>
+                    </TextBlock>
+                    <TextBlock FontSize="{StaticResource FontSizeCaption}"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               TextTrimming="CharacterEllipsis">
+                      <Run Text="{Binding SchemaName}"/>
+                      <Run Text="."/>
+                      <Run Text="{Binding TableName}"/>
+                      <Run Text="."/>
+                      <Run Text="{Binding ColumnName}"/>
+                    </TextBlock>
+                    <TextBlock Text="{Binding Title}"
+                               FontSize="{StaticResource FontSizeCaption}"
+                               Foreground="{StaticResource TextPrimaryBrush}"
+                               TextTrimming="CharacterEllipsis"/>
+                  </StackPanel>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </Grid>
+        </Border>
+
+        <Border Grid.Column="1" Classes="analysis-panel" Padding="10">
+          <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,*">
+            <TextBlock Grid.Row="0"
+                       Text="{Binding [preview.schemaAnalysis.details], Source={x:Static loc:LocalizationService.Instance}}"
+                       FontWeight="{StaticResource FontWeightTitle}"
+                       Foreground="{StaticResource TextSecondaryBrush}"/>
+            <TextBlock Grid.Row="1"
+                       Text="{Binding SchemaAnalysisPanel.DetailsMessage}"
+                       TextWrapping="Wrap"
+                       Foreground="{StaticResource TextSecondaryBrush}"/>
+            <TextBlock Grid.Row="2"
+                       Text="{Binding [preview.schemaAnalysis.evidence], Source={x:Static loc:LocalizationService.Instance}}"
+                       FontSize="{StaticResource FontSizeCaption}"
+                       Foreground="{StaticResource TextMutedBrush}"/>
+            <ListBox Grid.Row="3" ItemsSource="{Binding SchemaAnalysisPanel.SelectedIssueEvidence}">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock FontSize="{StaticResource FontSizeCaption}" TextTrimming="CharacterEllipsis">
+                    <Run Text="{Binding Key}"/>
+                    <Run Text=": "/>
+                    <Run Text="{Binding Value}"/>
+                  </TextBlock>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+            <TextBlock Grid.Row="4"
+                       Text="{Binding [preview.schemaAnalysis.suggestions], Source={x:Static loc:LocalizationService.Instance}}"
+                       FontSize="{StaticResource FontSizeCaption}"
+                       Foreground="{StaticResource TextMutedBrush}"/>
+            <ListBox Grid.Row="5"
+                     ItemsSource="{Binding SchemaAnalysisPanel.SelectedIssue.Suggestions}"
+                     SelectedItem="{Binding SchemaAnalysisPanel.SelectedSuggestion, Mode=TwoWay}">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding Title}"
+                             FontSize="{StaticResource FontSizeCaption}"
+                             TextTrimming="CharacterEllipsis"/>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </Grid>
+        </Border>
+
+        <Border Grid.Column="2" Classes="analysis-panel" Padding="10">
+          <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,*">
+            <TextBlock Grid.Row="0"
+                       Text="{Binding [preview.schemaAnalysis.sqlCandidates], Source={x:Static loc:LocalizationService.Instance}}"
+                       FontWeight="{StaticResource FontWeightTitle}"
+                       Foreground="{StaticResource TextSecondaryBrush}"/>
+            <TextBlock Grid.Row="1"
+                       Text="{Binding SchemaAnalysisPanel.SqlCandidatesMessage}"
+                       TextWrapping="Wrap"
+                       Foreground="{StaticResource TextMutedBrush}"/>
+            <TextBlock Grid.Row="2"
+                       Text="{Binding [preview.schemaAnalysis.ruleDiagnostics], Source={x:Static loc:LocalizationService.Instance}}"
+                       FontSize="{StaticResource FontSizeCaption}"
+                       Foreground="{StaticResource TextMutedBrush}"/>
+            <ListBox Grid.Row="3" ItemsSource="{Binding SchemaAnalysisPanel.SelectedIssueDiagnostics}">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <StackPanel Spacing="1" Margin="0,2">
+                    <TextBlock FontSize="{StaticResource FontSizeCaption}" Foreground="{StaticResource TextMutedBrush}">
+                      <Run Text="{Binding Code}"/>
+                      <Run Text=" | "/>
+                      <Run Text="{Binding State}"/>
+                    </TextBlock>
+                    <TextBlock Text="{Binding Message}"
+                               FontSize="{StaticResource FontSizeCaption}"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               TextTrimming="CharacterEllipsis"/>
+                  </StackPanel>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+            <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="6">
+              <Button Command="{Binding SchemaAnalysisPanel.CopySqlCommand}"
+                      ToolTip.Tip="{Binding SchemaAnalysisPanel.ActionBlockedTooltip}"
+                      Classes="secondary"
+                      Content="{Binding [preview.schemaAnalysis.copySql], Source={x:Static loc:LocalizationService.Instance}}"/>
+              <Button Command="{Binding SchemaAnalysisPanel.ApplyToCanvasCommand}"
+                      ToolTip.Tip="{Binding SchemaAnalysisPanel.ActionBlockedTooltip}"
+                      Classes="secondary"
+                      Content="{Binding [preview.schemaAnalysis.applyToCanvas], Source={x:Static loc:LocalizationService.Instance}}"/>
+            </StackPanel>
+            <ListBox Grid.Row="5"
+                     ItemsSource="{Binding SchemaAnalysisPanel.VisibleCandidates}"
+                     SelectedItem="{Binding SchemaAnalysisPanel.SelectedSqlCandidate, Mode=TwoWay}">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <StackPanel Spacing="2" Margin="0,4">
+                    <TextBlock Text="{Binding Title}"
+                               FontSize="{StaticResource FontSizeCaption}"
+                               Foreground="{StaticResource TextPrimaryBrush}"
+                               TextTrimming="CharacterEllipsis"/>
+                    <TextBlock FontSize="{StaticResource FontSizeCaption}" Foreground="{StaticResource TextMutedBrush}">
+                      <Run Text="{Binding Safety}"/>
+                      <Run Text=" | "/>
+                      <Run Text="{Binding Visibility}"/>
+                    </TextBlock>
+                  </StackPanel>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </Grid>
+        </Border>
+      </Grid>
+    </Grid>
+  </Grid>
+</UserControl>

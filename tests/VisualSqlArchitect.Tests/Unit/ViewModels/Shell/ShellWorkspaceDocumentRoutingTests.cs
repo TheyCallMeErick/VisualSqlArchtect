@@ -126,6 +126,21 @@ public class ShellWorkspaceDocumentRoutingTests
     }
 
     [Fact]
+    public void IsConnectionManagerOverlayVisible_UsesVisibleSharedManagerWhenDdlDocumentIsActive()
+    {
+        var shell = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
+        shell.EnterCanvas();
+        shell.SetActiveDocumentType(WorkspaceDocumentType.DdlCanvas);
+
+        CanvasViewModel queryCanvas = shell.EnsureCanvas();
+        queryCanvas.ConnectionManager.Open();
+
+        Assert.Same(queryCanvas.ConnectionManager, shell.ActiveConnectionManager);
+        Assert.True(shell.IsConnectionManagerVisible);
+        Assert.True(shell.IsConnectionManagerOverlayVisible);
+    }
+
+    [Fact]
     public void IsConnectionManagerOverlayVisible_AllowsConnectionModalInSqlEditorMode()
     {
         var shell = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
