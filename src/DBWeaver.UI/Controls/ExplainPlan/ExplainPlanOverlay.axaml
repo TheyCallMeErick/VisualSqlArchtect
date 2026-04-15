@@ -248,6 +248,11 @@
                             HorizontalScrollBarVisibility="Disabled"
                             Margin="0,4,0,0">
                 <ItemsControl ItemsSource="{Binding Steps}" Margin="0,0,0,8">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <VirtualizingStackPanel/>
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="explain:ExplainStep">
                       <Button Margin="0,1,0,0"
@@ -415,6 +420,11 @@
                     </Grid>
 
                     <ItemsControl ItemsSource="{Binding ComparisonRows}" IsVisible="{Binding HasComparisonRows}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <VirtualizingStackPanel/>
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
                       <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="explain:ExplainComparisonRow">
                           <Grid ColumnDefinitions="*,74,74,64,76" Margin="0,1">
@@ -442,6 +452,11 @@
                                FontWeight="{StaticResource FontWeightTitle}"
                                Foreground="{StaticResource StatusInfoBrush}"/>
                     <ItemsControl ItemsSource="{Binding IndexSuggestions}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <VirtualizingStackPanel/>
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
                       <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="explain:ExplainIndexSuggestion">
                           <Button Background="{StaticResource Bg1Brush}"
@@ -478,6 +493,11 @@
                                FontWeight="{StaticResource FontWeightTitle}"
                                Foreground="{StaticResource StatusInfoBrush}"/>
                     <ItemsControl ItemsSource="{Binding History}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <VirtualizingStackPanel/>
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
                       <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="explain:ExplainHistoryItem">
                           <Grid ColumnDefinitions="48,*,66,66" Margin="0,1">

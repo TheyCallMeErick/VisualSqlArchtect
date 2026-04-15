@@ -219,6 +219,11 @@
               </Grid>
 
               <ItemsControl ItemsSource="{Binding History}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <VirtualizingStackPanel/>
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="benchmark:BenchmarkRunResult">
                     <Border Classes="hist-row">

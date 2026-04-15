@@ -63,7 +63,7 @@
                  Background="Transparent">
           <ListBox.ItemsPanel>
             <ItemsPanelTemplate>
-              <StackPanel Orientation="Horizontal"/>
+              <VirtualizingStackPanel Orientation="Horizontal"/>
             </ItemsPanelTemplate>
           </ListBox.ItemsPanel>
           <ListBox.ItemTemplate>

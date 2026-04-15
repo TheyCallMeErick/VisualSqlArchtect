@@ -165,6 +165,11 @@
         <Border Grid.Column="0" Classes="analysis-panel" Padding="10" Margin="0,0,8,0">
           <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <ItemsControl ItemsSource="{Binding SchemaAnalysisPanel.GroupedIssues}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <VirtualizingStackPanel/>
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
                 <DataTemplate>
                   <Expander IsExpanded="True" Margin="0,0,0,8">

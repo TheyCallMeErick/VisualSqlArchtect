@@ -147,6 +147,11 @@
                      Background="Transparent"
                      BorderThickness="0"
                      ScrollViewer.VerticalScrollBarVisibility="Auto">
+              <ListBox.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <VirtualizingStackPanel/>
+                </ItemsPanelTemplate>
+              </ListBox.ItemsPanel>
               <ListBox.ItemTemplate>
                 <DataTemplate x:DataType="connmodels:ConnectionProfile">
                   <Grid ColumnDefinitions="Auto,*">

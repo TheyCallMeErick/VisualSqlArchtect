@@ -73,6 +73,42 @@ public class SchemaViewModelSidebarFlowTests
         Assert.False(vm.ShowNoTablesState);
     }
 
+    [Fact]
+    public void SelectedSchema_FiltersVisibleObjectsToSchema()
+    {
+        var vm = new SchemaViewModel();
+        vm.Metadata = BuildMultiSchemaMetadata();
+
+        Assert.Equal(2, vm.Categories.SelectMany(category => category.Items).Count());
+
+        vm.SelectedSchema = "sales";
+
+        List<SchemaObjectViewModel> visible = vm.Categories.SelectMany(category => category.Items).ToList();
+        Assert.Single(visible);
+        Assert.Equal("invoices", visible[0].Name);
+    }
+
+    [Fact]
+    public void FilterQuery_ReusesCachedSchemaObjectInstances()
+    {
+        var vm = new SchemaViewModel();
+        vm.Metadata = BuildSampleMetadata();
+
+        SchemaObjectViewModel originalOrders = vm.Categories
+            .First(category => category.Name == "Tables")
+            .Items
+            .First(item => item.Name == "orders");
+
+        vm.FilterQuery = "customer";
+
+        SchemaObjectViewModel filteredOrders = vm.Categories
+            .First(category => category.Name == "Tables")
+            .Items
+            .First(item => item.Name == "orders");
+
+        Assert.Same(originalOrders, filteredOrders);
+    }
+
     private static DbMetadata BuildSampleMetadata()
     {
         var orders = new TableMetadata(
@@ -106,6 +142,40 @@ public class SchemaViewModelSidebarFlowTests
             "16",
             DateTimeOffset.UtcNow,
             [new SchemaMetadata("public", [orders, ordersView])],
+            []
+        );
+    }
+
+    private static DbMetadata BuildMultiSchemaMetadata()
+    {
+        var orders = new TableMetadata(
+            "public",
+            "orders",
+            TableKind.Table,
+            10,
+            [new ColumnMetadata("id", "int", "int", false, true, false, true, true, 1)],
+            [],
+            [],
+            []
+        );
+
+        var invoices = new TableMetadata(
+            "sales",
+            "invoices",
+            TableKind.Table,
+            5,
+            [new ColumnMetadata("id", "int", "int", false, true, false, true, true, 1)],
+            [],
+            [],
+            []
+        );
+
+        return new DbMetadata(
+            "sample_db",
+            DatabaseProvider.Postgres,
+            "16",
+            DateTimeOffset.UtcNow,
+            [new SchemaMetadata("public", [orders]), new SchemaMetadata("sales", [invoices])],
             []
         );
     }

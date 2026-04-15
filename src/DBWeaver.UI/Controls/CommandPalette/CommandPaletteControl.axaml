@@ -88,6 +88,11 @@
       <!-- ── Results list ──────────────────────────────────────────────── -->
       <ScrollViewer MaxHeight="360" HorizontalScrollBarVisibility="Disabled">
         <ItemsControl ItemsSource="{Binding Results}" Margin="0,4,0,4" Name="ResultsList">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <VirtualizingStackPanel/>
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:PaletteCommandItem">
 

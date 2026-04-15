@@ -84,6 +84,11 @@
                     HorizontalScrollBarVisibility="Disabled">
 
         <ItemsControl ItemsSource="{Binding Cards}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <VirtualizingStackPanel/>
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:JoinSuggestionCardViewModel">
 

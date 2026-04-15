@@ -137,6 +137,11 @@
                    Background="Transparent"
                    BorderThickness="0"
                    Padding="0">
+            <ListBox.ItemsPanel>
+              <ItemsPanelTemplate>
+                <VirtualizingStackPanel/>
+              </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="vm:SqlEditorMessageEntry">
                 <Border Margin="0,0,0,8"

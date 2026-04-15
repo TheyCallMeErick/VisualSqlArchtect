@@ -43,6 +43,11 @@
                      SelectedItem="{Binding SelectedVersion}"
                      IsVisible="{Binding HasVersions}"
                      Name="HistoryList">
+              <ListBox.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <VirtualizingStackPanel/>
+                </ItemsPanelTemplate>
+              </ListBox.ItemsPanel>
               <ListBox.ItemTemplate>
                 <DataTemplate>
                   <Grid ColumnDefinitions="*,Auto" Margin="2,4">

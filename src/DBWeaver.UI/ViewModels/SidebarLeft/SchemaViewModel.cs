@@ -14,6 +14,11 @@ namespace DBWeaver.UI.ViewModels;
 /// </summary>
 public sealed class SchemaViewModel : ViewModelBase
 {
+    private sealed record SchemaCatalogEntry(
+        SchemaObjectViewModel Item,
+        bool IsView,
+        string SearchText);
+
     private static readonly TextSearchService TextSearch = new();
     private string _filterQuery = string.Empty;
     private string? _selectedSchema;
@@ -21,6 +26,7 @@ public sealed class SchemaViewModel : ViewModelBase
     private bool _hasConnection;
     private DbMetadata? _metadata;
     private int _visibleObjectCount;
+    private IReadOnlyList<SchemaCatalogEntry> _catalogEntries = [];
 
     /// <summary>
     /// The name of the currently connected database.
@@ -35,18 +41,12 @@ public sealed class SchemaViewModel : ViewModelBase
         get => _filterQuery;
         set
         {
-            if (!Set(ref _filterQuery, value))
+            string normalized = value?.Trim() ?? string.Empty;
+            if (!Set(ref _filterQuery, normalized))
                 return;
 
-            IsLoading = true;
-            try
-            {
-                Rebuild();
-            }
-            finally
-            {
-                IsLoading = false;
-            }
+            ApplyFilterToCategories();
+            RaisePropertyChanged(nameof(HasFilter));
         }
     }
 
@@ -64,7 +64,8 @@ public sealed class SchemaViewModel : ViewModelBase
             IsLoading = true;
             try
             {
-                Rebuild();
+                RebuildCatalogEntries();
+                ApplyFilterToCategories();
             }
             finally
             {
@@ -141,7 +142,8 @@ public sealed class SchemaViewModel : ViewModelBase
                 IsLoading = true;
                 try
                 {
-                    Rebuild();
+                    RebuildCatalogEntries();
+                    ApplyFilterToCategories();
                 }
                 finally
                 {
@@ -164,27 +166,15 @@ public sealed class SchemaViewModel : ViewModelBase
         _onAddTableNode = onAddTableNode;
     }
 
-    private void Rebuild()
+    private void RebuildCatalogEntries()
     {
-        Categories.Clear();
-        _visibleObjectCount = 0;
+        _catalogEntries = [];
 
         if (Metadata is null || Metadata.Schemas.Count == 0)
-        {
-            RaisePropertyChanged(nameof(ShowNoConnectionState));
-            RaisePropertyChanged(nameof(ShowLoadingState));
-            RaisePropertyChanged(nameof(ShowFilterEmptyState));
-            RaisePropertyChanged(nameof(ShowNoTablesState));
             return;
-        }
 
-        // Create category viewmodels - using Material Icon Kind names
-        var tablesCategory = new SchemaCategoryViewModel("Tables", "Table", UiColorConstants.C_60A5FA);
-        var viewsCategory = new SchemaCategoryViewModel("Views", "Eye", UiColorConstants.C_34D399);
-        var proceduresCategory = new SchemaCategoryViewModel("Procedures", "CodeBraces", UiColorConstants.C_FBBF24);
-        var triggersCategory = new SchemaCategoryViewModel("Triggers", "Bolt", UiColorConstants.C_EC4899);
+        var catalog = new List<SchemaCatalogEntry>();
 
-        // Collect tables and views
         IEnumerable<SchemaMetadata> schemas = Metadata.Schemas;
         if (!string.IsNullOrWhiteSpace(SelectedSchema))
         {
@@ -196,24 +186,8 @@ public sealed class SchemaViewModel : ViewModelBase
         {
             foreach (var table in schema.Tables)
             {
-                // Apply filter
-                if (!string.IsNullOrEmpty(FilterQuery))
-                {
-                    bool matches = TextSearch.MatchesContainsAllTokens(
-                        FilterQuery,
-                        table.Name,
-                        table.Schema,
-                        string.Join(' ', table.Columns.Select(c => c.Name)));
-
-                    if (!matches)
-                        continue;
-                }
-
                 var fullName = $"{table.Schema ?? "public"}.{table.Name}";
-                var isView = table.Kind != TableKind.Table;
-                var category = isView ? viewsCategory : tablesCategory;
 
-                // Create command to add node (for both tables and views)
                 ICommand? addNodeCmd = null;
                 if (_onAddTableNode is not null)
                 {
@@ -228,19 +202,17 @@ public sealed class SchemaViewModel : ViewModelBase
                     );
                 }
 
-                var tableItem = new SchemaObjectViewModel(
+                var item = new SchemaObjectViewModel(
                     table.Name,
-                    isView ? "Eye" : "Table",
+                    table.Kind != TableKind.Table ? "Eye" : "Table",
                     fullName,
                     null,
                     null,
                     table,
                     addNodeCmd);
 
-                // Add columns as children (hierarchical)
                 foreach (var column in table.Columns)
                 {
-                    // Determine icon based on key type
                     string colIcon;
                     string badgeColor;
 
@@ -273,15 +245,58 @@ public sealed class SchemaViewModel : ViewModelBase
                         badgeColor,
                         column);
 
-                    tableItem.Children.Add(colItem);
+                    item.Children.Add(colItem);
                 }
 
-                category.Items.Add(tableItem);
-                _visibleObjectCount++;
+                string searchText = string.Join(' ',
+                    table.Name,
+                    table.Schema ?? string.Empty,
+                    string.Join(' ', table.Columns.Select(c => c.Name)));
+
+                catalog.Add(new SchemaCatalogEntry(
+                    item,
+                    table.Kind != TableKind.Table,
+                    searchText));
             }
         }
 
-        // Add populated categories
+        _catalogEntries = catalog;
+    }
+
+    private void ApplyFilterToCategories()
+    {
+        Categories.Clear();
+        _visibleObjectCount = 0;
+
+        if (_catalogEntries.Count == 0)
+        {
+            RaisePropertyChanged(nameof(ShowNoConnectionState));
+            RaisePropertyChanged(nameof(ShowLoadingState));
+            RaisePropertyChanged(nameof(ShowFilterEmptyState));
+            RaisePropertyChanged(nameof(ShowNoTablesState));
+            return;
+        }
+
+        var tablesCategory = new SchemaCategoryViewModel("Tables", "Table", UiColorConstants.C_60A5FA);
+        var viewsCategory = new SchemaCategoryViewModel("Views", "Eye", UiColorConstants.C_34D399);
+
+        IEnumerable<SchemaCatalogEntry> filteredEntries = _catalogEntries;
+        if (!string.IsNullOrWhiteSpace(FilterQuery))
+        {
+            filteredEntries = filteredEntries.Where(entry =>
+                TextSearch.MatchesContainsAllTokens(FilterQuery, entry.SearchText));
+        }
+
+        foreach (SchemaCatalogEntry entry in filteredEntries)
+        {
+            if (entry.IsView)
+                viewsCategory.Items.Add(entry.Item);
+            else
+                tablesCategory.Items.Add(entry.Item);
+        }
+
+        _visibleObjectCount = tablesCategory.Items.Count + viewsCategory.Items.Count;
+
         if (tablesCategory.Items.Count > 0)
             Categories.Add(tablesCategory);
 
