@@ -39,6 +39,66 @@ public sealed class SqlEditorViewModelTests
     }
 
     [Fact]
+    public void SchemaTables_WithUnchangedMetadata_ReusesCachedInstance()
+    {
+        DbMetadata metadata = BuildMetadata("main", "employees");
+        var sut = new SqlEditorViewModel(metadataResolver: () => metadata);
+
+        IReadOnlyList<SqlEditorSchemaTableItem> first = sut.SchemaTables;
+        IReadOnlyList<SqlEditorSchemaTableItem> second = sut.SchemaTables;
+
+        Assert.Same(first, second);
+    }
+
+    [Fact]
+    public void FilteredSchemaTables_WithSameSearch_ReusesCachedInstance()
+    {
+        DbMetadata metadata = BuildMetadata("main", "employees");
+        var sut = new SqlEditorViewModel(metadataResolver: () => metadata)
+        {
+            SchemaSearchText = "emp",
+        };
+
+        IReadOnlyList<SqlEditorSchemaTableItem> first = sut.FilteredSchemaTables;
+        IReadOnlyList<SqlEditorSchemaTableItem> second = sut.FilteredSchemaTables;
+
+        Assert.Same(first, second);
+    }
+
+    [Fact]
+    public void FilteredSchemaTables_WhenSearchChanges_RebuildsFilteredCache()
+    {
+        DbMetadata metadata = BuildMetadata("main", "employees");
+        var sut = new SqlEditorViewModel(metadataResolver: () => metadata)
+        {
+            SchemaSearchText = "emp",
+        };
+
+        IReadOnlyList<SqlEditorSchemaTableItem> first = sut.FilteredSchemaTables;
+
+        sut.SchemaSearchText = "archive";
+        IReadOnlyList<SqlEditorSchemaTableItem> second = sut.FilteredSchemaTables;
+
+        Assert.NotSame(first, second);
+    }
+
+    [Fact]
+    public void NotifyConnectionContextChanged_InvalidatesSchemaCaches()
+    {
+        DbMetadata metadata = BuildMetadata("main", "employees");
+        var sut = new SqlEditorViewModel(metadataResolver: () => metadata);
+
+        IReadOnlyList<SqlEditorSchemaTableItem> first = sut.SchemaTables;
+        metadata = BuildMetadata("archive", "employees_archive");
+
+        sut.NotifyConnectionContextChanged();
+        IReadOnlyList<SqlEditorSchemaTableItem> second = sut.SchemaTables;
+
+        Assert.NotSame(first, second);
+        Assert.Equal("archive.employees_archive", Assert.Single(second).FullName);
+    }
+
+    [Fact]
     public void ReceiveFromCanvas_DelegatesToTabManagerAndKeepsActiveTabInSync()
     {
         var sut = new SqlEditorViewModel();

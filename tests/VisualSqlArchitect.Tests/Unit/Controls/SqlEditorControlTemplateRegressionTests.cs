@@ -88,6 +88,16 @@ public sealed class SqlEditorControlTemplateRegressionTests
         Assert.Contains("_vm.UpdateHoverDocumentation", source);
     }
 
+    [Fact]
+    public void SqlEditorSchemaBrowserTemplate_UsesVirtualizedTableList()
+    {
+        string xaml = ReadSqlEditorSchemaBrowserXaml();
+
+        Assert.Contains("ItemsSource=\"{Binding FilteredSchemaTables}\"", xaml);
+        Assert.Contains("<VirtualizingStackPanel", xaml);
+        Assert.Contains("IsVisible=\"{Binding HasFilteredSchemaTables}\"", xaml);
+    }
+
     private static string ReadSqlEditorControlXaml()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
@@ -132,5 +142,28 @@ public sealed class SqlEditorControlTemplateRegressionTests
         }
 
         throw new FileNotFoundException("Could not locate SqlEditorControl.axaml.cs from test base directory.");
+    }
+
+    private static string ReadSqlEditorSchemaBrowserXaml()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            string candidate = Path.Combine(
+                dir.FullName,
+                "src",
+                "DBWeaver.UI",
+                "Controls",
+                "SqlEditor",
+                "SqlEditorSchemaBrowserControl.axaml"
+            );
+
+            if (File.Exists(candidate))
+                return File.ReadAllText(candidate);
+
+            dir = dir.Parent;
+        }
+
+        throw new FileNotFoundException("Could not locate SqlEditorSchemaBrowserControl.axaml from test base directory.");
     }
 }

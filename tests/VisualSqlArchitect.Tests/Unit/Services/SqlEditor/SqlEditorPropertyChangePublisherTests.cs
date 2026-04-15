@@ -15,6 +15,9 @@ public sealed class SqlEditorPropertyChangePublisherTests
         Assert.Contains("ExecutionTelemetryText", raised);
         Assert.Contains("ResultSummaryText", raised);
         Assert.Contains("PendingMutationDiffText", raised);
+        Assert.DoesNotContain("SchemaTables", raised);
+        Assert.DoesNotContain("FilteredSchemaTables", raised);
+        Assert.DoesNotContain("SchemaSearchText", raised);
         Assert.True(raised.Count >= 21);
     }
 
@@ -30,6 +33,25 @@ public sealed class SqlEditorPropertyChangePublisherTests
         Assert.Contains("ActiveTab", raised);
         Assert.Contains("PendingCloseTabMessage", raised);
         Assert.Contains("ManyTabsWarningText", raised);
+        Assert.True(raised.Count >= 7);
+    }
+
+    [Fact]
+    public void PublishSchemaChanges_RaisesOnlySchemaProperties()
+    {
+        var sut = new SqlEditorPropertyChangePublisher();
+        var raised = new List<string>();
+
+        sut.PublishSchemaChanges(raised.Add);
+
+        Assert.Contains("SchemaTables", raised);
+        Assert.Contains("FilteredSchemaTables", raised);
+        Assert.Contains("HasFilteredSchemaTables", raised);
+        Assert.Contains("HasSchemaTables", raised);
+        Assert.Contains("IsSchemaEmpty", raised);
+        Assert.Contains("SchemaEmptyText", raised);
+        Assert.DoesNotContain("ExecutionTelemetryText", raised);
+        Assert.DoesNotContain("ResultSummaryText", raised);
         Assert.True(raised.Count >= 7);
     }
 }
