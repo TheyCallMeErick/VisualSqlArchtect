@@ -298,6 +298,44 @@ public sealed class SqlImportExecutionServiceOutcomeTests
     }
 
     [Fact]
+    public void Execute_WithOrderBySourceFallbackPath_EmitsFallbackDiagnostic()
+    {
+        var service = CreateService();
+        var report = new ObservableCollection<ImportReportItem>();
+
+        SqlImportExecutionResult result = service.Execute(
+            "SELECT o.id FROM orders o INNER JOIN customers c ON o.customer_id = c.id ORDER BY status",
+            report,
+            CancellationToken.None
+        );
+
+        Assert.NotNull(result.Outcome);
+        Assert.Contains(
+            result.Outcome!.NonBlockingDiagnostics,
+            diagnostic => diagnostic.Code == SqlImportDiagnosticCodes.FallbackRegexUsed
+        );
+    }
+
+    [Fact]
+    public void Execute_WithGroupBySourceFallbackPath_EmitsFallbackDiagnostic()
+    {
+        var service = CreateService();
+        var report = new ObservableCollection<ImportReportItem>();
+
+        SqlImportExecutionResult result = service.Execute(
+            "SELECT o.status FROM orders o INNER JOIN customers c ON o.customer_id = c.id GROUP BY status",
+            report,
+            CancellationToken.None
+        );
+
+        Assert.NotNull(result.Outcome);
+        Assert.Contains(
+            result.Outcome!.NonBlockingDiagnostics,
+            diagnostic => diagnostic.Code == SqlImportDiagnosticCodes.FallbackRegexUsed
+        );
+    }
+
+    [Fact]
     public void Execute_WithUnresolvedColumnInWhere_ClassifiesAsFailed()
     {
         var service = CreateService();

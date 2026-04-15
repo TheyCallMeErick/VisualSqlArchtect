@@ -25,6 +25,7 @@ internal sealed class SqlImportOrderingClauseApplier : ISqlImportApplyStep
         int imported = 0;
         int partial = 0;
         int skipped = 0;
+        bool fallbackActivated = false;
 
         NodeViewModel result = coreContext.ResultNode;
         var tableNodes = coreContext.TableNodes;
@@ -49,6 +50,7 @@ internal sealed class SqlImportOrderingClauseApplier : ISqlImportApplyStep
 
             string expr = SqlImportIdentifierNormalizer.NormalizeQualifiedIdentifier(termMatch.Groups["expr"].Value);
             string colName = expr.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).LastOrDefault() ?? expr;
+            bool isQualifiedExpression = expr.Contains('.', StringComparison.Ordinal);
             bool desc = termMatch.Groups["direction"].Success
                 && termMatch.Groups["direction"].Value.Equals("DESC", StringComparison.OrdinalIgnoreCase);
 
@@ -60,6 +62,8 @@ internal sealed class SqlImportOrderingClauseApplier : ISqlImportApplyStep
                 orderPin = tableNodes
                     .SelectMany(n => n.OutputPins)
                     .FirstOrDefault(p => p.Name.Equals(colName, StringComparison.OrdinalIgnoreCase));
+                if (orderPin is not null && !isQualifiedExpression && tableNodes.Count > 1)
+                    fallbackActivated = true;
             }
 
             if (orderPin is null
@@ -110,6 +114,16 @@ internal sealed class SqlImportOrderingClauseApplier : ISqlImportApplyStep
                 )
             );
             skipped++;
+        }
+
+        if (fallbackActivated)
+        {
+            report.Add(SqlImportReportFactory.Partial(
+                SqlImportDiagnosticCodes.FallbackRegexUsed,
+                "ORDER BY fallback",
+                SqlImportDiagnosticMessages.OrderByColumnFallbackReportNote,
+                result.Id));
+            partial++;
         }
 
         return new SqlImportApplyResult(imported, partial, skipped);

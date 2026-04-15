@@ -24,6 +24,7 @@ internal sealed class SqlImportGroupingClauseApplier : ISqlImportApplyStep
         int imported = 0;
         int partial = 0;
         int skipped = 0;
+        bool fallbackActivated = false;
 
         NodeViewModel result = coreContext.ResultNode;
         var tableNodes = coreContext.TableNodes;
@@ -47,6 +48,7 @@ internal sealed class SqlImportGroupingClauseApplier : ISqlImportApplyStep
 
             string expr = SqlImportIdentifierNormalizer.NormalizeQualifiedIdentifier(termMatch.Groups["expr"].Value);
             string colName = expr.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).LastOrDefault() ?? expr;
+            bool isQualifiedExpression = expr.Contains('.', StringComparison.Ordinal);
 
             PinViewModel? groupPin;
             if (projectedAliases.TryGetValue(colName, out PinViewModel? aliasedPin))
@@ -56,6 +58,8 @@ internal sealed class SqlImportGroupingClauseApplier : ISqlImportApplyStep
                 groupPin = tableNodes
                     .SelectMany(n => n.OutputPins)
                     .FirstOrDefault(p => p.Name.Equals(colName, StringComparison.OrdinalIgnoreCase));
+                if (groupPin is not null && !isQualifiedExpression && tableNodes.Count > 1)
+                    fallbackActivated = true;
             }
 
             if (groupPin is null)
@@ -129,6 +133,16 @@ internal sealed class SqlImportGroupingClauseApplier : ISqlImportApplyStep
                     $"GROUP BY conflict: {SqlImportClauseApplyUtilities.Truncate(exprTrimmed, 40)}"
                 )
             );
+            partial++;
+        }
+
+        if (fallbackActivated)
+        {
+            report.Add(SqlImportReportFactory.Partial(
+                SqlImportDiagnosticCodes.FallbackRegexUsed,
+                "GROUP BY fallback",
+                SqlImportDiagnosticMessages.GroupByColumnFallbackReportNote,
+                result.Id));
             partial++;
         }
 
