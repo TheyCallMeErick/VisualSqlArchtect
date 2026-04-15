@@ -1,6 +1,6 @@
 # Theme JSON Schema (Fase 5)
 
-Arquivo padrao: `src/DBWeaver.UI/Assets/Themes/user-theme.json`
+Arquivo padrao: `src/AkkornStudio.UI/Assets/Themes/user-theme.json`
 
 Objetivo:
 - Permitir customizacao de tokens macro sem editar AXAML.

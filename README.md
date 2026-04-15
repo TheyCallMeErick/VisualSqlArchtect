@@ -1,6 +1,6 @@
 <div align="center">
 
-# DBWeaver
+# AkkornStudio
 
 **Crie consultas SQL visualmente - sem precisar digitar.**
 
@@ -24,7 +24,7 @@ Um designer SQL baseado em nós e canvas infinito que compila para SQL real e pa
 
 ## O que é?
 
-O DBWeaver permite arrastar nós para o canvas e conectá-los para montar consultas SQL. Cada conexão vira um JOIN, cada nó de filtro vira uma cláusula WHERE, e o resultado aparece instantaneamente como SQL ao vivo abaixo do canvas - sem digitação, sem erros de sintaxe e sem dor de cabeça com dialetos.
+O AkkornStudio permite arrastar nós para o canvas e conectá-los para montar consultas SQL. Cada conexão vira um JOIN, cada nó de filtro vira uma cláusula WHERE, e o resultado aparece instantaneamente como SQL ao vivo abaixo do canvas - sem digitação, sem erros de sintaxe e sem dor de cabeça com dialetos.
 
 Diagrama visual do fluxo (query por nós): veja [Diagramas compartilhados](#shared-diagrams).
 
@@ -155,7 +155,7 @@ O pipeline de CI roda em todo PR; o pipeline de release publica binários automa
 
 ### What is it?
 
-DBWeaver is a node-based SQL designer with an infinite canvas. You connect nodes to compose queries visually: connections become JOINs, filter nodes become WHERE clauses, and the generated SQL is shown live below the canvas.
+AkkornStudio is a node-based SQL designer with an infinite canvas. You connect nodes to compose queries visually: connections become JOINs, filter nodes become WHERE clauses, and the generated SQL is shown live below the canvas.
 
 ### Features
 

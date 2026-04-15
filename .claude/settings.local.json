@@ -11,7 +11,7 @@
       "Bash(dotnet fsi:*)",
       "Bash(grep -r MaterialIconKind. /home/erickazevedo/Downloads/files/src/lude=*.cs)",
       "Bash(python3 -c \":*)",
-      "Bash(grep -n \"InvalidateWires\\\\|Dispatcher\" /home/erickazevedo/Downloads/files/src/ndow.axaml.cs /home/erickazevedo/Downloads/files/src/DBWeaver.U
+      "Bash(grep -n \"InvalidateWires\\\\|Dispatcher\" /home/erickazevedo/Downloads/files/src/ndow.axaml.cs /home/erickazevedo/Downloads/files/src/AkkornStudio.U
       "WebFetch(domain:docs.avaloniaui.net)",
       "Bash(git fsck:*)",
       "Bash(find .git/objects -type f -empty -delete)",

@@ -1,4 +1,4 @@
-# Estrutura do Projeto DBWeaver
+# Estrutura do Projeto AkkornStudio
 
 ## Organização da Solução
 
@@ -9,7 +9,7 @@
 ├── STRUCTURE.md                   # Este arquivo
 │
 ├── src/                           # Código-fonte principal
-│   ├──  Projeto Core (DBWeaver.c─ Core/                  # Orquestradores principais
+│   ├──  Projeto Core (AkkornStudio.c─ Core/                  # Orquestradores principais
 │   │   │   ├── BaseDbOrchestrator.cs
 │   │   │   └── IDbOrchestrator.cs
 │   │   │
@@ -43,7 +43,7 @@
 │   │   │
 │   │   ├── ServiceRegistration.cs # Configuração de injeção dependência
 │   │   └──    │
-│   └──  Projeto UI (DBWeaver.U ├── App.axaml              # Arquivo XAML principal
+│   └──  Projeto UI (AkkornStudio.U ├── App.axaml              # Arquivo XAML principal
 │       ├── App.axaml.cs           # Code-behind da aplicação
 │       ├── MainWindow.axaml       # Janela principal
 │       ├── MainWindow.axaml.cs
@@ -82,7 +82,7 @@
 │       └──
 │
 └── tests/                         # Projetos de testes
-    └──  Projeto de Testes (DBWeaver.T    ├── ArchitectureTests.cs
+    └──  Projeto de Testes (AkkornStudio.T    ├── ArchitectureTests.cs
         ├── AtomicNodeTests.cs
         ├── MetadataTests.cs
         └── roj
@@ -109,14 +109,14 @@
 
 ## Dependências do Projeto
 
-### DBWeaver (Core)
+### AkkornStudio (Core)
 - ✅ Independente de UI
 - Depende de: SqlKata, database drivers
 
-### DBWeaver.UI
+### AkkornStudio.UI
 - Depende de: Core + Avalonia
 
-### DBWeaver.Tests
+### AkkornStudio.Tests
 - Depende de: Core + xUnit
 
 ## Compilação

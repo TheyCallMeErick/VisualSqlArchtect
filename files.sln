@@ -2,11 +2,11 @@
 # Visual Studio Version 17
 VisualStudioVersion = 17.5.2.0
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DBWeaver", "src/DBWeaver/DBWeaver.csproj", "{EC6D5DCC-55C8-E541-BE7C-72475C926523}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AkkornStudio", "src/AkkornStudio/AkkornStudio.csproj", "{EC6D5DCC-55C8-E541-BE7C-72475C926523}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DBWeaver.UI", "src/DBWeaver.UI/DBWeaver.UI.csproj", "{91EC5804-A179-27A6-1C39-B4C629B2AD06}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AkkornStudio.UI", "src/AkkornStudio.UI/AkkornStudio.UI.csproj", "{91EC5804-A179-27A6-1C39-B4C629B2AD06}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DBWeaver.Canvas", "src/DBWeaver.Canvas/DBWeaver.Canvas.csproj", "{FD5E9E45-6012-4E74-A39B-3AC1DC9564EA}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AkkornStudio.Canvas", "src/AkkornStudio.Canvas/AkkornStudio.Canvas.csproj", "{FD5E9E45-6012-4E74-A39B-3AC1DC9564EA}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{890483B4-9539-40F5-93DA-57728571BDC0}"
 EndProject
