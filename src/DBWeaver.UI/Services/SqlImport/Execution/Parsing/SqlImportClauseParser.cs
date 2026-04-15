@@ -39,6 +39,13 @@ public sealed class SqlImportClauseParser(SqlImportCteRewriteService cteRewriteS
                 )
             );
             imported++;
+
+            report.Add(SqlImportReportFactory.Partial(
+                SqlImportDiagnosticCodes.FallbackRegexUsed,
+                "CTE rewrite fallback",
+                SqlImportDiagnosticMessages.CteRewriteFallbackReportNote
+            ));
+            partial++;
         }
 
         string qualifiedIdentifierPattern = SqlImportIdentifierNormalizer.QualifiedIdentifierPattern;

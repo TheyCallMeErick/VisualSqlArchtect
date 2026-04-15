@@ -217,6 +217,25 @@ public sealed class SqlImportExecutionServiceOutcomeTests
     }
 
     [Fact]
+    public void Execute_WithSimpleCteRewritePath_EmitsFallbackDiagnostic()
+    {
+        var service = CreateService();
+        var report = new ObservableCollection<ImportReportItem>();
+
+        SqlImportExecutionResult result = service.Execute(
+            "WITH recent_orders AS (SELECT id FROM orders) SELECT id FROM recent_orders",
+            report,
+            CancellationToken.None
+        );
+
+        Assert.NotNull(result.Outcome);
+        Assert.Contains(
+            result.Outcome!.NonBlockingDiagnostics,
+            diagnostic => diagnostic.Code == SqlImportDiagnosticCodes.FallbackRegexUsed
+        );
+    }
+
+    [Fact]
     public void Execute_WithAmbiguousBooleanColumn_ClassifiesAsFailed()
     {
         var service = CreateService();
