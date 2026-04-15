@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>AkkornStudio.CanvasKit</RootNamespace>
+    <AssemblyName>AkkornStudio.Canvas</AssemblyName>
+  </PropertyGroup>
+</Project>

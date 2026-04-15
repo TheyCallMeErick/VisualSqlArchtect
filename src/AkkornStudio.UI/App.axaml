@@ -1,0 +1,74 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mi="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             xmlns:sqlcomp="using:AkkornStudio.UI.Services.SqlEditor"
+             x:Class="AkkornStudio.UI.App"
+             RequestedThemeVariant="Dark">
+
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <!-- Design tokens first -->
+        <ResourceInclude Source="avares://AkkornStudio.UI/Assets/Themes/DesignTokens.axaml"/>
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
+
+  <Application.DataTemplates>
+    <DataTemplate DataType="sqlcomp:SqlEditorCompletionItemContent">
+      <Grid ColumnDefinitions="Auto,Auto" MinWidth="300">
+        <Border Grid.Column="0"
+                Width="18"
+                Height="18"
+                CornerRadius="4"
+                Background="{StaticResource Bg2Brush}"
+                BorderBrush="{StaticResource BorderSubtleBrush}"
+                BorderThickness="1">
+          <mi:MaterialIcon Kind="{Binding IconKind}"
+                           Width="12"
+                           Height="12"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Foreground="{Binding IconForeground}"/>
+        </Border>
+        <StackPanel Grid.Column="1" Margin="8,0,0,0" Spacing="1">
+          <TextBlock Text="{Binding Label}"
+                     Classes="txt-mono-small"
+                     FontWeight="{StaticResource FontWeightMonoStrong}"
+                     Foreground="{Binding LabelForeground}"/>
+          <TextBlock Text="{Binding Description}"
+                     Classes="txt-meta"
+                     MaxWidth="420"
+                     TextTrimming="CharacterEllipsis"
+                     Foreground="{StaticResource TextSecondaryBrush}"/>
+        </StackPanel>
+      </Grid>
+    </DataTemplate>
+    <DataTemplate DataType="sqlcomp:SqlEditorCompletionLoadingContent">
+      <TextBlock Text="{Binding Message}"
+                 Classes="txt-meta"
+                 FontStyle="Italic"
+                 Foreground="{StaticResource TextSecondaryBrush}"/>
+    </DataTemplate>
+  </Application.DataTemplates>
+
+  <Application.Styles>
+    <!-- Fluent Dark base -->
+    <FluentTheme/>
+
+
+
+
+    <!-- DataGrid theme (required, otherwise DataGrid renders invisible) -->
+    <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml"/>
+    <!-- AvaloniaEdit theme (required for SQL editor text area template/rendering) -->
+    <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml"/>
+
+    <!-- Material Icons -->
+    <mi:MaterialIconStyles/>
+
+    <!-- Global overrides -->
+    <StyleInclude Source="avares://AkkornStudio.UI/Assets/Themes/AppStyles.axaml"/>
+  </Application.Styles>
+
+</Application>

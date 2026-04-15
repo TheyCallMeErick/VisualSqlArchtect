@@ -1,0 +1,229 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:AkkornStudio.UI.ViewModels"
+             xmlns:ctrl="using:AkkornStudio.UI.Controls"
+             xmlns:shell="using:AkkornStudio.UI.Controls.Shell"
+             xmlns:ae="clr-namespace:AvaloniaEdit;assembly=AvaloniaEdit"
+             xmlns:loc="using:AkkornStudio.UI.Services.Localization"
+             xmlns:mi="using:Material.Icons.Avalonia"
+             x:Name="Root"
+             x:Class="AkkornStudio.UI.Controls.Shell.OutputPreviewModalControl"
+             x:DataType="vm:OutputPreviewModalViewModel">
+
+  <UserControl.Styles>
+    <Style Selector="Button.modal-tab">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Padding" Value="10,6"/>
+      <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+      <Setter Property="FontSize" Value="{StaticResource FontSizeCaption}"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.12"/>
+          <BrushTransition Property="Foreground" Duration="0:0:0.12"/>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.12"/>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.modal-tab:pointerover">
+      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+      <Setter Property="RenderTransform" Value="scale(1.04)"/>
+    </Style>
+    <Style Selector="Button.modal-tab.active">
+      <Setter Property="Foreground" Value="{StaticResource AccentPrimaryHoverBrush}"/>
+      <Setter Property="FontWeight" Value="{StaticResource FontWeightTitle}"/>
+      <Setter Property="Background" Value="{StaticResource Bg2Brush}"/>
+      <Setter Property="CornerRadius" Value="{StaticResource RadiusSM}"/>
+    </Style>
+    <Style Selector="Button.modal-tab:pressed">
+      <Setter Property="RenderTransform" Value="scale(0.98)"/>
+    </Style>
+    <Style Selector="ae|TextEditor.ddl-output">
+      <Setter Property="Background" Value="{StaticResource Bg0Brush}"/>
+      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderSubtleBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Padding" Value="10,8"/>
+      <Setter Property="FontFamily" Value="{StaticResource MonoFont}"/>
+      <Setter Property="FontSize" Value="{StaticResource FontSizeBody}"/>
+    </Style>
+  </UserControl.Styles>
+
+  <Panel IsVisible="{Binding IsVisible}" ZIndex="90">
+    <Border Background="{StaticResource MacroScrimBrush}"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"/>
+
+        <Border IsVisible="{Binding ShowShellCard}"
+          Width="1180"
+            MaxWidth="1180"
+            Height="700"
+            MaxHeight="700"
+            MinHeight="520"
+            Background="{StaticResource Bg1Brush}"
+            BorderBrush="{StaticResource BorderSubtleBrush}"
+            BorderThickness="1"
+            CornerRadius="{StaticResource RadiusLG}"
+            BoxShadow="{StaticResource PanelShadow}"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            RenderTransformOrigin="50%,50%"
+            RenderTransform="scale(1)">
+      <Grid RowDefinitions="Auto,Auto,*,Auto">
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="14,12,14,8">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <mi:MaterialIcon Kind="EyeOutline" Width="16" Height="16" VerticalAlignment="Center" Foreground="{StaticResource AccentBlueBrush}"/>
+            <StackPanel Spacing="1" VerticalAlignment="Center">
+              <TextBlock Text="{Binding Title}" FontSize="{StaticResource FontSizeTitle}" FontWeight="{StaticResource FontWeightTitle}" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+              <TextBlock Text="{Binding [preview.subtitle], Source={x:Static loc:LocalizationService.Instance}}"
+                         FontSize="{StaticResource FontSizeCaption}"
+                         Foreground="{StaticResource TextMutedBrush}"/>
+            </StackPanel>
+          </StackPanel>
+          <Button Grid.Column="1"
+                  Command="{Binding CloseCommand}"
+                  Classes="tb"
+                  Padding="8,4"
+                  ToolTip.Tip="{Binding [preview.close], Source={x:Static loc:LocalizationService.Instance}}"
+                  AutomationProperties.Name="{Binding [preview.close], Source={x:Static loc:LocalizationService.Instance}}">
+            <mi:MaterialIcon Kind="Close" Width="14" Height="14"/>
+          </Button>
+        </Grid>
+
+        <Border Grid.Row="1"
+                Margin="0,0,0,2"
+                Padding="8,0,8,0"
+                Background="{StaticResource Bg0Brush}"
+                BorderBrush="{StaticResource BorderSubtleBrush}"
+                BorderThickness="0,1,0,1">
+          <StackPanel Orientation="Horizontal" Spacing="2">
+            <Button Classes="modal-tab"
+                    Classes.active="{Binding ShowPrimaryContent}"
+                    Command="{Binding ShowPrimaryTabCommand}"
+                    Content="{Binding PrimaryTabLabel}"/>
+             <Button Classes="modal-tab"
+               Classes.active="{Binding ShowCanvasDiagnosticsContent}"
+               IsVisible="{Binding HasCanvasDiagnostics}"
+               Command="{Binding ShowCanvasDiagnosticsTabCommand}"
+               Content="{Binding CanvasDiagnosticsTabLabel}"/>
+             <Button Classes="modal-tab"
+               Classes.active="{Binding ShowStructureDiagnosticsContent}"
+               IsVisible="{Binding HasStructureDiagnostics}"
+               Command="{Binding ShowStructureDiagnosticsTabCommand}"
+               Content="{Binding StructureDiagnosticsTabLabel}"/>
+          </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="2">
+          <Border IsVisible="{Binding ShowQueryPrimaryContent}"
+                  Background="{StaticResource Bg0Brush}"
+                  Padding="12">
+            <Grid RowDefinitions="Auto,*">
+              <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+                <TextBlock FontSize="{StaticResource FontSizeCaption}"
+                           Foreground="{StaticResource TextSecondaryBrush}">
+                  <Run Text="{Binding [preview.providerLabel], Source={x:Static loc:LocalizationService.Instance}}"/>
+                  <Run Text=": "/>
+                  <Run Text="{Binding QueryProviderLabel}"/>
+                </TextBlock>
+              </StackPanel>
+
+              <ae:TextEditor Grid.Row="1"
+                             Name="QuerySqlEditor"
+                             Classes="ddl-output"
+                             IsReadOnly="True"
+                             ShowLineNumbers="True"
+                             WordWrap="False"
+                             HorizontalScrollBarVisibility="Auto"
+                             VerticalScrollBarVisibility="Auto"/>
+            </Grid>
+          </Border>
+
+          <Border IsVisible="{Binding ShowDdlPrimaryContent}"
+                  Background="{StaticResource Bg0Brush}"
+                  Padding="12">
+            <Grid RowDefinitions="Auto,*">
+              <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+                <TextBlock FontSize="{StaticResource FontSizeCaption}"
+                           Foreground="{StaticResource TextSecondaryBrush}">
+                  <Run Text="{Binding [preview.providerLabel], Source={x:Static loc:LocalizationService.Instance}}"/>
+                  <Run Text=": "/>
+                  <Run Text="{Binding DdlProviderLabel}"/>
+                </TextBlock>
+                <TextBlock Text="{Binding [preview.ddlDiagnosticsHint], Source={x:Static loc:LocalizationService.Instance}}"
+                           FontSize="{StaticResource FontSizeCaption}"
+                           Foreground="{StaticResource TextMutedBrush}"/>
+              </StackPanel>
+
+              <ae:TextEditor Grid.Row="1"
+                             Name="DdlSqlEditor"
+                             Classes="ddl-output"
+                             IsReadOnly="True"
+                             ShowLineNumbers="True"
+                             WordWrap="False"
+                             HorizontalScrollBarVisibility="Auto"
+                             VerticalScrollBarVisibility="Auto"/>
+            </Grid>
+          </Border>
+
+            <Border IsVisible="{Binding ShowCanvasDiagnosticsContent}"
+              Background="{StaticResource Bg0Brush}">
+              <ctrl:SidebarDiagnosticsControl DataContext="{Binding Diagnostics}" />
+            </Border>
+
+            <Border IsVisible="{Binding ShowStructureDiagnosticsContent}"
+              Background="{StaticResource Bg0Brush}">
+              <shell:DdlSchemaAnalysisWorkspaceControl DataContext="{Binding DdlTool}" />
+            </Border>
+
+          <Border IsVisible="{Binding ShowUnavailablePrimaryContent}"
+                  Background="{StaticResource Bg0Brush}"
+                  Padding="16">
+            <TextBlock Text="{Binding UnavailableMessage}"
+                       TextWrapping="Wrap"
+                       FontSize="{StaticResource FontSizeLabel}"
+                       Foreground="{StaticResource TextSecondaryBrush}"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"/>
+          </Border>
+        </Grid>
+
+        <Border Grid.Row="3"
+                BorderBrush="{StaticResource BorderSubtleBrush}"
+                BorderThickness="0,1,0,0"
+                Background="{StaticResource Bg1Brush}"
+                CornerRadius="{StaticResource RadiusLGBottom}"
+                Padding="14,10">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Grid.Column="0"
+                       Text="{Binding PrimaryTabLabel}"
+                       FontSize="{StaticResource FontSizeCaption}"
+                       Foreground="{StaticResource TextMutedBrush}"
+                       VerticalAlignment="Center"/>
+            <Button Grid.Column="1"
+                    Command="{Binding CloseCommand}"
+                    Classes="secondary"
+                    Padding="10,6"
+                    Content="{Binding [preview.close], Source={x:Static loc:LocalizationService.Instance}}"/>
+          </Grid>
+        </Border>
+      </Grid>
+    </Border>
+
+    <Panel IsVisible="{Binding ShowSqlBenchmarkPrimaryContent}"
+           HorizontalAlignment="Center"
+           VerticalAlignment="Center"
+           ZIndex="91">
+      <ctrl:BenchmarkOverlay DataContext="{Binding BenchmarkTool}"/>
+    </Panel>
+
+    <Panel IsVisible="{Binding ShowSqlExplainPrimaryContent}"
+           HorizontalAlignment="Center"
+           VerticalAlignment="Center"
+           ZIndex="91">
+      <ctrl:ExplainPlanOverlay DataContext="{Binding ExplainPlanTool}"/>
+    </Panel>
+  </Panel>
+</UserControl>

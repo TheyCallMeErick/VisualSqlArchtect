@@ -1,0 +1,190 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:AkkornStudio.UI.ViewModels"
+             xmlns:loc="using:AkkornStudio.UI.Services.Localization"
+             xmlns:mi="using:Material.Icons.Avalonia"
+             x:Class="AkkornStudio.UI.Controls.SqlEditor.SqlEditorResultPanel"
+             x:DataType="vm:SqlEditorViewModel">
+  <Border Background="{StaticResource Bg0Brush}"
+          BorderBrush="{StaticResource BorderSubtleBrush}"
+          BorderThickness="1"
+          CornerRadius="{StaticResource RadiusMD}"
+          Padding="8"
+          ClipToBounds="True">
+    <Grid RowDefinitions="Auto,Auto,*">
+      <Grid Grid.Row="0" ColumnDefinitions="*,220,Auto" Margin="0,0,0,6">
+        <StackPanel Grid.Column="0"
+                    Orientation="Horizontal"
+                    Spacing="8">
+          <TextBlock Text="{Binding [sqlEditor.results.title], Source={x:Static loc:LocalizationService.Instance}}"
+                     Foreground="{StaticResource TextPrimaryBrush}"
+                     FontWeight="{StaticResource FontWeightTitle}"
+                     FontSize="{StaticResource FontSizeBody}"/>
+          <Button Content="{Binding ShowAllColumnsButtonText}"
+                  IsVisible="{Binding HasHiddenResultColumns}"
+                  Padding="10,2"
+                  MinHeight="24"
+                  FontSize="{StaticResource FontSizeCaption}"
+                  Click="ShowAllColumnsButton_Click"/>
+          <Button Content="{Binding UndoHiddenColumnButtonText}"
+                  IsVisible="{Binding HasHiddenColumnUndo}"
+                  Padding="10,2"
+                  MinHeight="24"
+                  FontSize="{StaticResource FontSizeCaption}"
+                  Click="UndoHiddenColumnButton_Click"/>
+          <TextBlock x:Name="RowsCounterText"
+                     Foreground="{StaticResource TextMutedBrush}"
+                     FontSize="{StaticResource FontSizeCaption}"
+                     VerticalAlignment="Center"/>
+        </StackPanel>
+
+        <Grid Grid.Column="1" ColumnDefinitions="*,Auto" IsVisible="{Binding IsResultsOutputPaneSelected}">
+          <TextBox Grid.Column="0"
+                   Text="{Binding ResultGridFilterText}"
+                   Watermark="{Binding [sqlEditor.results.filterWatermark], Source={x:Static loc:LocalizationService.Instance}}"
+                   FontSize="{StaticResource FontSizeCaption}"
+                   HorizontalAlignment="Stretch"
+                   Background="{StaticResource Bg1Brush}"
+                   Foreground="{StaticResource TextPrimaryBrush}"
+                   BorderBrush="{StaticResource BorderSubtleBrush}"/>
+          <Button Grid.Column="1"
+                  Content="{Binding [common.clear], Source={x:Static loc:LocalizationService.Instance}}"
+                  Margin="6,0,0,0"
+                  Padding="10,2"
+                  MinHeight="24"
+                  FontSize="{StaticResource FontSizeCaption}"
+                  Click="ClearResultFilterButton_Click"/>
+        </Grid>
+
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+          <Button Content="{Binding [sqlEditor.export.action], Source={x:Static loc:LocalizationService.Instance}}"
+                  IsVisible="{Binding CanExportReport}"
+                  Padding="10,2"
+                  MinHeight="24"
+                  FontSize="{StaticResource FontSizeCaption}"
+                  Click="ExportReportButton_Click"/>
+          <Button IsVisible="{Binding IsMessagesOutputPaneSelected}"
+                  Padding="10,2"
+                  MinHeight="24"
+                  FontSize="{StaticResource FontSizeCaption}"
+                  Click="ClearMessagesButton_Click"
+                  Content="{Binding [common.clear], Source={x:Static loc:LocalizationService.Instance}}"/>
+        </StackPanel>
+      </Grid>
+
+      <Border Grid.Row="1"
+              Margin="0,0,0,6"
+              Background="{StaticResource Bg1Brush}"
+              BorderBrush="{StaticResource BorderSubtleBrush}"
+              BorderThickness="1"
+              CornerRadius="{StaticResource RadiusSM}"
+              Padding="6,4">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <Button Padding="10,2"
+                  MinHeight="24"
+                  FontSize="{StaticResource FontSizeCaption}"
+                  Click="ResultsPaneButton_Click"
+                  Classes.primary="{Binding IsResultsOutputPaneSelected}">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <mi:MaterialIcon Kind="Table" Width="12" Height="12"/>
+              <TextBlock Text="Resultados"/>
+            </StackPanel>
+          </Button>
+
+          <Button Padding="10,2"
+                  MinHeight="24"
+                  FontSize="{StaticResource FontSizeCaption}"
+                  Click="MessagesPaneButton_Click"
+                  Classes.primary="{Binding IsMessagesOutputPaneSelected}">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <mi:MaterialIcon Kind="MessageTextOutline" Width="12" Height="12"/>
+              <TextBlock Text="Mensagens"/>
+            </StackPanel>
+          </Button>
+        </StackPanel>
+      </Border>
+
+      <Grid Grid.Row="2">
+        <Grid IsVisible="{Binding IsResultsOutputPaneSelected}">
+          <TextBlock Text="{Binding ResultsEmptyText}"
+                     IsVisible="{Binding IsResultRowsEmpty}"
+                     VerticalAlignment="Center"
+                     HorizontalAlignment="Center"
+                     Foreground="{StaticResource TextSecondaryBrush}"
+                     FontSize="{StaticResource FontSizeCaption}"/>
+
+          <DataGrid IsReadOnly="True"
+                    IsVisible="{Binding HasResultRows}"
+                    AutoGenerateColumns="False"
+                    x:Name="ResultGrid"
+                    CanUserResizeColumns="True"
+                    CanUserReorderColumns="True"
+                    CanUserSortColumns="True"
+                    HorizontalScrollBarVisibility="Auto"
+                    VerticalScrollBarVisibility="Auto"/>
+        </Grid>
+
+        <Grid IsVisible="{Binding IsMessagesOutputPaneSelected}">
+          <TextBlock Text="{Binding MessagesPanelEmptyText}"
+                     IsVisible="{Binding IsOutputMessagesEmpty}"
+                     VerticalAlignment="Center"
+                     HorizontalAlignment="Center"
+                     Foreground="{StaticResource TextSecondaryBrush}"
+                     FontSize="{StaticResource FontSizeCaption}"/>
+
+          <ListBox ItemsSource="{Binding OutputMessages}"
+                   IsVisible="{Binding HasOutputMessages}"
+                   Background="Transparent"
+                   BorderThickness="0"
+                   Padding="0">
+            <ListBox.ItemsPanel>
+              <ItemsPanelTemplate>
+                <VirtualizingStackPanel/>
+              </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:SqlEditorMessageEntry">
+                <Border Margin="0,0,0,8"
+                        Padding="10"
+                        Background="{StaticResource Bg1Brush}"
+                        BorderBrush="{StaticResource BorderSubtleBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{StaticResource RadiusSM}">
+                  <StackPanel Spacing="4">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <Border Background="#223E7BFF" CornerRadius="8" Padding="6,1" IsVisible="{Binding IsError, Converter={x:Static BoolConverters.Not}}">
+                        <TextBlock Text="{Binding LevelText}" FontSize="{StaticResource FontSizeMonoSmall}" Foreground="{StaticResource TextPrimaryBrush}"/>
+                      </Border>
+                      <Border Background="#22FF6F7E" CornerRadius="8" Padding="6,1" IsVisible="{Binding IsError}">
+                        <TextBlock Text="{Binding LevelText}" FontSize="{StaticResource FontSizeMonoSmall}" Foreground="{StaticResource TextPrimaryBrush}"/>
+                      </Border>
+                      <TextBlock Text="{Binding Source}" FontSize="{StaticResource FontSizeCaption}" Foreground="{StaticResource AccentPrimaryHoverBrush}"/>
+                      <TextBlock Text="{Binding TimestampText}" FontSize="{StaticResource FontSizeCaption}" Foreground="{StaticResource TextMutedBrush}"/>
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding Title}"
+                               Foreground="{StaticResource TextPrimaryBrush}"
+                               TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding Detail}"
+                               IsVisible="{Binding HasDetail}"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               FontSize="{StaticResource FontSizeCaption}"
+                               TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding Sql}"
+                               IsVisible="{Binding HasSql}"
+                               FontFamily="{StaticResource MonoFont}"
+                               Foreground="{StaticResource TextMutedBrush}"
+                               FontSize="{StaticResource FontSizeCaption}"
+                               TextWrapping="Wrap"
+                               MaxHeight="66"
+                               TextTrimming="CharacterEllipsis"/>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </Grid>
+      </Grid>
+    </Grid>
+  </Border>
+</UserControl>
