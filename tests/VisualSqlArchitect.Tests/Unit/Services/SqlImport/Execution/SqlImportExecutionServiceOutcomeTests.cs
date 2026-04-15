@@ -342,7 +342,7 @@ public sealed class SqlImportExecutionServiceOutcomeTests
         var report = new ObservableCollection<ImportReportItem>();
 
         SqlImportExecutionResult result = service.Execute(
-            "SELECT o.id FROM orders o GROUP BY o.id HAVING SUM(o.id) > 1",
+            "SELECT o.id FROM orders o GROUP BY o.id HAVING COUNT(o.id) > 1",
             report,
             CancellationToken.None
         );
@@ -351,6 +351,26 @@ public sealed class SqlImportExecutionServiceOutcomeTests
         Assert.Contains(
             result.Outcome!.NonBlockingDiagnostics,
             diagnostic => diagnostic.Code == SqlImportDiagnosticCodes.FallbackRegexUsed
+        );
+    }
+
+    [Fact]
+    public void Execute_WithSimpleAggregateHaving_DoesNotEmitFallbackDiagnostic()
+    {
+        var service = CreateService();
+        var report = new ObservableCollection<ImportReportItem>();
+
+        SqlImportExecutionResult result = service.Execute(
+            "SELECT o.customer_id FROM orders o GROUP BY o.customer_id HAVING SUM(o.customer_id) > 1",
+            report,
+            CancellationToken.None
+        );
+
+        Assert.NotNull(result.Outcome);
+        Assert.DoesNotContain(
+            result.Outcome!.NonBlockingDiagnostics,
+            diagnostic => diagnostic.Code == SqlImportDiagnosticCodes.FallbackRegexUsed
+                && diagnostic.Clause == SqlImportClause.Having
         );
     }
 
