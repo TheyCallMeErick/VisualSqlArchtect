@@ -86,6 +86,9 @@ public static class SqlImportDiagnosticMessages
     public const string HavingFallbackReportNote =
         "HAVING used fallback path for unsupported predicate shape; complete mapping manually if needed.";
 
+    public const string HavingCountColumnApproximationReportNote =
+        "COUNT(column) was approximated to COUNT(*) in HAVING mapping; verify null-semantics manually if relevant.";
+
     public static string CorrelatedSubqueryFallbackWithExternalRefsReportNote(string correlatedFields)
     {
         return string.IsNullOrWhiteSpace(correlatedFields)

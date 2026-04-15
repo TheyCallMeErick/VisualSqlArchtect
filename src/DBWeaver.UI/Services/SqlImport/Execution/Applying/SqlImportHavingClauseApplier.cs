@@ -100,6 +100,50 @@ internal sealed class SqlImportHavingClauseApplier(CanvasViewModel canvas) : ISq
             {
                 // COUNT(*) is already handled by the dedicated branch above.
             }
+            else if (functionName == "COUNT")
+            {
+                NodeType compType = op switch
+                {
+                    "=" => NodeType.Equals,
+                    "<>" or "!=" => NodeType.NotEquals,
+                    ">" => NodeType.GreaterThan,
+                    ">=" => NodeType.GreaterOrEqual,
+                    "<" => NodeType.LessThan,
+                    "<=" => NodeType.LessOrEqual,
+                    _ => NodeType.Equals,
+                };
+
+                NodeViewModel countNode = new(
+                    NodeDefinitionRegistry.Get(NodeType.CountStar),
+                    layout.HavingCountPosition(query.FromParts.Count)
+                );
+                _canvas.Nodes.Add(countNode);
+
+                NodeViewModel comp = new(
+                    NodeDefinitionRegistry.Get(compType),
+                    layout.HavingComparisonPosition(query.FromParts.Count)
+                );
+                comp.PinLiterals["right"] = rightExpr;
+                _canvas.Nodes.Add(comp);
+
+                SqlImportClauseApplyUtilities.SafeWire(countNode, "count", comp, "left", _canvas);
+                SqlImportClauseApplyUtilities.SafeWire(comp, "result", result, "having", _canvas);
+
+                report.Add(
+                    new ImportReportItem(
+                        $"HAVING {functionName}({argumentExpression}) {op} {rightExpr}",
+                        ImportItemStatus.Imported,
+                        sourceNodeId: comp.Id
+                    )
+                );
+                report.Add(SqlImportReportFactory.Partial(
+                    SqlImportDiagnosticCodes.TypeInferenceFallback,
+                    "HAVING COUNT(column) approximation",
+                    SqlImportDiagnosticMessages.HavingCountColumnApproximationReportNote,
+                    comp.Id));
+                imported++;
+                partial++;
+            }
             else if (TryMapAggregate(functionName, out NodeType aggregateNodeType, out string aggregateOutputPin))
             {
                 NodeViewModel aggregateNode = new(
