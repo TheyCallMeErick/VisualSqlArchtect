@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia;
 using DBWeaver.UI.Converters;
 using DBWeaver.UI.ViewModels;
 
@@ -6,6 +7,15 @@ namespace DBWeaver.UI.Controls;
 
 public sealed partial class LiveSqlBar : UserControl
 {
+    public static readonly StyledProperty<bool> ShowPerformanceToolsProperty =
+        AvaloniaProperty.Register<LiveSqlBar, bool>(nameof(ShowPerformanceTools), true);
+
+    public bool ShowPerformanceTools
+    {
+        get => GetValue(ShowPerformanceToolsProperty);
+        set => SetValue(ShowPerformanceToolsProperty, value);
+    }
+
     public LiveSqlBar()
     {
         InitializeComponent();

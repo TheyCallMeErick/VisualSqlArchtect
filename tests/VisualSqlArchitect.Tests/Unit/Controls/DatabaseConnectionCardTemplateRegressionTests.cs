@@ -12,8 +12,10 @@ public class DatabaseConnectionCardTemplateRegressionTests
 
         Assert.Contains("x:Name=\"ConnectionComboBox\"", xaml);
         Assert.Contains("x:Name=\"DatabaseComboBox\"", xaml);
+        Assert.Contains("x:Name=\"SchemaComboBox\"", xaml);
         Assert.Contains("SelectionChanged=\"OnConnectionSelectionChanged\"", xaml);
         Assert.Contains("SelectionChanged=\"OnDatabaseSelectionChanged\"", xaml);
+        Assert.Contains("SelectionChanged=\"OnSchemaSelectionChanged\"", xaml);
     }
 
     [Fact]

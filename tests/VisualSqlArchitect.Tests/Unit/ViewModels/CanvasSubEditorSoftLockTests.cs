@@ -1,6 +1,7 @@
 ﻿using DBWeaver.UI.Services.Benchmark;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Avalonia;
 using DBWeaver.Core;
 using DBWeaver.Nodes;
@@ -87,7 +88,7 @@ public class CanvasSubEditorSoftLockTests
                 "src", "DBWeaver.UI", "ViewModels", "CanvasViewModel.cs"));
 
         Assert.DoesNotContain(".GetAwaiter().GetResult()", source, StringComparison.Ordinal);
-        Assert.DoesNotContain(".Result", source, StringComparison.Ordinal);
+        Assert.DoesNotMatch(new Regex(@"\.Result(?![A-Za-z0-9_])"), source);
     }
 
     private static void CorruptViewEditorSessionParentJson(CanvasViewModel vm)

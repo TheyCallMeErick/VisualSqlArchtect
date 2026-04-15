@@ -2373,7 +2373,7 @@ public class QueryGeneratorServiceTests
         ArgumentNullException.ThrowIfNull(graph);
 
         NodeGraph normalizedGraph = NormalizeLegacyBindingsForGraphFirst(graph, fromTable);
-        bool hasExplicitOutputSink = graph.Nodes.Any(node => node.Type is NodeType.ResultOutput or NodeType.SelectOutput);
+        bool hasExplicitOutputSink = graph.Nodes.Any(node => node.Type == NodeType.ResultOutput);
         QueryGenerationStructure? structure = (string.IsNullOrWhiteSpace(fromTable) && joins is null) || (hasExplicitOutputSink && joins is null)
             ? null
             : new QueryGenerationStructure(fromTable, joins);
@@ -2387,7 +2387,7 @@ public class QueryGeneratorServiceTests
             .Select(cte => cte with { Graph = NormalizeLegacyBindingsForGraphFirst(cte.Graph, cte.FromTable) })
             .ToList();
 
-        bool hasOutputNode = graph.Nodes.Any(node => node.Type is NodeType.ResultOutput or NodeType.SelectOutput);
+        bool hasOutputNode = graph.Nodes.Any(node => node.Type == NodeType.ResultOutput);
         if (hasOutputNode)
         {
             return new NodeGraph
@@ -2682,5 +2682,20 @@ public class NodeDefinitionRegistryTests
 
         NodeDefinition dateFormat = NodeDefinitionRegistry.Get(NodeType.DateFormat);
         Assert.Contains(dateFormat.Parameters, p => p.Name == "format");
+    }
+
+    [Fact]
+    public void LegacyNodeSymbols_AreRemovedFromRuntimeEnum()
+    {
+        Assert.False(Enum.TryParse<NodeType>("RawSqlQuery", out _));
+        Assert.False(Enum.TryParse<NodeType>("SelectOutput", out _));
+        Assert.False(Enum.TryParse<NodeType>("WhereOutput", out _));
+        Assert.False(Enum.TryParse<NodeType>("ReportOutput", out _));
+    }
+
+    [Fact]
+    public void RuntimeOutputNode_Definition_RemainsVisibleInCatalog()
+    {
+        Assert.True(NodeDefinitionRegistry.IsVisibleInCatalog(NodeType.ResultOutput));
     }
 }

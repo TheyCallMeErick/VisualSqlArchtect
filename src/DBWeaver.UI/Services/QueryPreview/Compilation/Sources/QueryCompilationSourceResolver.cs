@@ -19,8 +19,29 @@ internal sealed class QueryCompilationSourceResolver(
                 ? ([], [], [])
                 : FilterUpstreamSources(resultOutputNode, tableNodes, cteSourceNodes, subqueryNodes);
 
+        NodeViewModel? preferredUpstream = ResolvePreferredSource(upstreamTables, upstreamCtes, upstreamSubqueries);
+        if (preferredUpstream is not null)
+        {
+            if (preferredUpstream.Type == NodeType.TableSource)
+                return (BuildTableFromReference(preferredUpstream), null);
+
+            if (preferredUpstream.Type == NodeType.CteSource)
+            {
+                string? cteReference = _resolveCteSourceReference(preferredUpstream, cteDefinitionNamesById);
+                if (!string.IsNullOrWhiteSpace(cteReference))
+                    return (cteReference, null);
+            }
+
+            if (preferredUpstream.Type is NodeType.Subquery or NodeType.SubqueryReference)
+            {
+                (string? subqueryFrom, string? warning) = ResolveSubqueryFromSource(preferredUpstream);
+                if (!string.IsNullOrWhiteSpace(subqueryFrom))
+                    return (subqueryFrom, warning);
+            }
+        }
+
         if (upstreamTables.Count > 0)
-            return (upstreamTables[0].Subtitle ?? upstreamTables[0].Title, null);
+            return (BuildTableFromReference(upstreamTables[0]), null);
 
         if (upstreamCtes.Count > 0)
         {
@@ -40,7 +61,7 @@ internal sealed class QueryCompilationSourceResolver(
         }
 
         if (tableNodes.Count > 0)
-            return (tableNodes[0].Subtitle ?? tableNodes[0].Title, null);
+            return (BuildTableFromReference(tableNodes[0]), null);
 
         if (cteSourceNodes.Count > 0)
         {
@@ -60,6 +81,40 @@ internal sealed class QueryCompilationSourceResolver(
         }
 
         return ("cte_name", null);
+    }
+
+    private static NodeViewModel? ResolvePreferredSource(
+        IReadOnlyList<NodeViewModel> upstreamTables,
+        IReadOnlyList<NodeViewModel> upstreamCtes,
+        IReadOnlyList<NodeViewModel> upstreamSubqueries)
+    {
+        return upstreamTables.FirstOrDefault(static node => node.IsPrimaryFromSource)
+            ?? upstreamCtes.FirstOrDefault(static node => node.IsPrimaryFromSource)
+            ?? upstreamSubqueries.FirstOrDefault(static node => node.IsPrimaryFromSource);
+    }
+
+    private static string BuildTableFromReference(NodeViewModel tableNode)
+    {
+        string source = !string.IsNullOrWhiteSpace(tableNode.Subtitle)
+            ? tableNode.Subtitle!.Trim()
+            : tableNode.Title.Trim();
+
+        string? alias = ResolveExplicitTableAlias(tableNode);
+        return string.IsNullOrWhiteSpace(alias) ? source : $"{source} {alias}";
+    }
+
+    private static string? ResolveExplicitTableAlias(NodeViewModel tableNode)
+    {
+        if (!string.IsNullOrWhiteSpace(tableNode.Alias))
+            return tableNode.Alias!.Trim();
+
+        if (tableNode.Parameters.TryGetValue("alias", out string? aliasParam)
+            && !string.IsNullOrWhiteSpace(aliasParam))
+        {
+            return aliasParam.Trim();
+        }
+
+        return null;
     }
 
     private (IReadOnlyList<NodeViewModel> Tables, IReadOnlyList<NodeViewModel> Ctes, IReadOnlyList<NodeViewModel> Subqueries) FilterUpstreamSources(
@@ -98,7 +153,7 @@ internal sealed class QueryCompilationSourceResolver(
     private NodeViewModel? ResolvePrimaryResultOutputNode()
     {
         IReadOnlyList<NodeViewModel> outputs = _canvas.Nodes
-            .Where(n => n.Type is NodeType.ResultOutput or NodeType.SelectOutput)
+            .Where(n => n.Type == NodeType.ResultOutput)
             .ToList();
         if (outputs.Count == 0)
             return null;

@@ -12,33 +12,21 @@ public sealed class OutputCompiler : INodeCompiler
 {
     public bool CanCompile(NodeType nodeType) =>
         nodeType is NodeType.ResultOutput
-            or NodeType.SelectOutput
-            or NodeType.ReportOutput
             or NodeType.Top
             or NodeType.CompileWhere
-            or NodeType.SetOperation
-            or NodeType.WhereOutput;
+            or NodeType.SetOperation;
 
     public ISqlExpression Compile(NodeInstance node, INodeCompilationContext ctx, string pinName)
     {
         return node.Type switch
         {
             NodeType.ResultOutput => NullExpr.Instance, // Terminal node
-            NodeType.SelectOutput => NullExpr.Instance, // Legacy terminal node
-            NodeType.ReportOutput => NullExpr.Instance, // Terminal report sink
             NodeType.Top => NullExpr.Instance, // Modifier node
             NodeType.CompileWhere => CompileWhere(node, ctx),
             NodeType.SetOperation => NullExpr.Instance, // Query combiner metadata node
-            NodeType.WhereOutput => CompileWhereOutput(node, ctx),
 
             _ => throw new NotSupportedException($"Cannot compile {node.Type}"),
         };
-    }
-
-    private static ISqlExpression CompileWhereOutput(NodeInstance node, INodeCompilationContext ctx)
-    {
-        ISqlExpression condition = ctx.ResolveInput(node.Id, "condition", PinDataType.Boolean);
-        return condition is NullExpr ? new LiteralExpr("1 = 1", PinDataType.Boolean) : condition;
     }
 
     private static ISqlExpression CompileWhere(NodeInstance node, INodeCompilationContext ctx)

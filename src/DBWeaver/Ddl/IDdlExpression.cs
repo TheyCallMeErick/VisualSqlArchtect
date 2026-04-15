@@ -1,5 +1,6 @@
 using System.Linq;
 using DBWeaver.Core;
+using DBWeaver.Metadata;
 
 namespace DBWeaver.Ddl;
 
@@ -62,6 +63,49 @@ public sealed record DdlPrimaryKeyExpr(string? ConstraintName, IReadOnlyList<str
 public sealed record DdlUniqueExpr(string? ConstraintName, IReadOnlyList<string> Columns);
 
 public sealed record DdlCheckExpr(string? ConstraintName, string Expression);
+
+/// <summary>
+/// Represents a single-column foreign key constraint that can be emitted inline in CREATE TABLE
+/// or reused by ALTER TABLE operations.
+/// </summary>
+public sealed record DdlForeignKeyExpr(
+    string? ConstraintName,
+    string ChildColumn,
+    string ParentSchema,
+    string ParentTable,
+    string ParentColumn,
+    ReferentialAction OnDelete,
+    ReferentialAction OnUpdate
+) : IDdlExpression
+{
+    public string Emit(DdlEmitContext context)
+    {
+        var constraintClause = string.IsNullOrWhiteSpace(ConstraintName)
+            ? string.Empty
+            : $"CONSTRAINT {ConstraintName} ";
+
+        var parentRef = string.IsNullOrWhiteSpace(ParentSchema)
+            ? ParentTable
+            : $"{ParentSchema}.{ParentTable}";
+
+        var onDeleteClause = $" ON DELETE {EmitAction(OnDelete)}";
+        var onUpdateClause = context.Provider == DatabaseProvider.SQLite
+            ? string.Empty
+            : $" ON UPDATE {EmitAction(OnUpdate)}";
+
+        return $"{constraintClause}FOREIGN KEY ({ChildColumn}) REFERENCES {parentRef} ({ParentColumn}){onDeleteClause}{onUpdateClause}";
+    }
+
+    private static string EmitAction(ReferentialAction action) =>
+        action switch
+        {
+            ReferentialAction.Cascade => "CASCADE",
+            ReferentialAction.SetNull => "SET NULL",
+            ReferentialAction.SetDefault => "SET DEFAULT",
+            ReferentialAction.Restrict => "RESTRICT",
+            _ => "NO ACTION",
+        };
+}
 
 public sealed class CreateEnumTypeExpr(
     string schemaName,
@@ -266,6 +310,116 @@ public interface IAlterOpExpr
     string Emit(DdlEmitContext context, string schemaName, string tableName);
 }
 
+/// <summary>
+/// Adds a single-column foreign key constraint through ALTER TABLE.
+/// </summary>
+public sealed class AddForeignKeyOpExpr(
+    string? constraintName,
+    string childColumn,
+    string parentSchema,
+    string parentTable,
+    string parentColumn,
+    ReferentialAction onDelete,
+    ReferentialAction onUpdate
+) : IAlterOpExpr
+{
+    public string? ConstraintName { get; } = string.IsNullOrWhiteSpace(constraintName) ? null : constraintName.Trim();
+    public string ChildColumn { get; } = childColumn;
+    public string ParentSchema { get; } = parentSchema;
+    public string ParentTable { get; } = parentTable;
+    public string ParentColumn { get; } = parentColumn;
+    public ReferentialAction OnDelete { get; } = onDelete;
+    public ReferentialAction OnUpdate { get; } = onUpdate;
+    public bool IsDestructive => false;
+
+    public string Emit(DdlEmitContext context, string schemaName, string tableName)
+    {
+        string childTable = QualifyTable(context, schemaName, tableName);
+        string parent = QualifyTable(context, ParentSchema, ParentTable);
+        string childCol = context.Dialect.QuoteIdentifier(ChildColumn.Trim());
+        string parentCol = context.Dialect.QuoteIdentifier(ParentColumn.Trim());
+
+        string constraintClause = string.IsNullOrWhiteSpace(ConstraintName)
+            ? string.Empty
+            : $"CONSTRAINT {context.Dialect.QuoteIdentifier(ConstraintName.Trim())} ";
+
+        string onDeleteClause = $" ON DELETE {MapAction(OnDelete)}";
+        string onUpdateClause = context.Provider == DatabaseProvider.SQLite
+            ? string.Empty
+            : $" ON UPDATE {MapAction(OnUpdate)}";
+
+        return $"ALTER TABLE {childTable} ADD {constraintClause}FOREIGN KEY ({childCol}) REFERENCES {parent} ({parentCol}){onDeleteClause}{onUpdateClause};";
+    }
+
+    private static string QualifyTable(DdlEmitContext context, string schemaName, string tableName)
+    {
+        string normalizedTable = tableName.Trim();
+        string normalizedSchema = NormalizeSchemaForProvider(context.Provider, schemaName);
+        if (context.Provider == DatabaseProvider.SQLite || string.IsNullOrWhiteSpace(normalizedSchema))
+            return context.Dialect.QuoteIdentifier(normalizedTable);
+
+        return $"{context.Dialect.QuoteIdentifier(normalizedSchema)}.{context.Dialect.QuoteIdentifier(normalizedTable)}";
+    }
+
+    private static string NormalizeSchemaForProvider(DatabaseProvider provider, string schema)
+    {
+        if (!string.IsNullOrWhiteSpace(schema))
+            return schema.Trim();
+
+        return provider switch
+        {
+            DatabaseProvider.SqlServer => "dbo",
+            DatabaseProvider.Postgres => "public",
+            _ => string.Empty,
+        };
+    }
+
+    private static string MapAction(ReferentialAction action) =>
+        action switch
+        {
+            ReferentialAction.Cascade => "CASCADE",
+            ReferentialAction.SetNull => "SET NULL",
+            ReferentialAction.SetDefault => "SET DEFAULT",
+            ReferentialAction.Restrict => "RESTRICT",
+            _ => "NO ACTION",
+        };
+}
+
+/// <summary>
+/// Drops a named table constraint through ALTER TABLE.
+/// </summary>
+public sealed class DropConstraintOpExpr(string constraintName) : IAlterOpExpr
+{
+    public string ConstraintName { get; } = constraintName;
+    public bool IsDestructive => true;
+
+    public string Emit(DdlEmitContext context, string schemaName, string tableName)
+    {
+        if (context.Provider == DatabaseProvider.SQLite)
+            return "-- SQLite does not support DROP CONSTRAINT directly; table rebuild is required.";
+
+        string schema = NormalizeSchemaForProvider(context.Provider, schemaName);
+        string qualifiedTable = string.IsNullOrWhiteSpace(schema)
+            ? context.Dialect.QuoteIdentifier(tableName.Trim())
+            : $"{context.Dialect.QuoteIdentifier(schema)}.{context.Dialect.QuoteIdentifier(tableName.Trim())}";
+
+        return $"ALTER TABLE {qualifiedTable} DROP CONSTRAINT {context.Dialect.QuoteIdentifier(ConstraintName.Trim())};";
+    }
+
+    private static string NormalizeSchemaForProvider(DatabaseProvider provider, string schema)
+    {
+        if (!string.IsNullOrWhiteSpace(schema))
+            return schema.Trim();
+
+        return provider switch
+        {
+            DatabaseProvider.SqlServer => "dbo",
+            DatabaseProvider.Postgres => "public",
+            _ => string.Empty,
+        };
+    }
+}
+
 public sealed class AddColumnOpExpr(DdlColumnExpr column) : IAlterOpExpr
 {
     public DdlColumnExpr Column { get; } = column;
@@ -358,6 +512,30 @@ public sealed class AlterTableExpr(
     }
 }
 
+/// <summary>
+/// Emits a direct DROP TABLE statement.
+/// </summary>
+public sealed class DropTableExpr(string schemaName, string tableName, bool ifExists = true) : IDdlExpression
+{
+    public string SchemaName { get; } = schemaName;
+    public string TableName { get; } = tableName;
+    public bool IfExists { get; } = ifExists;
+
+    public string Emit(DdlEmitContext context)
+    {
+        string schema = string.IsNullOrWhiteSpace(SchemaName)
+            ? context.Provider switch
+            {
+                DatabaseProvider.SqlServer => "dbo",
+                DatabaseProvider.Postgres => "public",
+                _ => string.Empty,
+            }
+            : SchemaName.Trim();
+
+        return context.Dialect.EmitAlterTableDropTable(schema, TableName.Trim(), IfExists);
+    }
+}
+
 public sealed class CreateTableExpr(
     string schemaName,
     string tableName,
@@ -367,7 +545,8 @@ public sealed class CreateTableExpr(
     IReadOnlyList<DdlUniqueExpr> uniques,
     IReadOnlyList<DdlCheckExpr> checks,
     string? tableComment = null,
-    DdlIdempotentMode mode = DdlIdempotentMode.None
+    DdlIdempotentMode mode = DdlIdempotentMode.None,
+    IReadOnlyList<DdlForeignKeyExpr>? foreignKeys = null
 ) : IDdlExpression
 {
     public string SchemaName { get; } = schemaName;
@@ -377,19 +556,25 @@ public sealed class CreateTableExpr(
     public IReadOnlyList<DdlPrimaryKeyExpr> PrimaryKeys { get; } = primaryKeys;
     public IReadOnlyList<DdlUniqueExpr> Uniques { get; } = uniques;
     public IReadOnlyList<DdlCheckExpr> Checks { get; } = checks;
+    public IReadOnlyList<DdlForeignKeyExpr> ForeignKeys { get; } = foreignKeys ?? [];
     public string? TableComment { get; } = string.IsNullOrWhiteSpace(tableComment) ? null : tableComment.Trim();
     public DdlIdempotentMode Mode { get; } = mode;
 
     public string Emit(DdlEmitContext context)
     {
-        var columnFragments = Columns
-            .Select(c => context.Dialect.EmitCreateTableColumn(c.ColumnName, c.DataType, c.IsNullable, c.DefaultExpression, c.Comment))
-            .ToList();
+        List<string> columnFragments =
+        [
+            .. Columns
+                .Select(c => context.Dialect.EmitCreateTableColumn(c.ColumnName, c.DataType, c.IsNullable, c.DefaultExpression, c.Comment))
+                .Where(static fragment => !string.IsNullOrWhiteSpace(fragment)),
+        ];
 
         var constraintFragments = new List<string>();
         constraintFragments.AddRange(PrimaryKeys.Select(pk => context.Dialect.EmitPrimaryKeyConstraint(pk.ConstraintName, pk.Columns)));
         constraintFragments.AddRange(Uniques.Select(uq => context.Dialect.EmitUniqueConstraint(uq.ConstraintName, uq.Columns)));
         constraintFragments.AddRange(Checks.Select(ck => context.Dialect.EmitCheckConstraint(ck.ConstraintName, ck.Expression)));
+        constraintFragments.AddRange(ForeignKeys.Select(fk => fk.Emit(context)));
+        constraintFragments = [.. constraintFragments.Where(static fragment => !string.IsNullOrWhiteSpace(fragment))];
 
         bool effectiveIfNotExists = Mode == DdlIdempotentMode.IfNotExists || (Mode == DdlIdempotentMode.None && IfNotExists);
 

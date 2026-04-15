@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Text.RegularExpressions;
 using DBWeaver.Nodes;
+using DBWeaver.SqlImport.Diagnostics;
 using DBWeaver.UI.Services.SqlImport;
 using DBWeaver.UI.Services.SqlImport.Build;
 using DBWeaver.UI.Services.SqlImport.Execution.Parsing;
@@ -24,6 +25,7 @@ internal sealed class SqlImportOrderingClauseApplier : ISqlImportApplyStep
         int imported = 0;
         int partial = 0;
         int skipped = 0;
+        bool fallbackActivated = false;
 
         NodeViewModel result = coreContext.ResultNode;
         var tableNodes = coreContext.TableNodes;
@@ -48,6 +50,7 @@ internal sealed class SqlImportOrderingClauseApplier : ISqlImportApplyStep
 
             string expr = SqlImportIdentifierNormalizer.NormalizeQualifiedIdentifier(termMatch.Groups["expr"].Value);
             string colName = expr.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).LastOrDefault() ?? expr;
+            bool isQualifiedExpression = expr.Contains('.', StringComparison.Ordinal);
             bool desc = termMatch.Groups["direction"].Success
                 && termMatch.Groups["direction"].Value.Equals("DESC", StringComparison.OrdinalIgnoreCase);
 
@@ -59,6 +62,8 @@ internal sealed class SqlImportOrderingClauseApplier : ISqlImportApplyStep
                 orderPin = tableNodes
                     .SelectMany(n => n.OutputPins)
                     .FirstOrDefault(p => p.Name.Equals(colName, StringComparison.OrdinalIgnoreCase));
+                if (orderPin is not null && !isQualifiedExpression && tableNodes.Count > 1)
+                    fallbackActivated = true;
             }
 
             if (orderPin is null
@@ -94,10 +99,8 @@ internal sealed class SqlImportOrderingClauseApplier : ISqlImportApplyStep
         else if (importedTerms > 0)
         {
             report.Add(
-                new ImportReportItem(
+                SqlImportReportFactory.OrderByPartial(
                     $"ORDER BY {SqlImportClauseApplyUtilities.Truncate(query.OrderBy, 30)}",
-                    ImportItemStatus.Partial,
-                    "Some sort terms could not be mapped and were skipped",
                     result.Id
                 )
             );
@@ -106,13 +109,21 @@ internal sealed class SqlImportOrderingClauseApplier : ISqlImportApplyStep
         else
         {
             report.Add(
-                new ImportReportItem(
-                    $"ORDER BY {SqlImportClauseApplyUtilities.Truncate(query.OrderBy, 30)}",
-                    ImportItemStatus.Skipped,
-                    "Unsupported sort expression - add manually"
+                SqlImportReportFactory.OrderByUnsupported(
+                    $"ORDER BY {SqlImportClauseApplyUtilities.Truncate(query.OrderBy, 30)}"
                 )
             );
             skipped++;
+        }
+
+        if (fallbackActivated)
+        {
+            report.Add(SqlImportReportFactory.Partial(
+                SqlImportDiagnosticCodes.FallbackRegexUsed,
+                "ORDER BY fallback",
+                SqlImportDiagnosticMessages.OrderByColumnFallbackReportNote,
+                result.Id));
+            partial++;
         }
 
         return new SqlImportApplyResult(imported, partial, skipped);

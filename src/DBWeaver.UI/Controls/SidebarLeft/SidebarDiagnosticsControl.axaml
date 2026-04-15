@@ -100,6 +100,11 @@
       <ItemsControl x:Name="CategoriesItems"
                     ItemsSource="{Binding Categories}"
                     HorizontalAlignment="Stretch">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <VirtualizingStackPanel/>
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate>
           <DataTemplate x:DataType="appdiag:AppDiagnosticCategoryViewModel">
             <Expander Classes="diag-category"
@@ -150,6 +155,11 @@
 
               <StackPanel Margin="10,0,10,10">
                 <ItemsControl ItemsSource="{Binding Items}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <VirtualizingStackPanel/>
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="appdiag:AppDiagnosticEntry">
                       <Border Classes="diag-item">

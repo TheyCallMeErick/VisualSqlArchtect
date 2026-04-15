@@ -10,17 +10,29 @@ public sealed class SqlEditorPropertyChangePublisher
         "ActiveTabConnectionProfile",
         "ActiveTabConnectionProfileId",
         "HasConnectionProfiles",
+        "SidebarSelectedConnectionProfile",
+        "HasSidebarSelectedConnectionProfile",
         "SharedConnectionManager",
         "HasSharedConnectionManager",
         "HasResolvedConnection",
         "ActiveConnectionDisplayName",
         "ActiveConnectionSubtitle",
+        "HasActiveConnection",
+        "HasNoActiveConnection",
+        "IsProductionConnectionContext",
+        "IsStagingConnectionContext",
+        "IsNeutralConnectionContext",
+        "ActiveConnectionContextBadgeText",
+        "ActiveProviderStatusText",
+        "CursorLine",
+        "CursorColumn",
+        "CursorPositionText",
+        "IndentationStatusText",
         "ShowDialectSelector",
-        "SchemaTables",
-        "HasSchemaTables",
-        "IsSchemaEmpty",
-        "SchemaEmptyText",
         "ResultTabs",
+        "SelectedOutputPane",
+        "IsResultsOutputPaneSelected",
+        "IsMessagesOutputPaneSelected",
         "SelectedResultTabIndex",
         "ResultRowsView",
         "HasHiddenResultColumns",
@@ -34,6 +46,10 @@ public sealed class SqlEditorPropertyChangePublisher
         "HasResultRows",
         "IsResultRowsEmpty",
         "ResultsEmptyText",
+        "OutputMessages",
+        "HasOutputMessages",
+        "IsOutputMessagesEmpty",
+        "MessagesPanelEmptyText",
         "ExecutionHistory",
         "FilteredExecutionHistory",
         "HasExecutionHistory",
@@ -50,11 +66,31 @@ public sealed class SqlEditorPropertyChangePublisher
         "ExecutionTelemetry",
         "ExecutionTelemetryText",
         "ExecutionTelemetryErrorsText",
+        "CompletionTelemetry",
+        "CompletionTelemetryText",
         "LastExecutionMessage",
         "MessagesEmptyText",
         "ResultSummaryText",
+        "CanExecuteOrCancel",
+        "ExecuteOrCancelButtonText",
+        "ExecuteOrCancelTooltipText",
+        "IsCancellationPending",
+        "CursorPositionTooltipText",
+        "ActiveExecutionStatementStartLine",
+        "ActiveExecutionStatementEndLine",
+        "HasActiveExecutionStatementRange",
         "IsResultsSheetOpen",
+        "CanReopenResultsSheet",
+        "RestoreResultsButtonText",
         "ResultsSheetHeight",
+        "IsExplainRunning",
+        "ExplainSummaryText",
+        "ExplainRawOutput",
+        "HasExplainRawOutput",
+        "IsBenchmarkRunning",
+        "BenchmarkProgressText",
+        "BenchmarkSummaryText",
+        "HasBenchmarkResult",
         "PendingMutationMessage",
         "PendingMutationIssues",
         "PendingMutationCountQuery",
@@ -76,6 +112,17 @@ public sealed class SqlEditorPropertyChangePublisher
         "ManyTabsWarningText",
     ];
 
+    private static readonly string[] SchemaProperties =
+    [
+        "SchemaTables",
+        "SchemaSearchText",
+        "FilteredSchemaTables",
+        "HasFilteredSchemaTables",
+        "HasSchemaTables",
+        "IsSchemaEmpty",
+        "SchemaEmptyText",
+    ];
+
     public void PublishSqlPanelChanges(Action<string> raisePropertyChanged)
     {
         ArgumentNullException.ThrowIfNull(raisePropertyChanged);
@@ -87,6 +134,13 @@ public sealed class SqlEditorPropertyChangePublisher
     {
         ArgumentNullException.ThrowIfNull(raisePropertyChanged);
         foreach (string property in TabStateProperties)
+            raisePropertyChanged(property);
+    }
+
+    public void PublishSchemaChanges(Action<string> raisePropertyChanged)
+    {
+        ArgumentNullException.ThrowIfNull(raisePropertyChanged);
+        foreach (string property in SchemaProperties)
             raisePropertyChanged(property);
     }
 }

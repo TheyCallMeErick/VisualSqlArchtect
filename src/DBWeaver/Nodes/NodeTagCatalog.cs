@@ -110,12 +110,6 @@ public static class NodeTagCatalog
         if (haystack.Contains("report", StringComparison.Ordinal))
             AddTag(map, "report");
 
-        bool hasReportPin = definition.Pins.Any(p => p.DataType == PinDataType.ReportQuery);
-        if (hasReportPin)
-        {
-            AddTag(map, "report");
-            AddTag(map, "sql");
-        }
     }
 
     private static void AddTag(IDictionary<string, NodeTag> map, string tagName, string? colorHex = null)

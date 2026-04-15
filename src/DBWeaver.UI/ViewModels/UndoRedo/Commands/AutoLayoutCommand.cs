@@ -42,8 +42,6 @@ public sealed class AutoLayoutCommand : ICanvasCommand
     private static bool IsOutputNode(NodeViewModel n) =>
         n.Type
             is NodeType.ResultOutput
-                or NodeType.WhereOutput
-                or NodeType.SelectOutput
                 or NodeType.HtmlExport
                 or NodeType.JsonExport
                 or NodeType.CsvExport

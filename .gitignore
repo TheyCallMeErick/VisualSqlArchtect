@@ -6,3 +6,4 @@ archive/*
 .superpowers/*
 .worktrees/
 dbweaver_app/*
+*.md

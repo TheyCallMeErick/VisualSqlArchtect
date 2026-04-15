@@ -9,12 +9,7 @@ public sealed class NodeGraphCompilerGraphFirstContractTests
     [Fact]
     public void OutputDefinitions_ExposeGraphFirstOrderAndGroupPins()
     {
-        NodeDefinition selectOutput = NodeDefinitionRegistry.Get(NodeType.SelectOutput);
         NodeDefinition resultOutput = NodeDefinitionRegistry.Get(NodeType.ResultOutput);
-
-        Assert.Contains(selectOutput.Pins, p => p.Direction == PinDirection.Input && p.Name == "order_by" && p.DataType == PinDataType.ColumnRef && p.AllowMultiple);
-        Assert.Contains(selectOutput.Pins, p => p.Direction == PinDirection.Input && p.Name == "order_by_desc" && p.DataType == PinDataType.ColumnRef && p.AllowMultiple);
-        Assert.Contains(selectOutput.Pins, p => p.Direction == PinDirection.Input && p.Name == "group_by" && p.DataType == PinDataType.ColumnRef && p.AllowMultiple);
 
         Assert.Contains(resultOutput.Pins, p => p.Direction == PinDirection.Input && p.Name == "order_by" && p.DataType == PinDataType.ColumnRef && p.AllowMultiple);
         Assert.Contains(resultOutput.Pins, p => p.Direction == PinDirection.Input && p.Name == "order_by_desc" && p.DataType == PinDataType.ColumnRef && p.AllowMultiple);
@@ -97,30 +92,9 @@ public sealed class NodeGraphCompilerGraphFirstContractTests
     }
 
     [Fact]
-    public void Compile_MultipleTopLevelOutputSinks_ThrowsInvalidOperationException()
+    public void Compile_LegacySelectOutputSymbol_IsRemovedFromRuntimeEnum()
     {
-        NodeInstance table = CreateTableSource("tbl");
-        NodeInstance resultOutput = CreateOutput("out_1");
-        NodeInstance selectOutput = new(
-            "out_2",
-            NodeType.SelectOutput,
-            new Dictionary<string, string>(),
-            new Dictionary<string, string>());
-
-        NodeGraph graph = new()
-        {
-            Nodes = [table, resultOutput, selectOutput],
-            Connections =
-            [
-                new Connection("tbl", "id", "out_1", "column"),
-                new Connection("tbl", "id", "out_2", "column"),
-            ],
-        };
-
-        InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
-            new NodeGraphCompiler(graph, CreatePostgresContext()).Compile());
-
-        Assert.Contains("Multiple ResultOutput/SelectOutput", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.False(Enum.TryParse<NodeType>("SelectOutput", out _));
     }
 
     [Fact]

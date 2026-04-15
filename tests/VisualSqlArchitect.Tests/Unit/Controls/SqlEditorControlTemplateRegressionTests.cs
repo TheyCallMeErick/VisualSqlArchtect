@@ -16,10 +16,16 @@ public sealed class SqlEditorControlTemplateRegressionTests
         Assert.Contains("<ctrl:SqlEditorResultPanel", xaml);
         Assert.Contains("IsReadOnly=\"False\"", xaml);
         Assert.Contains("IsVisible=\"{Binding ShouldShowResultsSheet}\"", xaml);
-        Assert.Contains("Height=\"{Binding ResultsSheetHeight}\"", xaml);
+        Assert.Contains("Width=\"1040\"", xaml);
+        Assert.Contains("Height=\"640\"", xaml);
+        Assert.Contains("ResultsModalBackdrop_OnPointerPressed", xaml);
         Assert.Contains("Command=\"{Binding CloseResultsSheetCommand}\"", xaml);
         Assert.Contains("<ctrl:MutationConfirmDialog", xaml);
         Assert.Contains("Text=\"{Binding ExecutionStatusText}\"", xaml);
+        Assert.Contains("Text=\"{Binding SignatureHelpText}\"", xaml);
+        Assert.Contains("IsVisible=\"{Binding HasSignatureHelp}\"", xaml);
+        Assert.Contains("Text=\"{Binding HoverDocumentationText}\"", xaml);
+        Assert.Contains("IsVisible=\"{Binding HasHoverDocumentation}\"", xaml);
         Assert.Contains("Text=\"{Binding ResultSummaryText}\"", xaml);
         Assert.Contains("IsVisible=\"{Binding IsExecuting}\"", xaml);
         Assert.Contains("IsVisible=\"{Binding HasPendingMutationConfirmation}\"", xaml);
@@ -37,6 +43,8 @@ public sealed class SqlEditorControlTemplateRegressionTests
 
         Assert.Contains("Key.F8", source);
         Assert.Contains("Key.F5", source);
+        Assert.Contains("Key.F4", source);
+        Assert.Contains("Key.F6", source);
         Assert.Contains("Key.S", source);
         Assert.Contains("Key.O", source);
         Assert.Contains("Key.T", source);
@@ -50,6 +58,14 @@ public sealed class SqlEditorControlTemplateRegressionTests
         Assert.Contains("CompletionWindow", source);
         Assert.Contains("TextEntered", source);
         Assert.Contains("ShouldAutoTriggerCompletionAfterSpace", source);
+        Assert.Contains("LargeEditorCompletionThreshold = 10_000", source);
+        Assert.Contains("Editor grande — completion sob demanda (Ctrl+Space).", source);
+        Assert.Contains("_completionWindow.CompletionList.CompletionData.Clear();", source);
+        Assert.Contains("_vm.RecordCompletionBreakdown(completionTelemetry);", source);
+        Assert.Contains("AllowScrollBelowDocument = true", source);
+        Assert.Contains("ApplyEditorExecutionState", source);
+        Assert.Contains("nameof(SqlEditorViewModel.IsExecuting)", source);
+        Assert.Contains("StandardCursorType.Wait", source);
         Assert.Contains("ExecuteAllAsync", source);
         Assert.Contains("ExecuteSelectionOrCurrentAsync", source);
         Assert.Contains("SaveActiveTabAsync", source);
@@ -58,6 +74,28 @@ public sealed class SqlEditorControlTemplateRegressionTests
         Assert.Contains("NewTabCommand", source);
         Assert.Contains("ActiveEditorTabIndex", source);
         Assert.Contains("CancelExecution", source);
+        Assert.Contains("RunExplainAsync", source);
+        Assert.Contains("RunBenchmarkAsync", source);
+        Assert.Contains("SqlExecutionStatementHighlightRenderer", source);
+        Assert.Contains("RefreshExecutionStatementHighlight", source);
+        Assert.Contains("Key.Tab", source);
+        Assert.Contains("TryAdvanceSnippetTabStop", source);
+        Assert.Contains("SqlEditorSnippetTabStopSessionStore", source);
+        Assert.Contains("UpdateSignatureHelpFromCaret", source);
+        Assert.Contains("_vm.UpdateSignatureHelp", source);
+        Assert.Contains("PointerMoved += OnEditorPointerMoved", source);
+        Assert.Contains("OnHoverDocsDebounceTick", source);
+        Assert.Contains("_vm.UpdateHoverDocumentation", source);
+    }
+
+    [Fact]
+    public void SqlEditorSchemaBrowserTemplate_UsesVirtualizedTableList()
+    {
+        string xaml = ReadSqlEditorSchemaBrowserXaml();
+
+        Assert.Contains("ItemsSource=\"{Binding FilteredSchemaTables}\"", xaml);
+        Assert.Contains("<VirtualizingStackPanel", xaml);
+        Assert.Contains("IsVisible=\"{Binding HasFilteredSchemaTables}\"", xaml);
     }
 
     private static string ReadSqlEditorControlXaml()
@@ -104,5 +142,28 @@ public sealed class SqlEditorControlTemplateRegressionTests
         }
 
         throw new FileNotFoundException("Could not locate SqlEditorControl.axaml.cs from test base directory.");
+    }
+
+    private static string ReadSqlEditorSchemaBrowserXaml()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            string candidate = Path.Combine(
+                dir.FullName,
+                "src",
+                "DBWeaver.UI",
+                "Controls",
+                "SqlEditor",
+                "SqlEditorSchemaBrowserControl.axaml"
+            );
+
+            if (File.Exists(candidate))
+                return File.ReadAllText(candidate);
+
+            dir = dir.Parent;
+        }
+
+        throw new FileNotFoundException("Could not locate SqlEditorSchemaBrowserControl.axaml from test base directory.");
     }
 }

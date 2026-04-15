@@ -30,20 +30,19 @@ public class QueryDomainStrategyTests
     }
 
     [Fact]
-    public void GetOutputNodes_ReturnsOnlyResultOrSelectOutputs()
+    public void GetOutputNodes_ReturnsOnlyResultOutputs()
     {
         var strategy = new QueryDomainStrategy();
         List<NodeViewModel> nodes =
         [
             new("public.orders", [], new Point(0, 0)),
             new(NodeDefinitionRegistry.Get(NodeType.ResultOutput), new Point(20, 0)),
-            new(NodeDefinitionRegistry.Get(NodeType.SelectOutput), new Point(40, 0)),
         ];
 
         IReadOnlyList<NodeViewModel> outputs = strategy.GetOutputNodes(nodes);
 
-        Assert.Equal(2, outputs.Count);
-        Assert.All(outputs, o => Assert.Contains(o.Type, new[] { NodeType.ResultOutput, NodeType.SelectOutput }));
+        Assert.Single(outputs);
+        Assert.All(outputs, o => Assert.Equal(NodeType.ResultOutput, o.Type));
     }
 
     [Fact]
@@ -173,7 +172,7 @@ public class QueryDomainStrategyTests
 
         var cte = new NodeViewModel(NodeDefinitionRegistry.Get(NodeType.CteDefinition), new Point(40, 40));
         cte.Parameters["name"] = "test_cte";
-        
+
         canvas.Nodes.Add(cte);
         cte.IsSelected = true;
 

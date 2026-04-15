@@ -582,30 +582,27 @@ public class CommandPaletteFactory(
 
         switch (shell.ActivePreviewContract.Kind)
         {
-            case WorkspaceDocumentPreviewKind.Ddl:
-            {
-                CanvasViewModel activeCanvas = CurrentCanvas;
-                LiveDdlBarViewModel? activeLiveDdl = activeCanvas.LiveDdl;
-                activeLiveDdl?.Recompile();
-                if (HasDdlOutput(activeLiveDdl))
-                {
-                    shell.OutputPreview.OpenForDdl(activeCanvas, activeLiveDdl!, activeCanvas.Provider.ToString());
-                    return;
-                }
-
-                CanvasViewModel ddlCanvas = shell.EnsureDdlCanvas();
-                LiveDdlBarViewModel? liveDdl = ddlCanvas.LiveDdl;
-                liveDdl?.Recompile();
-                if (liveDdl is not null)
-                    shell.OutputPreview.OpenForDdl(ddlCanvas, liveDdl, ddlCanvas.Provider.ToString());
-                return;
-            }
             case WorkspaceDocumentPreviewKind.Query:
             {
-                CurrentCanvas.DataPreview.IsVisible = true;
-                shell.OutputPreview.OpenForQuery(CurrentCanvas);
+                CanvasViewModel queryCanvas = shell.ActiveQueryCanvasDocument ?? shell.Canvas
+                    ?? throw new InvalidOperationException("Preview SQL indisponivel para o canvas Query atual.");
+                LiveSqlBarViewModel liveSql = queryCanvas.LiveSql
+                    ?? throw new InvalidOperationException("Preview SQL indisponivel para o canvas Query atual.");
+                liveSql.Recompile();
+                shell.OutputPreview.OpenForQuery(queryCanvas, liveSql, liveSql.ProviderLabel);
                 return;
             }
+
+            case WorkspaceDocumentPreviewKind.Ddl:
+            {
+                CanvasViewModel ddlCanvas = shell.EnsureDdlCanvas();
+                LiveDdlBarViewModel liveDdl = ddlCanvas.LiveDdl
+                    ?? throw new InvalidOperationException("Preview DDL indisponivel para o canvas DDL atual.");
+                liveDdl.Recompile();
+                shell.OutputPreview.OpenForDdl(ddlCanvas, liveDdl, ddlCanvas.Provider.ToString());
+                return;
+            }
+
             default:
             {
                 var contract = shell.ActivePreviewContract;

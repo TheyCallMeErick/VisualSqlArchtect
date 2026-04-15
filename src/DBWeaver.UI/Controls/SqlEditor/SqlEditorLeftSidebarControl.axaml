@@ -1,9 +1,10 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:DBWeaver.UI.ViewModels"
-             xmlns:mi="using:Material.Icons.Avalonia"
              xmlns:ctrl="using:DBWeaver.UI.Controls"
+             xmlns:sql="using:DBWeaver.UI.Controls.SqlEditor"
              xmlns:shared="using:DBWeaver.UI.Controls.Shared"
+             xmlns:loc="using:DBWeaver.UI.Services.Localization"
              x:Class="DBWeaver.UI.Controls.SqlEditor.SqlEditorLeftSidebarControl"
              x:DataType="vm:SqlEditorViewModel"
              x:Name="SqlEditorSidebarRoot">
@@ -16,9 +17,9 @@
       x:DataType="vm:SqlEditorSchemaTableItem"
       x:DataType="vm:SqlEditorSchemaColumnItem" -->
   <UserControl.Styles>
-    <Style Selector="TextBlock.section-header-teal">
+    <Style Selector="TextBlock.section-header-accent">
       <Setter Property="FontSize" Value="{StaticResource FontSizeCaption}"/>
-      <Setter Property="FontWeight" Value="Bold"/>
+      <Setter Property="FontWeight" Value="{StaticResource FontWeightHeading}"/>
       <Setter Property="Foreground" Value="{StaticResource AccentPrimaryHoverBrush}"/>
       <Setter Property="LetterSpacing" Value="1.5"/>
     </Style>
@@ -48,9 +49,49 @@
           RowDefinitions="Auto,*"
           VerticalAlignment="Stretch">
       <StackPanel Grid.Row="0" Spacing="8">
-        <TextBlock Text="CONEXÃO"
-                   Classes="section-header-teal"
+        <TextBlock Text="{Binding [sidebar.tab.connection], Source={x:Static loc:LocalizationService.Instance}}"
+                   Classes="section-header-accent"
                    Margin="2,0,0,0"/>
+
+        <Border Classes="connection-card"
+                IsVisible="{Binding HasConnectionProfiles}"
+                Margin="0,0,0,6">
+          <StackPanel Spacing="8">
+            <TextBlock Text="Conexão da aba SQL"
+                       FontSize="{StaticResource FontSizeCaption}"
+                       Foreground="{StaticResource TextSecondaryBrush}"/>
+
+            <ComboBox ItemsSource="{Binding AvailableConnectionProfiles}"
+                      SelectedItem="{Binding SidebarSelectedConnectionProfile}"
+                      HorizontalAlignment="Stretch"
+                      Background="{StaticResource Bg1Brush}"
+                      BorderBrush="{StaticResource BorderBrush}"
+                      CornerRadius="{StaticResource RadiusSM}"
+                      FontSize="{StaticResource FontSizeLabel}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:SqlEditorConnectionProfileOption">
+                  <TextBlock Text="{Binding DisplayName}"/>
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Content="Trocar na aba"
+                      Command="{Binding ApplySidebarConnectionToTabCommand}"
+                      IsEnabled="{Binding HasSidebarSelectedConnectionProfile}"
+                      HorizontalAlignment="Stretch"
+                      MinWidth="120"
+                      Padding="10,6"/>
+              <Button Content="Trocar na aplicação"
+                      Command="{Binding ApplySidebarConnectionToApplicationCommand}"
+                      IsEnabled="{Binding HasSidebarSelectedConnectionProfile}"
+                      HorizontalAlignment="Stretch"
+                      MinWidth="150"
+                      Padding="10,6"
+                      Classes="secondary"/>
+            </StackPanel>
+          </StackPanel>
+        </Border>
 
       <Grid IsVisible="{Binding HasSharedConnectionManager}">
         <shared:DatabaseConnectionCard
@@ -60,6 +101,9 @@
             ConnectionSubtitle="{Binding SharedConnectionManager.SidebarConnectionSubtitle}"
             AvailableConnections="{Binding SharedConnectionManager.Profiles}"
             SelectedConnection="{Binding SharedConnectionManager.SidebarSelectedConnection}"
+            AvailableDatabases="{Binding SharedConnectionManager.AvailableDatabases}"
+            SelectedDatabase="{Binding SharedConnectionManager.SelectedDatabase}"
+            IsDatabaseSelectionVisible="{Binding SharedConnectionManager.IsDatabaseSelectionVisible}"
             AvailableSchemas="{Binding SharedConnectionManager.AvailableSchemas}"
             SelectedSchema="{Binding SharedConnectionManager.SelectedSchema}"
             MetadataSummary="{Binding SharedConnectionManager.ActiveMetadataSummary}"
@@ -68,6 +112,7 @@
             IsReloading="{Binding SharedConnectionManager.IsBusy}"
             DisconnectCommand="{Binding SharedConnectionManager.DisconnectCommand}"
             SwitchConnectionCommand="{Binding SharedConnectionManager.SwitchConnectionCommand}"
+            SwitchDatabaseCommand="{Binding SharedConnectionManager.SwitchDatabaseCommand}"
             SwitchSchemaCommand="{Binding SharedConnectionManager.SwitchSchemaCommand}"
             Margin="0,0,0,6"/>
 
@@ -75,13 +120,13 @@
                 IsVisible="{Binding SharedConnectionManager.ActiveProfileId, Converter={x:Static StringConverters.IsNullOrEmpty}}"
                 Margin="0,0,0,6">
           <StackPanel Spacing="10">
-            <TextBlock Text="Sem conexão"
+            <TextBlock Text="{Binding [sqlEditor.sidebar.connection.none], Source={x:Static loc:LocalizationService.Instance}}"
                        Classes="empty-state"/>
-            <TextBlock Text="Conecte-se para carregar metadados e executar consultas."
+            <TextBlock Text="{Binding [sqlEditor.sidebar.connection.connectHint], Source={x:Static loc:LocalizationService.Instance}}"
                        Classes="empty-state"
                        FontSize="{StaticResource FontSizeCaption}"
                        TextWrapping="Wrap"/>
-            <Button Content="Conectar"
+            <Button Content="{Binding [sqlEditor.sidebar.connection.connect], Source={x:Static loc:LocalizationService.Instance}}"
                     Classes="primary"
                     Command="{Binding SharedConnectionManager.ConnectOrOpenManagerCommand}"
                     HorizontalAlignment="Stretch"
@@ -95,65 +140,15 @@
       </StackPanel>
 
       <Grid Grid.Row="1"
-            RowDefinitions="Auto,Auto,*"
+            RowDefinitions="Auto,*"
             VerticalAlignment="Stretch"
             Margin="0,8,0,0">
         <TextBlock Grid.Row="0"
-                   Text="SCHEMA"
-                   Classes="section-header-teal"
+                   Text="{Binding [sidebar.tab.schema], Source={x:Static loc:LocalizationService.Instance}}"
+                   Classes="section-header-accent"
                    Margin="2,0,0,8"/>
 
         <Border Grid.Row="1"
-                Background="{StaticResource Bg1Brush}"
-                BorderBrush="{StaticResource BorderSubtleBrush}"
-                BorderThickness="1"
-                CornerRadius="{StaticResource RadiusLG}"
-                Padding="10"
-                Margin="0,0,0,8"
-                IsVisible="{Binding HasSharedConnectionManager}">
-          <Grid ColumnDefinitions="*,Auto">
-            <Border Background="{StaticResource Bg2Brush}"
-                    BorderBrush="{StaticResource BorderSubtleBrush}"
-                    BorderThickness="1"
-                    CornerRadius="{StaticResource RadiusSM}"
-                    Padding="10,8">
-              <DockPanel>
-                <mi:MaterialIcon DockPanel.Dock="Left"
-                                 Kind="Magnify"
-                                 Foreground="{StaticResource TextSecondaryBrush}"
-                                 Width="15"
-                                 Height="15"
-                                 VerticalAlignment="Center"
-                                 Margin="0,0,7,0"/>
-                <TextBox Classes="sidebar-input"
-                         Text="{Binding SharedConnectionManager.SchemaFilterQuery}"
-                         Watermark="Buscar tabela ou coluna"
-                         Background="Transparent"
-                         BorderBrush="Transparent"
-                         BorderThickness="1"
-                         Foreground="{StaticResource TextPrimaryBrush}"
-                         Padding="0"
-                         FontSize="{StaticResource FontSizeCaption}"
-                         FontFamily="{StaticResource MonoFont}"/>
-              </DockPanel>
-            </Border>
-
-            <Button Grid.Column="1"
-                    Classes="secondary"
-                    Command="{Binding SharedConnectionManager.ReloadMetadataCommand}"
-                    Padding="8"
-                    Margin="8,0,0,0"
-                    CornerRadius="{StaticResource RadiusSM}"
-                    ToolTip.Tip="Recarregar metadados"
-                    IsEnabled="{Binding SharedConnectionManager.IsBusy, Converter={x:Static BoolConverters.Not}}">
-              <mi:MaterialIcon Kind="Refresh"
-                               Width="16"
-                               Height="16"/>
-            </Button>
-          </Grid>
-        </Border>
-
-        <Border Grid.Row="2"
                 Background="{StaticResource Bg1Brush}"
                 BorderBrush="{StaticResource BorderSubtleBrush}"
                 BorderThickness="1"
@@ -164,16 +159,8 @@
             <!-- Regression anchor expected by template test suite. -->
             <ItemsControl ItemsSource="{Binding SchemaTables}" IsVisible="False"/>
 
-            <ctrl:SchemaControl Margin="0"
-                                DataContext="{Binding SharedConnectionManager.Canvas.Schema}"
-                                VerticalAlignment="Stretch"/>
-
-            <TextBlock Text="Conecte-se para visualizar o schema completo."
-                       Classes="empty-state"
-                       VerticalAlignment="Center"
-                       HorizontalAlignment="Center"
-                       Margin="16"
-                       IsVisible="{Binding IsSchemaEmpty}"/>
+            <sql:SqlEditorSchemaBrowserControl Margin="8"
+                                               VerticalAlignment="Stretch"/>
           </Grid>
         </Border>
       </Grid>

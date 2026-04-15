@@ -114,14 +114,15 @@
         </ComboBox>
       </StackPanel>
 
-      <!-- Row 3: schema combo -->
-      <StackPanel Spacing="3">
-        <TextBlock Text="Schema"
+      <!-- Row 3: database/catalog combo -->
+      <StackPanel Spacing="3"
+                  IsVisible="{Binding IsDatabaseSelectionVisible, ElementName=Root}">
+        <TextBlock Text="Database/Catalog"
                    FontSize="{StaticResource FontSizeCaption}"
                    Foreground="{StaticResource TextSecondaryBrush}"/>
         <ComboBox x:Name="DatabaseComboBox"
-                  ItemsSource="{Binding AvailableSchemas, ElementName=Root}"
-                  SelectedItem="{Binding SelectedSchema, ElementName=Root}"
+                  ItemsSource="{Binding AvailableDatabases, ElementName=Root}"
+                  SelectedItem="{Binding SelectedDatabase, ElementName=Root}"
                   SelectionChanged="OnDatabaseSelectionChanged"
                   HorizontalAlignment="Stretch"
                   Background="{StaticResource Bg1Brush}"
@@ -132,7 +133,25 @@
                               Converter={x:Static BoolConverters.Not}}"/>
       </StackPanel>
 
-      <!-- Row 4: metadata summary + progress bar -->
+      <!-- Row 4: schema combo -->
+      <StackPanel Spacing="3">
+        <TextBlock Text="Schema"
+                   FontSize="{StaticResource FontSizeCaption}"
+                   Foreground="{StaticResource TextSecondaryBrush}"/>
+        <ComboBox x:Name="SchemaComboBox"
+                  ItemsSource="{Binding AvailableSchemas, ElementName=Root}"
+                  SelectedItem="{Binding SelectedSchema, ElementName=Root}"
+                  SelectionChanged="OnSchemaSelectionChanged"
+                  HorizontalAlignment="Stretch"
+                  Background="{StaticResource Bg1Brush}"
+                  BorderBrush="{StaticResource BorderBrush}"
+                  CornerRadius="{StaticResource RadiusSM}"
+                  FontSize="{StaticResource FontSizeLabel}"
+                  IsEnabled="{Binding IsReloading, ElementName=Root,
+                              Converter={x:Static BoolConverters.Not}}"/>
+      </StackPanel>
+
+      <!-- Row 5: metadata summary + progress bar -->
       <Border Background="{StaticResource Bg0Brush}"
               CornerRadius="{StaticResource RadiusSM}"
               Padding="9,7">

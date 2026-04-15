@@ -303,7 +303,7 @@ public sealed class JoinResolver
             [
                 .. _canvas.Nodes.Where(n =>
                     n.Id == node.Id
-                    || n.Type is not (NodeType.ResultOutput or NodeType.SelectOutput)),
+                    || n.Type != NodeType.ResultOutput),
             ];
             HashSet<string> allNodeIds = allNodes.Select(n => n.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
 

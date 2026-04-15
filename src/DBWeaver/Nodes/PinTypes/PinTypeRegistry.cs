@@ -52,7 +52,6 @@ public static class PinTypeRegistry
             [PinDataType.TypeDef] = new(PinDataType.TypeDef, NodeVisualColorConstants.PinTypeDef, 2.2, PinWireDashKind.MediumDash, true),
             [PinDataType.SequenceDef] = new(PinDataType.SequenceDef, NodeVisualColorConstants.PinSequenceDef, 2.2, PinWireDashKind.Solid, true),
             [PinDataType.AlterOp] = new(PinDataType.AlterOp, NodeVisualColorConstants.PinAlterOp, 2.2, PinWireDashKind.LongDash, true),
-            [PinDataType.ReportQuery] = new(PinDataType.ReportQuery, NodeVisualColorConstants.PinReportQuery, 2.3, PinWireDashKind.MediumDash, false),
             [PinDataType.Expression] = new(PinDataType.Expression, NodeVisualColorConstants.PinExpression, 1.5, PinWireDashKind.Dotted, false),
         };
 

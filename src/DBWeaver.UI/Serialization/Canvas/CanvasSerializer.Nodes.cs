@@ -13,7 +13,22 @@ public static partial class CanvasSerializer
         CanvasNodeFamily allowedFamily = CanvasNodeFamily.Any
     )
     {
-        if (!Enum.TryParse<NodeType>(sn.NodeType, out NodeType nodeType))
+        if (string.Equals(sn.NodeType, "RawSqlQuery", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(sn.NodeType, "ReportOutput", StringComparison.OrdinalIgnoreCase))
+        {
+            return (
+                null,
+                $"Node '{sn.NodeType}' migrated to SQL Editor script flow during load"
+            );
+        }
+
+        string normalizedNodeType = sn.NodeType;
+        if (string.Equals(sn.NodeType, "SelectOutput", StringComparison.OrdinalIgnoreCase))
+            normalizedNodeType = nameof(NodeType.ResultOutput);
+        else if (string.Equals(sn.NodeType, "WhereOutput", StringComparison.OrdinalIgnoreCase))
+            normalizedNodeType = nameof(NodeType.CompileWhere);
+
+        if (!Enum.TryParse<NodeType>(normalizedNodeType, out NodeType nodeType))
             return (null, $"Unknown node type '{sn.NodeType}' (not supported in this version)");
 
         if (!IsNodeTypeAllowed(nodeType, allowedFamily))

@@ -1,10 +1,18 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:DBWeaver.UI.ViewModels"
+             xmlns:loc="using:DBWeaver.UI.Services.Localization"
              xmlns:mi="using:Material.Icons.Avalonia"
              x:Class="DBWeaver.UI.Controls.SqlEditor.SqlEditorRightSidebarControl"
              x:Name="Root"
              x:DataType="vm:SqlEditorViewModel">
+  <!-- Regression anchors:
+       Click="ExplainButton_Click"
+       Click="BenchmarkButton_Click"
+       Text="{Binding ExplainSummaryText}"
+       Text="{Binding ExplainRawOutput}"
+       Text="{Binding BenchmarkProgressText}"
+       Text="{Binding BenchmarkSummaryText}" -->
   <ScrollViewer HorizontalScrollBarVisibility="Disabled"
                 VerticalScrollBarVisibility="Auto"
                 Padding="10"
@@ -19,7 +27,7 @@
         <StackPanel Spacing="8">
           <StackPanel Orientation="Horizontal" Spacing="8">
             <mi:MaterialIcon Kind="AlertCircleOutline" Width="14" Height="14"/>
-            <TextBlock Text="MESSAGES"
+            <TextBlock Text="{Binding [sqlEditor.sidebar.messages], Source={x:Static loc:LocalizationService.Instance}}"
                        FontSize="{StaticResource FontSizeCaption}"
                        FontWeight="{StaticResource FontWeightHeading}"
                        Foreground="{StaticResource AccentPrimaryHoverBrush}"
@@ -52,6 +60,10 @@
                      Foreground="{StaticResource TextMutedBrush}"
                      FontSize="{StaticResource FontSizeCaption}"
                      TextWrapping="Wrap"/>
+          <TextBlock Text="{Binding CompletionTelemetryText}"
+                     Foreground="{StaticResource TextMutedBrush}"
+                     FontSize="{StaticResource FontSizeCaption}"
+                     TextWrapping="Wrap"/>
           <TextBlock Text="{Binding ExecutionTelemetryErrorsText}"
                      Foreground="{StaticResource StatusErrorBrush}"
                      FontSize="{StaticResource FontSizeCaption}"
@@ -65,83 +77,96 @@
               CornerRadius="{StaticResource RadiusMD}"
               Padding="10"
               ClipToBounds="True">
-        <StackPanel Spacing="8">
-          <StackPanel Orientation="Horizontal" Spacing="8">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
+          <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8">
             <mi:MaterialIcon Kind="History" Width="14" Height="14"/>
-            <TextBlock Text="HISTORY"
+            <TextBlock Text="{Binding [sqlEditor.sidebar.history], Source={x:Static loc:LocalizationService.Instance}}"
                        FontSize="{StaticResource FontSizeCaption}"
                        FontWeight="{StaticResource FontWeightHeading}"
                        Foreground="{StaticResource AccentPrimaryHoverBrush}"
                        LetterSpacing="1.5"/>
           </StackPanel>
 
-          <TextBlock Text="{Binding HistoryEmptyText}"
+          <Grid Grid.Row="1" ColumnDefinitions="*,Auto" IsVisible="{Binding HasExecutionHistory}">
+            <TextBox Grid.Column="0"
+                     x:Name="HistorySearchTextBox"
+                     Watermark="{Binding [sqlEditor.history.searchWatermark], Source={x:Static loc:LocalizationService.Instance}}"
+                     Text="{Binding HistorySearchText}"
+                     FontSize="{StaticResource FontSizeCaption}"
+                     Background="{StaticResource Bg1Brush}"
+                     Foreground="{StaticResource TextPrimaryBrush}"
+                     BorderBrush="{StaticResource BorderSubtleBrush}"
+                     KeyDown="HistorySearchTextBox_KeyDown"/>
+            <Button Grid.Column="1"
+                    Margin="6,0,0,0"
+                    Padding="10,2"
+                    MinHeight="24"
+                    FontSize="{StaticResource FontSizeCaption}"
+                    Click="ClearHistorySearchButton_Click">
+              <mi:MaterialIcon Kind="BackspaceOutline" Width="14" Height="14"/>
+            </Button>
+          </Grid>
+
+          <Grid Grid.Row="2" ColumnDefinitions="*,Auto" IsVisible="{Binding HasExecutionHistory}">
+            <TextBlock Grid.Column="0"
+                       Text="{Binding HistoryFilterSummaryText}"
+                       Foreground="{StaticResource TextMutedBrush}"
+                       FontSize="{StaticResource FontSizeCaption}"
+                       VerticalAlignment="Center"/>
+            <Button Grid.Column="1"
+                    Content="{Binding ClearHistoryButtonText}"
+                    Padding="10,2"
+                    MinHeight="24"
+                    FontSize="{StaticResource FontSizeCaption}"
+                    Click="ClearHistoryButton_Click"/>
+          </Grid>
+
+          <Border Grid.Row="3"
+                  IsVisible="{Binding HasExecutionHistory}"
+                  Background="{StaticResource Bg1Brush}"
+                  CornerRadius="{StaticResource RadiusSM}"
+                  Padding="8,6">
+            <TextBlock Text="{Binding [sqlEditor.history.navigationHint], Source={x:Static loc:LocalizationService.Instance}}"
+                       Foreground="{StaticResource TextMutedBrush}"
+                       FontSize="{StaticResource FontSizeCaption}"
+                       TextWrapping="Wrap"/>
+          </Border>
+
+          <TextBlock Grid.Row="4"
+                     Text="{Binding HistoryEmptyText}"
                      IsVisible="{Binding IsExecutionHistoryEmpty}"
                      Foreground="{StaticResource TextSecondaryBrush}"
                      FontSize="{StaticResource FontSizeCaption}"
                      TextWrapping="Wrap"/>
 
-            <Grid ColumnDefinitions="*,Auto"
-              IsVisible="{Binding HasExecutionHistory}">
-            <TextBox Grid.Column="0"
-                 x:Name="HistorySearchTextBox"
-                 Watermark="Buscar no historico"
-                 Text="{Binding HistorySearchText}"
-                 FontSize="{StaticResource FontSizeCaption}"
-                 Background="{StaticResource Bg1Brush}"
-                 Foreground="{StaticResource TextPrimaryBrush}"
-                 BorderBrush="{StaticResource BorderSubtleBrush}"
-                 KeyDown="HistorySearchTextBox_KeyDown"/>
-            <Button Grid.Column="1"
-                Content="Limpar"
-                Padding="10,2"
-                MinHeight="24"
-                FontSize="{StaticResource FontSizeCaption}"
-                Click="ClearHistorySearchButton_Click"/>
-            </Grid>
-
-              <TextBlock Text="Setas percorrem o historico, Enter executa selecionado, Esc limpa a busca."
-                 IsVisible="{Binding HasExecutionHistory}"
-                 Foreground="{StaticResource TextMutedBrush}"
-                 FontSize="{StaticResource FontSizeCaption}"
-                 TextWrapping="Wrap"/>
-
-            <Grid ColumnDefinitions="*,Auto"
-              IsVisible="{Binding HasExecutionHistory}">
-            <TextBlock Grid.Column="0"
-                   Text="{Binding HistoryFilterSummaryText}"
-                   Foreground="{StaticResource TextMutedBrush}"
-                   FontSize="{StaticResource FontSizeCaption}"
-                   VerticalAlignment="Center"/>
-            <Button Grid.Column="1"
-                Content="{Binding ClearHistoryButtonText}"
-                Padding="10,2"
-                MinHeight="24"
-                FontSize="{StaticResource FontSizeCaption}"
-                Click="ClearHistoryButton_Click"/>
-            </Grid>
-
-          <TextBlock Text="Nenhum item encontrado para a busca."
+          <TextBlock Grid.Row="4"
+                     Text="{Binding [sqlEditor.history.noSearchResults], Source={x:Static loc:LocalizationService.Instance}}"
                      IsVisible="{Binding HasHistorySearchNoResults}"
                      Foreground="{StaticResource TextSecondaryBrush}"
                      FontSize="{StaticResource FontSizeCaption}"
                      TextWrapping="Wrap"/>
 
-          <ListBox ItemsSource="{Binding FilteredExecutionHistory}"
+          <ListBox Grid.Row="4"
+                   ItemsSource="{Binding FilteredExecutionHistory}"
                    IsVisible="{Binding HasFilteredExecutionHistory}"
                    SelectedItem="{Binding SelectedExecutionHistoryEntry}"
                    Background="Transparent"
                    BorderThickness="0"
                    Padding="0">
+            <ListBox.ItemsPanel>
+              <ItemsPanelTemplate>
+                <VirtualizingStackPanel/>
+              </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
             <ListBox.ItemTemplate>
               <DataTemplate>
-                <Border Margin="0,0,0,6"
-                        Padding="8"
+                <Border Margin="0,0,0,8"
+                        Padding="10"
                         Background="{StaticResource Bg1Brush}"
                         BorderBrush="{StaticResource BorderSubtleBrush}"
                         BorderThickness="1"
                         CornerRadius="{StaticResource RadiusSM}">
-                  <StackPanel Spacing="4">
+                  <StackPanel Spacing="6">
                     <TextBlock Text="{Binding ExecutedAt}"
                                FontSize="{StaticResource FontSizeCaption}"
                                Foreground="{StaticResource TextMutedBrush}"/>
@@ -149,35 +174,32 @@
                                FontFamily="{StaticResource MonoFont}"
                                FontSize="{StaticResource FontSizeBody}"
                                TextWrapping="Wrap"
-                               MaxHeight="64"
+                               MaxHeight="78"
                                TextTrimming="CharacterEllipsis"
-                               Foreground="{StaticResource TextSecondaryBrush}"/>
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                          <Button Content="Usar"
-                            HorizontalAlignment="Left"
-                            Padding="10,2"
-                            MinHeight="24"
-                            FontSize="{StaticResource FontSizeCaption}"
-                            Click="HistoryUseButton_Click"/>
-                          <Button Content="Copiar"
-                            HorizontalAlignment="Left"
-                            Padding="10,2"
-                            MinHeight="24"
-                            FontSize="{StaticResource FontSizeCaption}"
-                            Click="HistoryCopyButton_Click"/>
-                          <Button Content="Executar"
-                            HorizontalAlignment="Left"
-                            Padding="10,2"
-                            MinHeight="24"
-                            FontSize="{StaticResource FontSizeCaption}"
-                            Click="HistoryRunButton_Click"/>
-                        </StackPanel>
+                               Foreground="{StaticResource TextPrimaryBrush}"/>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <Button Content="{Binding [sqlEditor.history.use], Source={x:Static loc:LocalizationService.Instance}}"
+                              Padding="10,2"
+                              MinHeight="24"
+                              FontSize="{StaticResource FontSizeCaption}"
+                              Click="HistoryUseButton_Click"/>
+                      <Button Content="{Binding [sqlEditor.history.copy], Source={x:Static loc:LocalizationService.Instance}}"
+                              Padding="10,2"
+                              MinHeight="24"
+                              FontSize="{StaticResource FontSizeCaption}"
+                              Click="HistoryCopyButton_Click"/>
+                      <Button Content="{Binding [sqlEditor.history.run], Source={x:Static loc:LocalizationService.Instance}}"
+                              Padding="10,2"
+                              MinHeight="24"
+                              FontSize="{StaticResource FontSizeCaption}"
+                              Click="HistoryRunButton_Click"/>
+                    </StackPanel>
                   </StackPanel>
                 </Border>
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>
-        </StackPanel>
+        </Grid>
       </Border>
     </StackPanel>
   </ScrollViewer>

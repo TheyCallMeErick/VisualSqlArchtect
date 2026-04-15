@@ -133,4 +133,20 @@ public sealed class SqlEditorTabManagerViewModelTests
         Assert.Equal(DatabaseProvider.Postgres, active.Provider);
         Assert.Equal("Script 1", active.FallbackTitle);
     }
+
+    [Fact]
+    public void MoveTab_ReordersCollection_AndKeepsActiveTab()
+    {
+        var sut = new SqlEditorTabManagerViewModel();
+        sut.Initialize(DatabaseProvider.Postgres);
+        sut.AddNewTab();
+        sut.AddNewTab();
+        string activeId = sut.GetActiveTab().Id;
+
+        bool moved = sut.MoveTab(2, 0);
+
+        Assert.True(moved);
+        Assert.Equal(activeId, sut.GetActiveTab().Id);
+        Assert.Equal(activeId, sut.Tabs[0].Id);
+    }
 }

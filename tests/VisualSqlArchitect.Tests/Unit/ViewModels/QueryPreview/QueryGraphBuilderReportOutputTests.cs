@@ -9,30 +9,22 @@ namespace DBWeaver.Tests.Unit.ViewModels.QueryPreview;
 public sealed class QueryGraphBuilderReportOutputTests
 {
     [Fact]
-    public void BuildSql_UsesRawSqlWhenOnlyReportFlowExists()
+    public void BuildSql_NoQuerySource_ReturnsGuidanceSql()
     {
         var canvas = new CanvasViewModel();
         canvas.Nodes.Clear();
         canvas.Connections.Clear();
-
-        NodeViewModel rawSql = Node(NodeType.RawSqlQuery);
-        rawSql.Parameters["sql"] = "SELECT 42 AS answer";
-        NodeViewModel reportOutput = Node(NodeType.ReportOutput);
-
-        canvas.Nodes.Add(rawSql);
-        canvas.Nodes.Add(reportOutput);
-        Connect(canvas, rawSql, "query", reportOutput, "query");
 
         var sut = new QueryGraphBuilder(canvas, DatabaseProvider.Postgres);
 
         (string sql, List<string> errors) = sut.BuildSql();
 
         Assert.Empty(errors);
-        Assert.Equal("SELECT 42 AS answer", sql);
+        Assert.Contains("Add a table", sql, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void BuildSql_PrioritizesResultOutputWhenQueryAndReportFlowsCoexist()
+    public void BuildSql_WithResultOutputFlow_RemainsOperational()
     {
         var canvas = new CanvasViewModel();
         canvas.Nodes.Clear();
@@ -42,15 +34,8 @@ public sealed class QueryGraphBuilderReportOutputTests
         NodeViewModel resultOutput = Node(NodeType.ResultOutput);
         Connect(canvas, table, "id", resultOutput, "column");
 
-        NodeViewModel rawSql = Node(NodeType.RawSqlQuery);
-        rawSql.Parameters["sql"] = "SELECT should_not_be_used";
-        NodeViewModel reportOutput = Node(NodeType.ReportOutput);
-        Connect(canvas, rawSql, "query", reportOutput, "query");
-
         canvas.Nodes.Add(table);
         canvas.Nodes.Add(resultOutput);
-        canvas.Nodes.Add(rawSql);
-        canvas.Nodes.Add(reportOutput);
 
         var sut = new QueryGraphBuilder(canvas, DatabaseProvider.Postgres);
 
@@ -58,6 +43,5 @@ public sealed class QueryGraphBuilderReportOutputTests
 
         Assert.Empty(errors);
         Assert.Contains("from", sql, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("should_not_be_used", sql, StringComparison.OrdinalIgnoreCase);
     }
 }

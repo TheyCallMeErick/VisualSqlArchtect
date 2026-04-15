@@ -249,12 +249,10 @@ public sealed class QueryDomainStrategy : ICanvasDomainStrategy, ICanvasDomainSt
     }
 
     private static bool IsQueryOutputNode(NodeViewModel node)
-        => node.IsResultOutput || node.Type == NodeType.ReportOutput;
+        => node.IsResultOutput;
 
     private static bool IsQueryOutputNodeType(string nodeType)
-        => string.Equals(nodeType, nameof(NodeType.ResultOutput), StringComparison.OrdinalIgnoreCase)
-            || string.Equals(nodeType, nameof(NodeType.SelectOutput), StringComparison.OrdinalIgnoreCase)
-            || string.Equals(nodeType, nameof(NodeType.ReportOutput), StringComparison.OrdinalIgnoreCase);
+        => string.Equals(nodeType, nameof(NodeType.ResultOutput), StringComparison.OrdinalIgnoreCase);
 
     private static string BuildSeedCanvasJson()
     {

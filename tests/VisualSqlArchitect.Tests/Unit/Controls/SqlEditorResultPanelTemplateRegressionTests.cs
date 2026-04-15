@@ -17,6 +17,27 @@ public sealed class SqlEditorResultPanelTemplateRegressionTests
         Assert.Contains("IsVisible=\"{Binding HasResultRows}\"", xaml);
         Assert.Contains("AutoGenerateColumns=\"False\"", xaml);
         Assert.Contains("x:Name=\"ResultGrid\"", xaml);
+        Assert.Contains("CanUserReorderColumns=\"True\"", xaml);
+    }
+
+    [Fact]
+    public void SqlEditorResultPanelCodeBehind_UsesTypeHeaderAndExpandCellFlow()
+    {
+        string source = ReadCodeBehind();
+
+        Assert.Contains("SortMemberPath = columnName", source);
+        Assert.Contains("GetColumnTypeLabel", source);
+        Assert.Contains("expandCell", source);
+        Assert.Contains("DoubleTapped", source);
+        Assert.Contains("SqlEditorCellExpandDialogWindow", source);
+        Assert.Contains("ColumnReordered", source);
+        Assert.Contains("OnResultGridColumnReordered", source);
+        Assert.Contains("SetResultColumnPinned", source);
+        Assert.Contains("BuildDisplayColumns", source);
+        Assert.Contains("CellEditEnding", source);
+        Assert.Contains("CellEditEnded", source);
+        Assert.Contains("EvaluateInlineEditEligibility", source);
+        Assert.Contains("SqlInlineUpdateStatementBuilder.Build", source);
     }
 
     private static string ReadXaml()
@@ -39,5 +60,27 @@ public sealed class SqlEditorResultPanelTemplateRegressionTests
         }
 
         throw new FileNotFoundException("Could not locate SqlEditorResultPanel.axaml from test base directory.");
+    }
+
+    private static string ReadCodeBehind()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            string candidate = Path.Combine(
+                dir.FullName,
+                "src",
+                "DBWeaver.UI",
+                "Controls",
+                "SqlEditor",
+                "SqlEditorResultPanel.axaml.cs");
+
+            if (File.Exists(candidate))
+                return File.ReadAllText(candidate);
+
+            dir = dir.Parent;
+        }
+
+        throw new FileNotFoundException("Could not locate SqlEditorResultPanel.axaml.cs from test base directory.");
     }
 }

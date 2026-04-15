@@ -1,11 +1,96 @@
-using System.Text.RegularExpressions;
+using System.Diagnostics;
 using DBWeaver.Core;
 using DBWeaver.Metadata;
+using DBWeaver.UI.Services.Search;
 
 namespace DBWeaver.UI.Services.SqlEditor;
 
-public sealed class SqlCompletionProvider
+public sealed class SqlCompletionProvider : ISqlCompletionEngine
 {
+    private const int MaxLightweightSuggestions = 160;
+    private const int MaxRankedSuggestions = 120;
+    private const int MaxTier1TableSuggestions = 120;
+    private static readonly SqlTokenizer Tokenizer = new();
+    private static readonly SqlStatementExtractor StatementExtractor = new();
+    private static readonly SqlContextDetector ContextDetector = new();
+    private static readonly SqlSymbolTableBuilder SymbolTableBuilder = new();
+    private static readonly SqlCompletionDocumentWindowExtractor DocumentWindowExtractor = new();
+    private static readonly TextSearchService TextSearch = new();
+    private readonly CompletionRankingEngine _rankingEngine;
+    private readonly CompletionUsageStats _usageStats;
+    private readonly SqlCompletionMetadataIndexFactory _metadataIndexFactory;
+    private readonly object _semanticCacheSync = new();
+    private SemanticCompletionContext? _semanticCache;
+    private static readonly Comparison<SqlCompletionSuggestion> LightweightComparison = CompareLightweightSuggestions;
+    private static readonly Comparison<SqlCompletionSuggestion> LabelOnlyComparison = CompareSuggestionsByLabel;
+
+    public SqlCompletionProvider(
+        CompletionRankingEngine? rankingEngine = null,
+        CompletionUsageStats? usageStats = null,
+        SqlCompletionMetadataIndexFactory? metadataIndexFactory = null)
+    {
+        _rankingEngine = rankingEngine ?? new CompletionRankingEngine();
+        _usageStats = usageStats ?? new CompletionUsageStats();
+        _metadataIndexFactory = metadataIndexFactory ?? new SqlCompletionMetadataIndexFactory();
+    }
+
+    private sealed record SemanticCompletionContext(
+        string SemanticText,
+        DatabaseProvider Provider,
+        IReadOnlyList<SqlToken> Tokens,
+        SqlStatementContext StatementContext,
+        SqlCompletionContext CompletionContext,
+        SqlSymbolTable SymbolTable);
+
+    private sealed class CompletionTelemetryAccumulator
+    {
+        public CompletionTelemetryAccumulator(int cancelledRequests)
+        {
+            CancelledRequests = Math.Max(0, cancelledRequests);
+        }
+
+        public long TokenizationMs { get; set; }
+        public long StatementExtractionMs { get; set; }
+        public long ContextDetectionMs { get; set; }
+        public long SymbolTableMs { get; set; }
+        public long MetadataLookupMs { get; set; }
+        public long FuzzyMs { get; set; }
+        public long RequestBuildMs { get; set; }
+        public long LightweightBuildMs { get; set; }
+        public long RankedBuildMs { get; set; }
+        public long RankingMs { get; set; }
+        public long TotalMs { get; set; }
+        public long TimeToFirstSuggestionMs { get; set; }
+        public int CancelledRequests { get; }
+
+        public long ElapsedMs(Stopwatch stopwatch) => Math.Max(0, (long)Math.Round(stopwatch.Elapsed.TotalMilliseconds));
+
+        public long ElapsedAndRestart(Stopwatch stopwatch)
+        {
+            long elapsed = ElapsedMs(stopwatch);
+            stopwatch.Restart();
+            return elapsed;
+        }
+
+        public SqlCompletionTelemetry ToTelemetry() => new()
+        {
+            TokenizationMs = TokenizationMs,
+            StatementExtractionMs = StatementExtractionMs,
+            ContextDetectionMs = ContextDetectionMs,
+            SymbolTableMs = SymbolTableMs,
+            MetadataLookupMs = MetadataLookupMs,
+            FuzzyMs = FuzzyMs,
+            RequestBuildMs = RequestBuildMs,
+            LightweightBuildMs = LightweightBuildMs,
+            RankedBuildMs = RankedBuildMs,
+            RankingMs = RankingMs,
+            TotalMs = TotalMs,
+            TimeToFirstSuggestionMs = TimeToFirstSuggestionMs,
+            CancelledRequests = CancelledRequests,
+            BudgetMs = 100,
+        };
+    }
+
     private static readonly string[] Keywords =
     [
         "SELECT", "FROM", "WHERE", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER",
@@ -18,52 +103,442 @@ public sealed class SqlCompletionProvider
         string fullText,
         int caretOffset,
         DbMetadata? metadata,
-        DatabaseProvider? provider = null)
+        DatabaseProvider? provider = null,
+        string? connectionProfileId = null,
+        CancellationToken cancellationToken = default)
+        => BuildCompletion(
+            new SqlCompletionRequestContext(fullText, caretOffset, metadata, provider ?? metadata?.Provider ?? DatabaseProvider.Postgres, connectionProfileId),
+            progress: null,
+            cancellationToken: cancellationToken).Request;
+
+    public SqlCompletionStageSnapshot BuildCompletion(
+        SqlCompletionRequestContext request,
+        IProgress<SqlCompletionStageSnapshot>? progress = null,
+        CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(fullText);
-        if (caretOffset < 0 || caretOffset > fullText.Length)
-            throw new ArgumentOutOfRangeException(nameof(caretOffset));
+        ArgumentNullException.ThrowIfNull(request.FullText);
+        if (request.CaretOffset < 0 || request.CaretOffset > request.FullText.Length)
+            throw new ArgumentOutOfRangeException(nameof(request.CaretOffset));
 
-        DatabaseProvider resolvedProvider = provider ?? metadata?.Provider ?? DatabaseProvider.Postgres;
-        int prefixStart = FindPrefixStart(fullText, caretOffset);
-        string prefix = fullText[prefixStart..caretOffset];
-        string beforeCaret = fullText[..caretOffset];
-        string statementBeforeCaret = ExtractCurrentStatement(beforeCaret);
+        cancellationToken.ThrowIfCancellationRequested();
 
-        var suggestions = new List<SqlCompletionSuggestion>();
-        suggestions.AddRange(SuggestKeywords());
-        suggestions.AddRange(SuggestFunctions(resolvedProvider));
-        suggestions.AddRange(SuggestSnippets());
+        var telemetry = new CompletionTelemetryAccumulator(request.CancelledRequests);
+        Stopwatch totalStopwatch = Stopwatch.StartNew();
 
-        if (metadata is not null)
+        SqlCompletionDocumentWindow window = DocumentWindowExtractor.Extract(request.FullText, request.CaretOffset);
+        int prefixStart = FindPrefixStart(window.Text, window.Text.Length);
+        string semanticText = prefixStart > 0 ? window.Text[..prefixStart] : string.Empty;
+        string prefix = window.Text[prefixStart..];
+
+        SemanticCompletionContext semantic = GetOrBuildSemanticContext(semanticText, request.Provider, telemetry, cancellationToken);
+
+        List<SqlCompletionSuggestion> suggestions = BuildTier0Suggestions(request.Provider);
+        SqlCompletionRequest tier0Request = BuildRequestTimed(
+            suggestions,
+            prefix,
+            semantic.SymbolTable,
+            request.ConnectionProfileId,
+            lightweight: true,
+            telemetry);
+        SqlCompletionStageSnapshot tier0Snapshot = CreateSnapshot(SqlCompletionPipelineStage.Tier0, tier0Request, telemetry, totalStopwatch, false, true);
+        progress?.Report(tier0Snapshot);
+
+        if (tier0Snapshot.HasSuggestions && telemetry.TimeToFirstSuggestionMs == 0)
+            telemetry.TimeToFirstSuggestionMs = telemetry.ElapsedMs(totalStopwatch);
+
+        if (request.Metadata is not null)
         {
-            if (IsTableContext(statementBeforeCaret))
-                suggestions.AddRange(SuggestTables(metadata));
+            cancellationToken.ThrowIfCancellationRequested();
+            var metadataStopwatch = Stopwatch.StartNew();
+            SqlCompletionMetadataIndex index = _metadataIndexFactory.GetOrCreate(request.Metadata);
+            telemetry.MetadataLookupMs += telemetry.ElapsedAndRestart(metadataStopwatch);
 
-            if (IsJoinContext(statementBeforeCaret))
-                suggestions.AddRange(SuggestSmartJoins(statementBeforeCaret, metadata));
+            if (ShouldOfferTableSuggestions(semantic.CompletionContext))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                suggestions.AddRange(BuildTier1TableSuggestions(index, prefix, request.Provider));
+            }
 
-            string? qualifier = TryGetQualifier(beforeCaret, prefixStart);
+            SqlCompletionRequest tier1Request = BuildRequestTimed(
+                suggestions,
+                prefix,
+                semantic.SymbolTable,
+                request.ConnectionProfileId,
+                lightweight: true,
+                telemetry);
+            SqlCompletionStageSnapshot tier1Snapshot = CreateSnapshot(SqlCompletionPipelineStage.Tier1, tier1Request, telemetry, totalStopwatch, false, tier1Request.Suggestions.Count > 0);
+            progress?.Report(tier1Snapshot);
+
+            if (tier1Snapshot.HasSuggestions && telemetry.TimeToFirstSuggestionMs == 0)
+                telemetry.TimeToFirstSuggestionMs = telemetry.ElapsedMs(totalStopwatch);
+
+            cancellationToken.ThrowIfCancellationRequested();
+            if (IsJoinContext(semantic.CompletionContext))
+                suggestions.AddRange(BuildTier2JoinSuggestions(index, semantic.SymbolTable));
+
+            string? qualifier = TryGetQualifier(semanticText);
             if (!string.IsNullOrWhiteSpace(qualifier))
-                suggestions.AddRange(SuggestColumnsForQualifier(statementBeforeCaret, metadata, qualifier));
-            else if (IsColumnContext(statementBeforeCaret))
-                suggestions.AddRange(SuggestColumnsInScope(statementBeforeCaret, metadata));
+            {
+                suggestions.AddRange(BuildTier2QualifiedColumns(index, semantic.SymbolTable, qualifier, telemetry, cancellationToken));
+            }
+            else if (ShouldOfferColumnSuggestions(semantic.CompletionContext, semantic.SymbolTable, prefix))
+            {
+                suggestions.AddRange(BuildTier2ScopedColumns(index, semantic.SymbolTable, telemetry, cancellationToken));
+            }
+
+            if (IsTableContext(semantic.CompletionContext))
+                suggestions.AddRange(BuildTier2Ctes(semantic.SymbolTable));
+
+            SqlCompletionRequest tier2Request = BuildRequestTimed(
+                suggestions,
+                prefix,
+                semantic.SymbolTable,
+                request.ConnectionProfileId,
+                lightweight: true,
+                telemetry);
+            SqlCompletionStageSnapshot tier2Snapshot = CreateSnapshot(SqlCompletionPipelineStage.Tier2, tier2Request, telemetry, totalStopwatch, false, tier2Request.Suggestions.Count > 0);
+            progress?.Report(tier2Snapshot);
+
+            if (tier2Snapshot.HasSuggestions && telemetry.TimeToFirstSuggestionMs == 0)
+                telemetry.TimeToFirstSuggestionMs = telemetry.ElapsedMs(totalStopwatch);
         }
 
-        IEnumerable<SqlCompletionSuggestion> filtered = suggestions
-            .Where(s => string.IsNullOrWhiteSpace(prefix)
-                || s.Label.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
-                || s.Label.Split('.').Last().StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-            .GroupBy(s => s.Label, StringComparer.OrdinalIgnoreCase)
-            .Select(g => g.First())
-            .OrderBy(s => s.Kind)
-            .ThenBy(s => s.Label, StringComparer.OrdinalIgnoreCase);
+        cancellationToken.ThrowIfCancellationRequested();
+        SqlCompletionRequest tier3Request = BuildRequestTimed(
+            suggestions,
+            prefix,
+            semantic.SymbolTable,
+            request.ConnectionProfileId,
+            lightweight: true,
+            telemetry);
+        SqlCompletionStageSnapshot tier3Snapshot = CreateSnapshot(SqlCompletionPipelineStage.Tier3, tier3Request, telemetry, totalStopwatch, false, tier3Request.Suggestions.Count > 0);
+        progress?.Report(tier3Snapshot);
+
+        if (tier3Snapshot.HasSuggestions && telemetry.TimeToFirstSuggestionMs == 0)
+            telemetry.TimeToFirstSuggestionMs = telemetry.ElapsedMs(totalStopwatch);
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var rankingStopwatch = Stopwatch.StartNew();
+        SqlCompletionRequest finalRequest = BuildRequestTimed(
+            suggestions,
+            prefix,
+            semantic.SymbolTable,
+            request.ConnectionProfileId,
+            lightweight: false,
+            telemetry);
+        telemetry.RankingMs += telemetry.ElapsedMs(rankingStopwatch);
+        SqlCompletionStageSnapshot finalSnapshot = CreateSnapshot(SqlCompletionPipelineStage.Final, finalRequest, telemetry, totalStopwatch, true, finalRequest.Suggestions.Count > 0);
+        progress?.Report(finalSnapshot);
+        return finalSnapshot;
+    }
+
+    public void RecordAcceptedSuggestion(string? suggestionLabel, string? connectionProfileId)
+    {
+        if (string.IsNullOrWhiteSpace(suggestionLabel))
+            return;
+
+        _usageStats.RecordAccepted(suggestionLabel, connectionProfileId);
+    }
+
+    private SqlCompletionStageSnapshot CreateSnapshot(
+        SqlCompletionPipelineStage stage,
+        SqlCompletionRequest request,
+        CompletionTelemetryAccumulator telemetry,
+        Stopwatch totalStopwatch,
+        bool isFinal,
+        bool hasSuggestions)
+    {
+        telemetry.TotalMs = telemetry.ElapsedMs(totalStopwatch);
+        return new SqlCompletionStageSnapshot(
+            stage,
+            request,
+            telemetry.ToTelemetry(),
+            isFinal);
+    }
+
+    private SqlCompletionRequest BuildRequest(
+        IReadOnlyList<SqlCompletionSuggestion> suggestions,
+        string prefix,
+        SqlSymbolTable symbolTable,
+        string? connectionProfileId,
+        bool lightweight)
+    {
+        IReadOnlyList<SqlCompletionSuggestion> ordered = lightweight
+            ? BuildLightweightRequestSuggestions(suggestions)
+            : BuildRankedRequestSuggestions(suggestions, prefix, symbolTable, connectionProfileId);
 
         return new SqlCompletionRequest
         {
             PrefixLength = prefix.Length,
-            Suggestions = filtered.ToList(),
+            Suggestions = ordered,
         };
+    }
+
+    private SqlCompletionRequest BuildRequestTimed(
+        IReadOnlyList<SqlCompletionSuggestion> suggestions,
+        string prefix,
+        SqlSymbolTable symbolTable,
+        string? connectionProfileId,
+        bool lightweight,
+        CompletionTelemetryAccumulator telemetry)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        SqlCompletionRequest request = BuildRequest(
+            suggestions,
+            prefix,
+            symbolTable,
+            connectionProfileId,
+            lightweight);
+
+        long elapsed = telemetry.ElapsedMs(stopwatch);
+        telemetry.RequestBuildMs += elapsed;
+        if (lightweight)
+            telemetry.LightweightBuildMs += elapsed;
+        else
+            telemetry.RankedBuildMs += elapsed;
+
+        return request;
+    }
+
+    private IReadOnlyList<SqlCompletionSuggestion> BuildLightweightRequestSuggestions(
+        IReadOnlyList<SqlCompletionSuggestion> suggestions)
+    {
+        var deduped = new List<SqlCompletionSuggestion>(Math.Min(suggestions.Count, MaxLightweightSuggestions));
+        var seenLabels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (SqlCompletionSuggestion suggestion in suggestions)
+        {
+            if (!HasContent(suggestion))
+                continue;
+
+            string labelKey = suggestion.Label ?? string.Empty;
+            if (!seenLabels.Add(labelKey))
+                continue;
+
+            InsertTopSorted(deduped, suggestion, MaxLightweightSuggestions, LightweightComparison);
+        }
+
+        return deduped;
+    }
+
+    private IReadOnlyList<SqlCompletionSuggestion> BuildRankedRequestSuggestions(
+        IReadOnlyList<SqlCompletionSuggestion> suggestions,
+        string prefix,
+        SqlSymbolTable symbolTable,
+        string? connectionProfileId)
+    {
+        IEnumerable<SqlCompletionSuggestion> ranked = _rankingEngine.Rank(
+            suggestions,
+            prefix,
+            symbolTable,
+            _usageStats,
+            connectionProfileId);
+
+        var deduped = new List<SqlCompletionSuggestion>(MaxRankedSuggestions);
+        var seenLabels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (SqlCompletionSuggestion suggestion in ranked)
+        {
+            if (!HasContent(suggestion))
+                continue;
+
+            string labelKey = suggestion.Label ?? string.Empty;
+            if (!seenLabels.Add(labelKey))
+                continue;
+
+            deduped.Add(suggestion);
+            if (deduped.Count >= MaxRankedSuggestions)
+                break;
+        }
+
+        return deduped;
+    }
+
+    private static bool HasContent(SqlCompletionSuggestion suggestion)
+        => !string.IsNullOrWhiteSpace(suggestion.Label) || !string.IsNullOrWhiteSpace(suggestion.InsertText);
+
+    private static int CompareLightweightSuggestions(
+        SqlCompletionSuggestion left,
+        SqlCompletionSuggestion right)
+    {
+        int kindComparison = left.Kind.CompareTo(right.Kind);
+        if (kindComparison != 0)
+            return kindComparison;
+
+        return StringComparer.OrdinalIgnoreCase.Compare(left.Label, right.Label);
+    }
+
+    private static int CompareSuggestionsByLabel(
+        SqlCompletionSuggestion left,
+        SqlCompletionSuggestion right)
+        => StringComparer.OrdinalIgnoreCase.Compare(left.Label, right.Label);
+
+    private static void InsertTopSorted(
+        List<SqlCompletionSuggestion> target,
+        SqlCompletionSuggestion candidate,
+        int maxCount,
+        Comparison<SqlCompletionSuggestion> comparison)
+    {
+        if (maxCount <= 0)
+            return;
+
+        int insertIndex = FindInsertIndex(target, candidate, comparison);
+        if (target.Count >= maxCount && insertIndex >= maxCount)
+            return;
+
+        target.Insert(insertIndex, candidate);
+
+        if (target.Count > maxCount)
+            target.RemoveAt(maxCount);
+    }
+
+    private static int FindInsertIndex(
+        List<SqlCompletionSuggestion> target,
+        SqlCompletionSuggestion candidate,
+        Comparison<SqlCompletionSuggestion> comparison)
+    {
+        int low = 0;
+        int high = target.Count;
+
+        while (low < high)
+        {
+            int mid = low + ((high - low) / 2);
+            int cmp = comparison(target[mid], candidate);
+            if (cmp <= 0)
+                low = mid + 1;
+            else
+                high = mid;
+        }
+
+        return low;
+    }
+
+    private SemanticCompletionContext GetOrBuildSemanticContext(
+        string semanticText,
+        DatabaseProvider provider,
+        CompletionTelemetryAccumulator telemetry,
+        CancellationToken cancellationToken)
+    {
+        SemanticCompletionContext? cached = _semanticCache;
+        if (cached is not null
+            && cached.Provider == provider
+            && string.Equals(cached.SemanticText, semanticText, StringComparison.Ordinal))
+        {
+            return cached;
+        }
+
+        lock (_semanticCacheSync)
+        {
+            cached = _semanticCache;
+            if (cached is not null
+                && cached.Provider == provider
+                && string.Equals(cached.SemanticText, semanticText, StringComparison.Ordinal))
+            {
+                return cached;
+            }
+        }
+
+        var tokenStopwatch = Stopwatch.StartNew();
+        IReadOnlyList<SqlToken> tokens = semanticText.Length == 0 ? [] : Tokenizer.Tokenize(semanticText);
+        telemetry.TokenizationMs += telemetry.ElapsedAndRestart(tokenStopwatch);
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var statementStopwatch = Stopwatch.StartNew();
+        SqlStatementContext statementContext = StatementExtractor.Extract(tokens, semanticText.Length);
+        telemetry.StatementExtractionMs += telemetry.ElapsedAndRestart(statementStopwatch);
+
+        var contextStopwatch = Stopwatch.StartNew();
+        SqlCompletionContext completionContext = ContextDetector.Detect(statementContext.Tokens, semanticText.Length);
+        telemetry.ContextDetectionMs += telemetry.ElapsedAndRestart(contextStopwatch);
+
+        var symbolStopwatch = Stopwatch.StartNew();
+        SqlSymbolTable symbolTable = SymbolTableBuilder.Build(semanticText, provider);
+        telemetry.SymbolTableMs += telemetry.ElapsedAndRestart(symbolStopwatch);
+
+        SemanticCompletionContext rebuilt = new(
+            semanticText,
+            provider,
+            tokens,
+            statementContext,
+            completionContext,
+            symbolTable);
+
+        lock (_semanticCacheSync)
+        {
+            cached = _semanticCache;
+            if (cached is not null
+                && cached.Provider == provider
+                && string.Equals(cached.SemanticText, semanticText, StringComparison.Ordinal))
+            {
+                return cached;
+            }
+
+            _semanticCache = rebuilt;
+            return rebuilt;
+        }
+    }
+
+    private List<SqlCompletionSuggestion> BuildTier0Suggestions(DatabaseProvider provider)
+    {
+        var suggestions = new List<SqlCompletionSuggestion>();
+        suggestions.AddRange(SuggestKeywords());
+        suggestions.AddRange(SuggestFunctions(provider));
+        suggestions.AddRange(SuggestSnippets());
+        return suggestions;
+    }
+
+    private IReadOnlyList<SqlCompletionSuggestion> BuildTier1TableSuggestions(
+        SqlCompletionMetadataIndex index,
+        string prefix,
+        DatabaseProvider provider)
+    {
+        var topSuggestions = new List<SqlCompletionSuggestion>(MaxTier1TableSuggestions);
+        bool hasPrefix = !string.IsNullOrWhiteSpace(prefix);
+
+        foreach (SqlCompletionSuggestion suggestion in index.TableSuggestions)
+        {
+            if (hasPrefix && !TextSearch.Matches(prefix, suggestion.Label, suggestion.Detail, suggestion.InsertText))
+                continue;
+
+            InsertTopSorted(topSuggestions, suggestion, MaxTier1TableSuggestions, LabelOnlyComparison);
+        }
+
+        return topSuggestions;
+    }
+
+    private static IReadOnlyList<SqlCompletionSuggestion> BuildTier2Ctes(SqlSymbolTable symbolTable)
+        => SuggestCtes(symbolTable).ToList();
+
+    private IReadOnlyList<SqlCompletionSuggestion> BuildTier2JoinSuggestions(
+        SqlCompletionMetadataIndex index,
+        SqlSymbolTable symbolTable)
+        => SuggestSmartJoins(index, symbolTable).ToList();
+
+    private IReadOnlyList<SqlCompletionSuggestion> BuildTier2QualifiedColumns(
+        SqlCompletionMetadataIndex index,
+        SqlSymbolTable symbolTable,
+        string qualifier,
+        CompletionTelemetryAccumulator telemetry,
+        CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        List<SqlCompletionSuggestion> result = SuggestColumnsForQualifier(index, symbolTable, qualifier).ToList();
+        telemetry.FuzzyMs += telemetry.ElapsedAndRestart(stopwatch);
+        cancellationToken.ThrowIfCancellationRequested();
+        return result;
+    }
+
+    private IReadOnlyList<SqlCompletionSuggestion> BuildTier2ScopedColumns(
+        SqlCompletionMetadataIndex index,
+        SqlSymbolTable symbolTable,
+        CompletionTelemetryAccumulator telemetry,
+        CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        List<SqlCompletionSuggestion> result = SuggestColumnsInScope(index, symbolTable).Take(180).ToList();
+        telemetry.FuzzyMs += telemetry.ElapsedAndRestart(stopwatch);
+        cancellationToken.ThrowIfCancellationRequested();
+        return result;
     }
 
     private static IEnumerable<SqlCompletionSuggestion> SuggestKeywords() =>
@@ -114,54 +589,58 @@ public sealed class SqlCompletionProvider
     [
         new(
             "SELECT ... FROM ...",
-            "SELECT\n  \nFROM ",
+            "SELECT\n  $1\nFROM $2$0",
             "Basic query skeleton",
             SqlCompletionKind.Snippet),
         new(
             "SELECT ... FROM ... WHERE ...",
-            "SELECT\n  \nFROM \nWHERE ",
+            "SELECT\n  $1\nFROM $2\nWHERE $3$0",
             "Query skeleton with filter",
             SqlCompletionKind.Snippet),
         new(
             "INSERT INTO ... VALUES ...",
-            "INSERT INTO \n(\n  \n)\nVALUES\n(\n  \n);",
+            "INSERT INTO $1\n(\n  $2\n)\nVALUES\n(\n  $3\n);$0",
             "Insert statement skeleton",
             SqlCompletionKind.Snippet),
         new(
             "UPDATE ... SET ... WHERE ...",
-            "UPDATE \nSET \nWHERE ;",
+            "UPDATE $1\nSET $2\nWHERE $3;$0",
             "Update statement skeleton",
             SqlCompletionKind.Snippet),
     ];
 
-    private static IEnumerable<SqlCompletionSuggestion> SuggestTables(DbMetadata metadata)
+    private static IEnumerable<SqlCompletionSuggestion> SuggestCtes(SqlSymbolTable symbolTable)
     {
-        foreach (TableMetadata table in metadata.AllTables)
+        foreach (string cteName in symbolTable.CteNames.OrderBy(static name => name, StringComparer.OrdinalIgnoreCase))
         {
-            string alias = BuildAlias(table.Name);
+            string alias = BuildAlias(cteName.Split('.').Last());
             yield return new SqlCompletionSuggestion(
-                table.FullName,
-                table.FullName,
-                $"Table ({table.Kind})",
+                cteName,
+                cteName,
+                "CTE",
                 SqlCompletionKind.Table);
             yield return new SqlCompletionSuggestion(
-                $"{table.FullName} AS {alias}",
-                $"{table.FullName} AS {alias}",
-                $"Table ({table.Kind}) with alias",
+                $"{cteName} AS {alias}",
+                $"{cteName} AS {alias}",
+                "CTE with alias",
                 SqlCompletionKind.Table);
         }
     }
 
     private static IEnumerable<SqlCompletionSuggestion> SuggestColumnsForQualifier(
-        string statementBeforeCaret,
-        DbMetadata metadata,
+        SqlCompletionMetadataIndex index,
+        SqlSymbolTable symbolTable,
         string qualifier)
     {
-        Dictionary<string, string> aliasMap = ExtractAliasMap(statementBeforeCaret);
-        if (!aliasMap.TryGetValue(qualifier, out string? tableRef))
-            tableRef = qualifier;
+        string tableRef = qualifier;
+        if (symbolTable.TryResolveBinding(qualifier, out SqlTableBindingSymbol? binding)
+            && binding is not null
+            && !binding.IsSubquery)
+        {
+            tableRef = binding.TableRef;
+        }
 
-        TableMetadata? table = ResolveTable(metadata, tableRef);
+        TableMetadata? table = ResolveTable(index, tableRef);
         if (table is null)
             yield break;
 
@@ -175,21 +654,23 @@ public sealed class SqlCompletionProvider
         }
     }
 
-    private static IEnumerable<SqlCompletionSuggestion> SuggestColumnsInScope(string statementBeforeCaret, DbMetadata metadata)
+    private static IEnumerable<SqlCompletionSuggestion> SuggestColumnsInScope(SqlCompletionMetadataIndex index, SqlSymbolTable symbolTable)
     {
-        Dictionary<string, string> aliasMap = ExtractAliasMap(statementBeforeCaret);
-        if (aliasMap.Count == 0)
+        if (symbolTable.BindingsInOrder.Count == 0)
             yield break;
 
-        foreach ((string alias, string tableRef) in aliasMap)
+        foreach (SqlTableBindingSymbol binding in symbolTable.BindingsInOrder)
         {
-            TableMetadata? table = ResolveTable(metadata, tableRef);
+            if (binding.IsSubquery)
+                continue;
+
+            TableMetadata? table = ResolveTable(index, binding.TableRef);
             if (table is null)
                 continue;
 
             foreach (ColumnMetadata col in table.Columns.OrderBy(c => c.OrdinalPosition))
             {
-                string label = $"{alias}.{col.Name}";
+                string label = $"{binding.Alias}.{col.Name}";
                 yield return new SqlCompletionSuggestion(
                     label,
                     label,
@@ -199,19 +680,18 @@ public sealed class SqlCompletionProvider
         }
     }
 
-    private static IEnumerable<SqlCompletionSuggestion> SuggestSmartJoins(string statementBeforeCaret, DbMetadata metadata)
+    private static IEnumerable<SqlCompletionSuggestion> SuggestSmartJoins(SqlCompletionMetadataIndex index, SqlSymbolTable symbolTable)
     {
-        List<TableBinding> bindings = ExtractTableBindings(statementBeforeCaret);
-        if (bindings.Count == 0)
+        SqlTableBindingSymbol? anchor = symbolTable.BindingsInOrder.LastOrDefault(static binding => !binding.IsSubquery);
+        if (anchor is null)
             yield break;
 
-        TableBinding anchor = bindings[^1];
-        TableMetadata? anchorTable = ResolveTable(metadata, anchor.TableRef);
+        TableMetadata? anchorTable = ResolveTable(index, anchor.TableRef);
         if (anchorTable is null)
             yield break;
 
         var map = new Dictionary<string, SqlCompletionSuggestion>(StringComparer.OrdinalIgnoreCase);
-        foreach (ForeignKeyRelation fk in metadata.AllForeignKeys)
+        foreach (ForeignKeyRelation fk in GetAnchorForeignKeys(index, anchorTable.FullName))
         {
             if (fk.ChildFullTable.Equals(anchorTable.FullName, StringComparison.OrdinalIgnoreCase))
             {
@@ -249,36 +729,6 @@ public sealed class SqlCompletionProvider
         return $"{table.FullName}.{column.Name} ({column.DataType}){suffix}";
     }
 
-    private static Dictionary<string, string> ExtractAliasMap(string statement)
-    {
-        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (TableBinding binding in ExtractTableBindings(statement))
-        {
-            map[binding.Alias] = binding.TableRef;
-            string shortName = binding.TableRef.Split('.').Last();
-            if (!map.ContainsKey(shortName))
-                map[shortName] = binding.TableRef;
-        }
-
-        return map;
-    }
-
-    private static List<TableBinding> ExtractTableBindings(string statement)
-    {
-        var bindings = new List<TableBinding>();
-        foreach (Match match in Regex.Matches(
-                     statement,
-                     @"\b(?:FROM|JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|INNER\s+JOIN|FULL\s+JOIN|CROSS\s+JOIN)\s+([A-Za-z_][A-Za-z0-9_\.]*)\s*(?:AS\s+)?([A-Za-z_][A-Za-z0-9_]*)?",
-                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
-        {
-            string tableRef = match.Groups[1].Value;
-            string alias = match.Groups[2].Success ? match.Groups[2].Value : BuildAlias(tableRef.Split('.').Last());
-            bindings.Add(new TableBinding(tableRef, alias));
-        }
-
-        return bindings;
-    }
-
     private static string BuildAlias(string tableName)
     {
         string[] parts = tableName
@@ -291,46 +741,68 @@ public sealed class SqlCompletionProvider
         return string.Concat(parts.Select(p => char.ToLowerInvariant(p[0])));
     }
 
-    private static TableMetadata? ResolveTable(DbMetadata metadata, string tableRef)
+    private static TableMetadata? ResolveTable(SqlCompletionMetadataIndex index, string tableRef)
     {
         string normalized = tableRef.Trim();
-        return metadata.AllTables.FirstOrDefault(t =>
-                   t.FullName.Equals(normalized, StringComparison.OrdinalIgnoreCase))
-               ?? metadata.AllTables.FirstOrDefault(t =>
-                   t.Name.Equals(normalized, StringComparison.OrdinalIgnoreCase));
+        if (index.TablesByFullName.TryGetValue(normalized, out TableMetadata? byFullName))
+            return byFullName;
+
+        return index.TablesByName.TryGetValue(normalized, out TableMetadata? byName)
+            ? byName
+            : null;
     }
 
-    private static bool IsTableContext(string statementBeforeCaret)
+    private static bool IsTableContext(SqlCompletionContext context)
     {
-        string t = statementBeforeCaret.TrimEnd();
-        return Regex.IsMatch(t, @"\b(FROM|JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|INNER\s+JOIN|FULL\s+JOIN|CROSS\s+JOIN|UPDATE|INTO)\s+[A-Za-z0-9_\.]*$", RegexOptions.IgnoreCase)
-               || Regex.IsMatch(t, @"\bDELETE\s+FROM\s+[A-Za-z0-9_\.]*$", RegexOptions.IgnoreCase);
+        return context is SqlCompletionContext.FromClause
+            or SqlCompletionContext.JoinClause
+            or SqlCompletionContext.InsertColumns;
     }
 
-    private static bool IsJoinContext(string statementBeforeCaret)
+    private static bool IsJoinContext(SqlCompletionContext context)
     {
-        string t = statementBeforeCaret.TrimEnd();
-        return Regex.IsMatch(t, @"\b(JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|INNER\s+JOIN|FULL\s+JOIN|CROSS\s+JOIN)\s*(?:[A-Za-z0-9_\.]*)$", RegexOptions.IgnoreCase);
+        return context == SqlCompletionContext.JoinClause;
     }
 
-    private static bool IsColumnContext(string statementBeforeCaret)
+    private static bool IsColumnContext(SqlCompletionContext context)
     {
-        string t = statementBeforeCaret.TrimEnd();
-        return Regex.IsMatch(t, @"\b(SELECT|WHERE|ON|ORDER\s+BY|GROUP\s+BY)\s+[A-Za-z0-9_\.]*$", RegexOptions.IgnoreCase);
+        return context is SqlCompletionContext.SelectList
+            or SqlCompletionContext.WhereClause
+            or SqlCompletionContext.OnClause
+            or SqlCompletionContext.OrderByClause
+            or SqlCompletionContext.GroupByClause
+            or SqlCompletionContext.HavingClause
+            or SqlCompletionContext.UpdateSetClause;
     }
 
-    private static string ExtractCurrentStatement(string text)
+    private static bool ShouldOfferTableSuggestions(SqlCompletionContext context)
     {
-        int idx = text.LastIndexOf(';');
-        return idx >= 0 ? text[(idx + 1)..] : text;
+        return IsTableContext(context)
+            || context is SqlCompletionContext.SelectList or SqlCompletionContext.Unknown;
     }
 
-    private static string? TryGetQualifier(string beforeCaret, int prefixStart)
+    private static bool ShouldOfferColumnSuggestions(
+        SqlCompletionContext context,
+        SqlSymbolTable symbolTable,
+        string prefix)
     {
-        int dotIndex = prefixStart - 1;
-        if (dotIndex < 0 || beforeCaret[dotIndex] != '.')
+        if (IsColumnContext(context))
+            return true;
+
+        if (context == SqlCompletionContext.Unknown && symbolTable.BindingsInOrder.Count > 0)
+            return true;
+
+        return context == SqlCompletionContext.SelectList
+               && symbolTable.BindingsInOrder.Count > 0
+               && !string.IsNullOrWhiteSpace(prefix);
+    }
+
+    private static string? TryGetQualifier(string beforeCaret)
+    {
+        if (string.IsNullOrWhiteSpace(beforeCaret) || beforeCaret[^1] != '.')
             return null;
 
+        int dotIndex = beforeCaret.Length - 1;
         int start = dotIndex - 1;
         while (start >= 0 && (char.IsLetterOrDigit(beforeCaret[start]) || beforeCaret[start] == '_'))
             start--;
@@ -351,5 +823,13 @@ public sealed class SqlCompletionProvider
         return start;
     }
 
-    private sealed record TableBinding(string TableRef, string Alias);
+    private static IEnumerable<ForeignKeyRelation> GetAnchorForeignKeys(SqlCompletionMetadataIndex index, string anchorTableFullName)
+    {
+        if (index.ForeignKeysByTable.TryGetValue(anchorTableFullName, out IReadOnlyList<ForeignKeyRelation>? relations))
+        {
+            foreach (ForeignKeyRelation relation in relations)
+                yield return relation;
+        }
+    }
+
 }

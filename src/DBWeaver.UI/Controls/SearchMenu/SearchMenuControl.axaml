@@ -99,6 +99,11 @@
                      LetterSpacing="1.5"
                      Margin="6,0,0,2"/>
           <ItemsControl ItemsSource="{Binding Snippets}" Name="SnippetsList">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <VirtualizingStackPanel/>
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="canvas:SnippetViewModel">
                 <Border Classes="result-item">
@@ -152,6 +157,11 @@
       <!-- ── Results list ───────────────────────────────────────────────────── -->
       <ScrollViewer MaxHeight="320" HorizontalScrollBarVisibility="Disabled">
         <ItemsControl ItemsSource="{Binding Results}" Margin="0,4,0,4" Name="ResultsList">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <VirtualizingStackPanel/>
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="canvas:NodeSearchResultViewModel">
 

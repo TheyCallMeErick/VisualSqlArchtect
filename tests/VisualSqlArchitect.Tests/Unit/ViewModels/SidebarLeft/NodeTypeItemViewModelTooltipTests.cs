@@ -44,11 +44,11 @@ public class NodeTypeItemViewModelTooltipTests
     [Fact]
     public void TooltipTags_AreResolvedWithColors()
     {
-        NodeDefinition definition = NodeDefinitionRegistry.Get(NodeType.RawSqlQuery);
+        NodeDefinition definition = NodeDefinitionRegistry.Get(NodeType.Join);
         var vm = new NodeTypeItemViewModel(definition, "#FFFFFF", _ => { });
 
         Assert.True(vm.HasTooltipTags);
-        Assert.Contains(vm.TooltipTags, t => t.Name == "report");
+        Assert.Contains(vm.TooltipTags, t => t.Name == "join");
         Assert.All(vm.TooltipTags, t =>
         {
             Assert.False(string.IsNullOrWhiteSpace(t.BackgroundColor));

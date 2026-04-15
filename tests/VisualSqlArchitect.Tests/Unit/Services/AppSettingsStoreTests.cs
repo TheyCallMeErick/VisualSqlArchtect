@@ -1,5 +1,6 @@
 using DBWeaver.UI.Services.Settings;
 using DBWeaver.UI.Services.Input.ShortcutRegistry;
+using DBWeaver.UI.ViewModels;
 
 namespace DBWeaver.Tests.Unit.Services;
 
@@ -16,6 +17,8 @@ public class AppSettingsStoreTests
         {
             AppSettings settings = AppSettingsStore.Load();
             Assert.Equal("Dark", settings.ThemeVariant);
+            Assert.True(settings.SqlEditorTop1000WithoutWhereEnabled);
+            Assert.True(settings.SqlEditorProtectMutationWithoutWhereEnabled);
         }
         finally
         {
@@ -130,6 +133,87 @@ public class AppSettingsStoreTests
                 item.ActionId == "shell.commandPalette.open" && item.Gesture == "Ctrl+Shift+K");
             Assert.Contains(loaded.Shortcuts.Overrides, item =>
                 item.ActionId == "canvas.zoom.reset" && item.Gesture == "Ctrl+9");
+        }
+        finally
+        {
+            AppSettingsStore.SettingsPathOverride = null;
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SaveAndLoadSqlEditorExecutionHistory_PerProfile_RoundTripsAndCapsToFiveHundred()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "vsa-settings-tests", Guid.NewGuid().ToString("N"));
+        string file = Path.Combine(root, "app.settings.json");
+        AppSettingsStore.SettingsPathOverride = file;
+
+        try
+        {
+            List<SqlEditorHistoryEntry> entries = Enumerable.Range(1, 650)
+                .Select(i => new SqlEditorHistoryEntry(
+                    Sql: $"SELECT {i}",
+                    Success: true,
+                    RowsAffected: 1,
+                    ExecutionTime: TimeSpan.FromMilliseconds(i),
+                    ExecutedAt: DateTimeOffset.UtcNow.AddMinutes(-i)))
+                .ToList();
+
+            AppSettingsStore.SaveSqlEditorExecutionHistory("profile-a", entries);
+            IReadOnlyList<SqlEditorHistoryEntry> loaded = AppSettingsStore.LoadSqlEditorExecutionHistory("profile-a");
+
+            Assert.Equal(500, loaded.Count);
+            Assert.True(loaded[0].ExecutedAt >= loaded[^1].ExecutedAt);
+        }
+        finally
+        {
+            AppSettingsStore.SettingsPathOverride = null;
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ClearSqlEditorExecutionHistory_RemovesOnlyTargetProfile()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "vsa-settings-tests", Guid.NewGuid().ToString("N"));
+        string file = Path.Combine(root, "app.settings.json");
+        AppSettingsStore.SettingsPathOverride = file;
+
+        try
+        {
+            SqlEditorHistoryEntry entry = new("SELECT 1", true, 1, TimeSpan.FromMilliseconds(1), DateTimeOffset.UtcNow);
+            AppSettingsStore.SaveSqlEditorExecutionHistory("profile-a", [entry]);
+            AppSettingsStore.SaveSqlEditorExecutionHistory("profile-b", [entry with { Sql = "SELECT 2" }]);
+
+            AppSettingsStore.ClearSqlEditorExecutionHistory("profile-a");
+
+            Assert.Empty(AppSettingsStore.LoadSqlEditorExecutionHistory("profile-a"));
+            Assert.Single(AppSettingsStore.LoadSqlEditorExecutionHistory("profile-b"));
+        }
+        finally
+        {
+            AppSettingsStore.SettingsPathOverride = null;
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SaveAndLoadSqlEditorSafetySettings_RoundTripsFlags()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "vsa-settings-tests", Guid.NewGuid().ToString("N"));
+        string file = Path.Combine(root, "app.settings.json");
+        AppSettingsStore.SettingsPathOverride = file;
+
+        try
+        {
+            AppSettingsStore.SaveSqlEditorSafetySettings(top1000WithoutWhereEnabled: false, protectMutationWithoutWhereEnabled: false);
+            (bool top1000Enabled, bool guardEnabled) = AppSettingsStore.LoadSqlEditorSafetySettings();
+
+            Assert.False(top1000Enabled);
+            Assert.False(guardEnabled);
         }
         finally
         {

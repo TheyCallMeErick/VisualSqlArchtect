@@ -73,6 +73,15 @@ public static partial class CanvasSerializer
                 toPin = toNode.InputPins.FirstOrDefault(p => p.Name == "conditions");
             }
 
+            if (
+                toPin is null
+                && toNode.Type == NodeType.CompileWhere
+                && string.Equals(sc.ToPinName, "condition", StringComparison.OrdinalIgnoreCase)
+            )
+            {
+                toPin = toNode.InputPins.FirstOrDefault(p => p.Name == "conditions");
+            }
+
             // WindowFunction dynamic pins: create partition_N/order_N on-the-fly if missing.
             if (
                 toPin is null

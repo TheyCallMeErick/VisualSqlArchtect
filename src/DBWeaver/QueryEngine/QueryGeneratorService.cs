@@ -454,7 +454,7 @@ public sealed class QueryGeneratorService(DatabaseProvider provider, ISqlFunctio
     private IReadOnlyList<WhereBinding> ResolveWhereMetaBindings(NodeGraph graph)
     {
         List<NodeInstance> outputCandidates = graph.Nodes
-            .Where(n => n.Type is NodeType.ResultOutput or NodeType.SelectOutput)
+            .Where(n => n.Type == NodeType.ResultOutput)
             .Where(n => !graph.Connections.Any(c =>
                 c.FromNodeId == n.Id
                 && c.FromPinName.Equals("result", StringComparison.OrdinalIgnoreCase)

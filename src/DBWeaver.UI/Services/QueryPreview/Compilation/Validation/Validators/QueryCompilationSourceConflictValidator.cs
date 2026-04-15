@@ -32,8 +32,7 @@ internal sealed class QueryCompilationSourceConflictValidator(CanvasViewModel ca
             or NodeType.CteSource
             or NodeType.Subquery
             or NodeType.SubqueryReference
-            or NodeType.SubqueryDefinition
-            or NodeType.RawSqlQuery;
+            or NodeType.SubqueryDefinition;
     }
 
     private HashSet<string> CollectUpstreamNodeIds(NodeViewModel sinkNode)

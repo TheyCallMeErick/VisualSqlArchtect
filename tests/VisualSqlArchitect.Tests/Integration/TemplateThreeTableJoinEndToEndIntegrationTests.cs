@@ -52,7 +52,7 @@ public class TemplateThreeTableJoinEndToEndIntegrationTests
 
     private static NodeGraph BuildNodeGraphFromCanvas(CanvasViewModel canvas)
     {
-        NodeViewModel resultOutput = canvas.Nodes.First(n => n.Type == NodeType.ResultOutput || n.Type == NodeType.SelectOutput);
+        NodeViewModel resultOutput = canvas.Nodes.First(n => n.Type == NodeType.ResultOutput);
 
         List<NodeInstance> nodes = canvas.Nodes
             .Select(n => new NodeInstance(

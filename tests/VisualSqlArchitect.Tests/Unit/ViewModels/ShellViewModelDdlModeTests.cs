@@ -1,5 +1,7 @@
 ﻿using DBWeaver.UI.Services.Benchmark;
 using Avalonia;
+using DBWeaver.Core;
+using DBWeaver.Metadata;
 using DBWeaver.Nodes;
 using DBWeaver.UI.ViewModels;
 using Xunit;
@@ -12,6 +14,7 @@ public class ShellViewModelDdlModeTests
     public void Shell_StartsInQueryMode_WithoutDdlCanvas()
     {
         var vm = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
+        vm.EnterCanvas();
 
         Assert.Equal(ShellViewModel.AppMode.Query, vm.ActiveMode);
         Assert.True(vm.IsQueryModeActive);
@@ -20,25 +23,17 @@ public class ShellViewModelDdlModeTests
     }
 
     [Fact]
-    public void SetActiveMode_Ddl_InitializesStubCanvas()
+    public void SetActiveDocumentType_Ddl_InitializesStubCanvas()
     {
         var vm = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
 
-        vm.SetActiveMode(ShellViewModel.AppMode.Ddl);
+        vm.ActivateDocument(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.DdlCanvas);
 
         Assert.Equal(ShellViewModel.AppMode.Ddl, vm.ActiveMode);
         Assert.False(vm.IsQueryModeActive);
         Assert.True(vm.IsDdlModeActive);
         Assert.NotNull(vm.DdlCanvas);
         Assert.True(vm.DdlCanvas!.IsEmpty);
-    }
-
-    [Fact]
-    public void SetActiveMode_InvalidValue_ThrowsExpectedError()
-    {
-        var vm = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
-
-        Assert.Throws<ArgumentOutOfRangeException>(() => vm.SetActiveMode((ShellViewModel.AppMode)999));
     }
 
     [Fact]
@@ -68,6 +63,11 @@ public class ShellViewModelDdlModeTests
     public void SettingsSections_AllExpectedTitlesAndSubtitles_AreMapped()
     {
         var vm = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
+
+        vm.SelectSettingsSection(ShellViewModel.ESettingsSection.Editor);
+        Assert.True(vm.IsEditorSectionSelected);
+        Assert.False(string.IsNullOrWhiteSpace(vm.SettingsSectionTitle));
+        Assert.False(string.IsNullOrWhiteSpace(vm.SettingsSectionSubtitle));
 
         vm.SelectSettingsSection(ShellViewModel.ESettingsSection.DateTime);
         string dateTimeTitle = vm.SettingsSectionTitle;
@@ -108,7 +108,7 @@ public class ShellViewModelDdlModeTests
 
         Assert.Equal(CanvasContext.Query, vm.ActiveCanvasContext);
 
-        vm.SetActiveMode(ShellViewModel.AppMode.Ddl);
+        vm.ActivateDocument(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.DdlCanvas);
         Assert.Equal(CanvasContext.Ddl, vm.ActiveCanvasContext);
 
         vm.SetViewSubcanvasActive(true);
@@ -117,7 +117,7 @@ public class ShellViewModelDdlModeTests
         vm.SetViewSubcanvasActive(false);
         Assert.Equal(CanvasContext.Ddl, vm.ActiveCanvasContext);
 
-        vm.SetActiveMode(ShellViewModel.AppMode.Query);
+        vm.ActivateDocument(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.QueryCanvas);
         Assert.Equal(CanvasContext.Query, vm.ActiveCanvasContext);
     }
 
@@ -131,7 +131,7 @@ public class ShellViewModelDdlModeTests
         Assert.Same(queryCanvas, vm.ActiveCanvas);
         Assert.Single(queryCanvas.Nodes);
 
-        vm.SetActiveMode(ShellViewModel.AppMode.Ddl);
+        vm.ActivateDocument(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.DdlCanvas);
         CanvasViewModel ddlCanvas = Assert.IsType<CanvasViewModel>(vm.ActiveCanvas);
         Assert.Same(vm.DdlCanvas, ddlCanvas);
         Assert.Empty(ddlCanvas.Nodes);
@@ -140,7 +140,7 @@ public class ShellViewModelDdlModeTests
         Assert.Single(ddlCanvas.Nodes);
         Assert.Single(queryCanvas.Nodes);
 
-        vm.SetActiveMode(ShellViewModel.AppMode.Query);
+        vm.ActivateDocument(DBWeaver.UI.Services.Workspace.Models.WorkspaceDocumentType.QueryCanvas);
         Assert.Same(queryCanvas, vm.ActiveCanvas);
         Assert.Single(queryCanvas.Nodes);
         Assert.Single(ddlCanvas.Nodes);
@@ -157,4 +157,66 @@ public class ShellViewModelDdlModeTests
         Assert.Same(vm.Toasts, queryCanvas.Toasts);
         Assert.Same(vm.Toasts, ddlCanvas.Toasts);
     }
+
+    [Fact]
+    public void EnsureDdlCanvas_InheritsMetadataAndConnection_FromQueryCanvasContext()
+    {
+        var vm = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
+
+        CanvasViewModel queryCanvas = vm.EnsureCanvas();
+        DbMetadata metadata = CreateMetadata();
+        ConnectionConfig config = new(
+            Provider: DatabaseProvider.Postgres,
+            Host: "localhost",
+            Port: 5432,
+            Database: "dbweaver",
+            Username: "user",
+            Password: "pwd"
+        );
+        queryCanvas.SetDatabaseContext(metadata, config);
+
+        CanvasViewModel ddlCanvas = vm.EnsureDdlCanvas();
+
+        Assert.Same(metadata, ddlCanvas.DatabaseMetadata);
+        Assert.Same(config, ddlCanvas.ActiveConnectionConfig);
+    }
+
+    [Fact]
+    public void EnsureDdlCanvas_WhenAlreadyCreated_SynchronizesMetadataFromQueryCanvas()
+    {
+        var vm = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
+
+        CanvasViewModel ddlCanvas = vm.EnsureDdlCanvas();
+        LiveDdlBarViewModel liveDdl = Assert.IsType<LiveDdlBarViewModel>(ddlCanvas.LiveDdl);
+        Assert.False(liveDdl.RunSchemaAnalysisCommand.CanExecute(null));
+
+        CanvasViewModel queryCanvas = vm.EnsureCanvas();
+        DbMetadata metadata = CreateMetadata();
+        ConnectionConfig config = new(
+            Provider: DatabaseProvider.Postgres,
+            Host: "localhost",
+            Port: 5432,
+            Database: "dbweaver",
+            Username: "user",
+            Password: "pwd"
+        );
+        queryCanvas.SetDatabaseContext(metadata, config);
+
+        CanvasViewModel ensuredDdl = vm.EnsureDdlCanvas();
+
+        Assert.Same(ddlCanvas, ensuredDdl);
+        Assert.Same(metadata, ensuredDdl.DatabaseMetadata);
+        Assert.Same(config, ensuredDdl.ActiveConnectionConfig);
+        Assert.True(liveDdl.RunSchemaAnalysisCommand.CanExecute(null));
+    }
+
+    private static DbMetadata CreateMetadata() =>
+        new(
+            DatabaseName: "dbweaver",
+            Provider: DatabaseProvider.Postgres,
+            ServerVersion: "16",
+            CapturedAt: DateTimeOffset.UtcNow,
+            Schemas: [new SchemaMetadata("public", [])],
+            AllForeignKeys: []
+        );
 }

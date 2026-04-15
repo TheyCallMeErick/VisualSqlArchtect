@@ -41,12 +41,12 @@ public class NodesListViewModelTests
     {
         var vm = new NodesListViewModel((_, _) => { });
 
-        vm.SearchQuery = "report";
+        vm.SearchQuery = "join";
 
         Assert.NotEmpty(vm.FilteredGroups);
         Assert.Contains(
             vm.FilteredGroups.SelectMany(g => g.Items),
-            item => item.SearchTerms.Any(t => t.Equals("report", StringComparison.OrdinalIgnoreCase)));
+            item => item.SearchTerms.Any(t => t.Equals("join", StringComparison.OrdinalIgnoreCase)));
     }
 
     [Fact]
@@ -118,5 +118,34 @@ public class NodesListViewModelTests
         Assert.NotNull(spawnedDef);
         Assert.True(double.IsNaN(spawnedPos.X));
         Assert.True(double.IsNaN(spawnedPos.Y));
+    }
+
+    [Fact]
+    public void QueryCatalog_HidesLegacyReportNodes()
+    {
+        var vm = new NodesListViewModel((_, _) => { });
+        string[] visibleTitles = vm.FilteredGroups
+            .SelectMany(g => g.Items)
+            .Select(i => i.Definition.DisplayName)
+            .ToArray();
+
+        Assert.DoesNotContain("Raw SQL Query", visibleTitles, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Report Output", visibleTitles, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void SearchQuery_DoesNotReturnHiddenLegacyReportNodes()
+    {
+        var vm = new NodesListViewModel((_, _) => { });
+
+        vm.SearchQuery = "report";
+
+        string[] visibleTitles = vm.FilteredGroups
+            .SelectMany(g => g.Items)
+            .Select(i => i.Definition.DisplayName)
+            .ToArray();
+
+        Assert.DoesNotContain("Raw SQL Query", visibleTitles, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Report Output", visibleTitles, StringComparer.OrdinalIgnoreCase);
     }
 }

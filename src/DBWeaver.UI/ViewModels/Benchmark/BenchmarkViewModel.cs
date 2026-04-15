@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using DBWeaver.Core;
 using DBWeaver.UI.Services.Benchmark;
 
 namespace DBWeaver.UI.ViewModels;
@@ -135,6 +136,8 @@ public sealed class BenchmarkViewModel : ViewModelBase
 
     private CancellationTokenSource? _cts;
     private string _activeRunSqlSnapshot = string.Empty;
+    private string? _sqlOverride;
+    private ConnectionConfig? _connectionConfigOverride;
 
     // ── Constructor ───────────────────────────────────────────────────────────
 
@@ -155,10 +158,8 @@ public sealed class BenchmarkViewModel : ViewModelBase
         _canvas = canvas;
         IBenchmarkIterationExecutor resolvedIterationExecutor = iterationExecutor
             ?? new AdaptiveBenchmarkIterationExecutor(
-                connectionResolver: () => _canvas.ActiveConnectionConfig,
-                sqlResolver: () => string.IsNullOrWhiteSpace(_activeRunSqlSnapshot)
-                    ? _canvas.LiveSql.RawSql
-                    : _activeRunSqlSnapshot);
+                connectionResolver: ResolveActiveConnectionConfig,
+                sqlResolver: ResolveSqlForExecution);
         IBenchmarkConfigurationProvider resolvedConfigurationProvider = configurationProvider ?? new EnvironmentBenchmarkConfigurationProvider();
         IBenchmarkRunner resolvedBenchmarkRunner = benchmarkRunner ?? new BenchmarkRunner(resolvedIterationExecutor);
         _executionService = executionService ?? new BenchmarkExecutionService(resolvedBenchmarkRunner);
@@ -183,7 +184,7 @@ public sealed class BenchmarkViewModel : ViewModelBase
             cancel: Cancel,
             canCancel: () => IsRunning,
             clearHistory: () => { History.Clear(); LatestResult = null; },
-            close: () => IsVisible = false
+            close: Close
         );
         RunCommand = commands.RunCommand;
         CancelCommand = commands.CancelCommand;
@@ -212,6 +213,7 @@ public sealed class BenchmarkViewModel : ViewModelBase
 
     public void Open()
     {
+        ClearSqlAndConnectionOverrides();
         Sql = _canvas.LiveSql.RawSql;
         // Auto-increment label per run
         RunLabel = _textProvider.BuildRunLabel(History.Count + 1);
@@ -219,12 +221,28 @@ public sealed class BenchmarkViewModel : ViewModelBase
         OpenRequestToken++;
     }
 
+    public void OpenForSql(string sql, ConnectionConfig? connectionConfig)
+    {
+        _sqlOverride = sql?.Trim();
+        _connectionConfigOverride = connectionConfig;
+        Sql = string.IsNullOrWhiteSpace(_sqlOverride) ? string.Empty : _sqlOverride;
+        RunLabel = _textProvider.BuildRunLabel(History.Count + 1);
+        IsVisible = true;
+        OpenRequestToken++;
+    }
+
+    public void Close()
+    {
+        IsVisible = false;
+        ClearSqlAndConnectionOverrides();
+    }
+
     // ── Run logic ─────────────────────────────────────────────────────────────
 
     private async Task RunAsync()
     {
         BenchmarkRunContextCreationResult creation = _runContextFactory.TryCreate(
-            _canvas.LiveSql.RawSql,
+            ResolveSqlForExecution(),
             Iterations,
             WarmupIterations,
             IntervalMs);
@@ -277,6 +295,28 @@ public sealed class BenchmarkViewModel : ViewModelBase
     private void Cancel()
     {
         _cts?.Cancel();
+    }
+
+    private ConnectionConfig? ResolveActiveConnectionConfig()
+    {
+        return _connectionConfigOverride ?? _canvas.ActiveConnectionConfig;
+    }
+
+    private string ResolveSqlForExecution()
+    {
+        if (!string.IsNullOrWhiteSpace(_activeRunSqlSnapshot))
+            return _activeRunSqlSnapshot;
+
+        if (!string.IsNullOrWhiteSpace(_sqlOverride))
+            return _sqlOverride;
+
+        return _canvas.LiveSql.RawSql;
+    }
+
+    private void ClearSqlAndConnectionOverrides()
+    {
+        _sqlOverride = null;
+        _connectionConfigOverride = null;
     }
 
     private void OnRunProgress(BenchmarkRunProgress progress)

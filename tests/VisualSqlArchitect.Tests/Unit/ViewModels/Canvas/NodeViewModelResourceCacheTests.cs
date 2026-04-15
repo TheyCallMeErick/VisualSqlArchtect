@@ -63,6 +63,19 @@ public class NodeViewModelResourceCacheTests
 
         Assert.NotSame(defaultBrush, node.NodeBorderBrush);
     }
+
+    [Fact]
+    public void HeaderColor_ForImportedFlowCategories_IsNotDataSourceFallback()
+    {
+        var dataSourceNode = new NodeViewModel("public.orders", [("id", PinDataType.Number)], new Point(0, 0));
+        var outputNode = new NodeViewModel(NodeDefinitionRegistry.Get(NodeType.ResultOutput), new Point(0, 0));
+        var resultModifierNode = new NodeViewModel(NodeDefinitionRegistry.Get(NodeType.Top), new Point(0, 0));
+        var literalNode = new NodeViewModel(NodeDefinitionRegistry.Get(NodeType.ValueString), new Point(0, 0));
+
+        Assert.NotEqual(dataSourceNode.HeaderColor, outputNode.HeaderColor);
+        Assert.NotEqual(dataSourceNode.HeaderColor, resultModifierNode.HeaderColor);
+        Assert.NotEqual(dataSourceNode.HeaderColor, literalNode.HeaderColor);
+    }
 }
 
 

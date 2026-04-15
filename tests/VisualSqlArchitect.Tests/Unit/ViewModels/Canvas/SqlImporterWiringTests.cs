@@ -26,12 +26,10 @@ public class SqlImporterWiringTests
         Assert.Equal("INNER", joinNode.Parameters["join_type"]);
         Assert.Equal("public.customers", joinNode.Parameters["right_source"]);
 
-        NodeViewModel whereNode = canvas.Nodes.First(n => n.Type == NodeType.WhereOutput);
         NodeViewModel resultNode = canvas.Nodes.First(n => n.Type == NodeType.ResultOutput);
 
         Assert.Contains(canvas.Connections, c =>
-            c.FromPin.Owner == whereNode
-            && c.FromPin.Name == "result"
+            c.FromPin.Name == "result"
             && c.ToPin?.Owner == resultNode
             && c.ToPin.Name == "where");
     }
@@ -140,6 +138,37 @@ public class SqlImporterWiringTests
 
         Assert.Equal("e", employees.Alias);
         Assert.Equal("d", departments.Alias);
+    }
+
+    [Fact]
+    public async Task ImportAsync_WithReversedJoinPredicate_KeepsExistingSourceOnLeftAndNewSourceOnRight()
+    {
+        var canvas = new CanvasViewModel
+        {
+            DatabaseMetadata = BuildMainSchemaMetadata(),
+        };
+
+        canvas.SqlImporter.ImportStartDelayMs = 0;
+        canvas.SqlImporter.ImportTimeout = TimeSpan.FromSeconds(5);
+        canvas.SqlImporter.SqlInput =
+            "SELECT e.id FROM main.employees e JOIN main.departments d ON d.id = e.department_id";
+
+        await canvas.SqlImporter.ImportAsync();
+
+        NodeViewModel joinNode = canvas.Nodes.First(n => n.Type == NodeType.Join);
+
+        Assert.Equal("e.department_id", joinNode.Parameters["left_expr"]);
+        Assert.Equal("d.id", joinNode.Parameters["right_expr"]);
+
+        Assert.Contains(canvas.Connections, connection =>
+            connection.ToPin?.Owner == joinNode
+            && string.Equals(connection.ToPin.Name, "left", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(connection.FromPin.Owner.Subtitle, "main.employees", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Contains(canvas.Connections, connection =>
+            connection.ToPin?.Owner == joinNode
+            && string.Equals(connection.ToPin.Name, "right", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(connection.FromPin.Owner.Subtitle, "main.departments", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

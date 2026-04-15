@@ -1,6 +1,7 @@
 using DBWeaver.Nodes;
 using DBWeaver.Core;
 using DBWeaver.Ddl.Compilers;
+using DBWeaver.Metadata;
 using DBWeaver.QueryEngine;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -137,6 +138,7 @@ public sealed partial class DdlGraphCompiler(NodeGraph graph, DatabaseProvider p
         var pks = new List<DdlPrimaryKeyExpr>();
         var uqs = new List<DdlUniqueExpr>();
         var checks = new List<DdlCheckExpr>();
+        var foreignKeys = new List<DdlForeignKeyExpr>();
 
         foreach (NodeInstance constraintNode in constraintNodes)
         {
@@ -165,11 +167,65 @@ public sealed partial class DdlGraphCompiler(NodeGraph graph, DatabaseProvider p
                     }
                 case NodeType.ForeignKeyConstraint:
                     {
-                        AddWarning(
-                            "W-DDL-FOREIGNKEY-PHASE",
-                            "ForeignKeyConstraint is not emitted in the current DDL phase and will be ignored.",
-                            constraintNode.Id
-                        );
+                        IReadOnlyList<NodeInstance> childColumnNodes = GetConnectedInputNodes(constraintNode.Id, "child_column")
+                            .Where(static node => node.Type == NodeType.ColumnDefinition)
+                            .ToList();
+                        IReadOnlyList<NodeInstance> parentColumnNodes = GetConnectedInputNodes(constraintNode.Id, "parent_column")
+                            .Where(static node => node.Type == NodeType.ColumnDefinition)
+                            .ToList();
+
+                        if (childColumnNodes.Count != 1 || parentColumnNodes.Count != 1)
+                        {
+                            AddWarning(
+                                "W-DDL-FOREIGNKEY-UNSUPPORTED-SHAPE",
+                                "ForeignKeyConstraint must connect exactly one child column and one parent column in this phase.",
+                                constraintNode.Id
+                            );
+                            break;
+                        }
+
+                        NodeInstance childColumnNode = childColumnNodes[0];
+                        NodeInstance parentColumnNode = parentColumnNodes[0];
+                        NodeInstance? childTableNode = ResolveOwnerTableDefinition(childColumnNode);
+                        NodeInstance? parentTableNode = ResolveOwnerTableDefinition(parentColumnNode);
+                        if (childTableNode is null
+                            || parentTableNode is null
+                            || !string.Equals(childTableNode.Id, tableNode.Id, StringComparison.Ordinal))
+                        {
+                            AddWarning(
+                                "W-DDL-FOREIGNKEY-UNSUPPORTED-SHAPE",
+                                "ForeignKeyConstraint requires resolvable child/parent table ownership for single-column FK emission.",
+                                constraintNode.Id
+                            );
+                            break;
+                        }
+
+                        string childColumn = ReadParam(childColumnNode, "ColumnName", "");
+                        string parentColumn = ReadParam(parentColumnNode, "ColumnName", "");
+                        string parentSchema = ReadParam(parentTableNode, "SchemaName", "dbo");
+                        string parentTable = ReadParam(parentTableNode, "TableName", "");
+                        if (string.IsNullOrWhiteSpace(childColumn)
+                            || string.IsNullOrWhiteSpace(parentColumn)
+                            || string.IsNullOrWhiteSpace(parentTable))
+                        {
+                            AddWarning(
+                                "W-DDL-FOREIGNKEY-UNSUPPORTED-SHAPE",
+                                "ForeignKeyConstraint could not resolve child/parent column names for simple FK emission.",
+                                constraintNode.Id
+                            );
+                            break;
+                        }
+
+                        string? constraintName = ReadParam(constraintNode, "ConstraintName", "");
+                        foreignKeys.Add(new DdlForeignKeyExpr(
+                            ConstraintName: string.IsNullOrWhiteSpace(constraintName) ? null : constraintName,
+                            ChildColumn: childColumn,
+                            ParentSchema: parentSchema,
+                            ParentTable: parentTable,
+                            ParentColumn: parentColumn,
+                            OnDelete: ParseReferentialAction(ReadParam(constraintNode, "OnDelete", "NO ACTION")),
+                            OnUpdate: ParseReferentialAction(ReadParam(constraintNode, "OnUpdate", "NO ACTION"))
+                        ));
                         break;
                     }
             }
@@ -184,8 +240,48 @@ public sealed partial class DdlGraphCompiler(NodeGraph graph, DatabaseProvider p
             uqs,
             checks,
             tableComment,
-            idempotentMode
+            idempotentMode,
+            foreignKeys
         );
+    }
+
+    private IReadOnlyList<NodeInstance> GetConnectedInputNodes(string targetNodeId, string toPinName) =>
+        _graph.Connections
+            .Where(connection => connection.ToNodeId == targetNodeId
+                && connection.ToPinName == toPinName
+                && _graph.NodeMap.ContainsKey(connection.FromNodeId))
+            .Select(connection => _graph.NodeMap[connection.FromNodeId])
+            .DistinctBy(static node => node.Id)
+            .ToList();
+
+    private NodeInstance? ResolveOwnerTableDefinition(NodeInstance columnNode)
+    {
+        if (columnNode.Type != NodeType.ColumnDefinition)
+            return null;
+
+        Connection? ownerConnection = _graph.Connections.FirstOrDefault(connection =>
+            connection.FromNodeId == columnNode.Id
+            && connection.ToPinName == "column"
+            && _graph.NodeMap.TryGetValue(connection.ToNodeId, out NodeInstance? owner)
+            && owner.Type == NodeType.TableDefinition);
+
+        if (ownerConnection is null)
+            return null;
+
+        return _graph.NodeMap[ownerConnection.ToNodeId];
+    }
+
+    private static ReferentialAction ParseReferentialAction(string value)
+    {
+        string normalized = value.Trim().Replace("_", " ", StringComparison.Ordinal).ToUpperInvariant();
+        return normalized switch
+        {
+            "CASCADE" => ReferentialAction.Cascade,
+            "SET NULL" => ReferentialAction.SetNull,
+            "SET DEFAULT" => ReferentialAction.SetDefault,
+            "RESTRICT" => ReferentialAction.Restrict,
+            _ => ReferentialAction.NoAction,
+        };
     }
 
     private CreateTableAsExpr CompileCreateTableAsOutput(NodeInstance outputNode)

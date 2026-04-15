@@ -9,6 +9,7 @@ public interface ISqlImportExecutionService
     SqlImportExecutionResult Execute(
         string sql,
         ObservableCollection<ImportReportItem> report,
-        CancellationToken cancellationToken
+        CancellationToken cancellationToken,
+        bool roundTripEquivalenceCheckEnabled = false
     );
 }

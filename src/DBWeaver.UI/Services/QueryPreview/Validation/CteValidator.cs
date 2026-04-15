@@ -194,7 +194,7 @@ public sealed class CteValidator : IGraphValidator
         ConnectionViewModel? queryWire = _canvas.Connections.FirstOrDefault(c =>
             c.ToPin?.Owner == definition
             && c.ToPin.Name.Equals("query", StringComparison.OrdinalIgnoreCase)
-            && c.FromPin.Owner.Type is NodeType.ResultOutput or NodeType.SelectOutput);
+            && c.FromPin.Owner.Type == NodeType.ResultOutput);
         if (queryWire?.FromPin.Owner is not NodeViewModel cteOutput)
             return false;
 

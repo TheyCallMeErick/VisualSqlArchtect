@@ -35,7 +35,6 @@ public enum NodeType
     Alias,
     CteDefinition,
     CteSource,
-    RawSqlQuery,
 
     // ── String Transforms ─────────────────────────────────────────────────────
     Upper,
@@ -134,10 +133,7 @@ public enum NodeType
     ColumnList, // Aggregates multiple columns for SELECT
     ColumnSetBuilder, // Explicit structural builder for ColumnSet from ColumnRef inputs
     ColumnSetMerge, // Merges multiple ColumnSet inputs into one
-    SelectOutput,
-    WhereOutput,
     ResultOutput,
-    ReportOutput,
 
     // ── Export ────────────────────────────────────────────────────────────────
     HtmlExport,

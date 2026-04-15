@@ -71,9 +71,13 @@ public sealed record NodeParameter(
 /// Static catalog of all Atomic Node definitions.
 /// The canvas sidebar queries this to populate the node picker.
 /// </summary>
+#pragma warning disable CS0618
 public static class NodeDefinitionRegistry
 {
     private static readonly Dictionary<NodeType, NodeDefinition> _map = BuildAll();
+    private static readonly HashSet<NodeType> LegacyNodeTypes = [];
+
+    private static readonly HashSet<NodeType> HiddenFromCatalogNodeTypes = [];
 
     public static NodeDefinition Get(NodeType type) =>
         _map.TryGetValue(type, out NodeDefinition? def)
@@ -84,6 +88,10 @@ public static class NodeDefinitionRegistry
 
     public static IReadOnlyList<NodeDefinition> ByCategory(NodeCategory cat) =>
         _map.Values.Where(d => d.Category == cat).ToList();
+
+    public static bool IsLegacy(NodeType type) => LegacyNodeTypes.Contains(type);
+
+    public static bool IsVisibleInCatalog(NodeType type) => !HiddenFromCatalogNodeTypes.Contains(type);
 
     // ── Builder helpers ───────────────────────────────────────────────────────
 
@@ -240,7 +248,8 @@ public static class NodeDefinitionRegistry
                     In("alias_text", PinDataType.Text, required: false),
                     Out("result", PinDataType.RowSet),
                 ],
-                [
+                [
+
                     Param("alias", ParameterKind.Text, "subq", "Alias for the subquery source"),
                 ]
             ),
@@ -293,20 +302,6 @@ public static class NodeDefinitionRegistry
                 ]
             ),
 
-            [NodeType.RawSqlQuery] = new(
-                NodeType.RawSqlQuery,
-                NodeCategory.DataSource,
-                "Raw SQL Query",
-                "Provides a raw SQL statement as report input",
-                [
-                    In("sql_text", PinDataType.Text, required: false),
-                    Out("query", PinDataType.ReportQuery, desc: "Connect to report nodes"),
-                ],
-                [
-                    Param("sql", ParameterKind.Text, "SELECT 1", "Raw SQL statement to execute in report flow"),
-                ]
-            ),
-
             [NodeType.SubqueryExists] = new(
                 NodeType.SubqueryExists,
                 NodeCategory.Comparison,
@@ -317,7 +312,8 @@ public static class NodeDefinitionRegistry
                     In("query_text", PinDataType.Text, required: false),
                     Out("result", PinDataType.Boolean),
                 ],
-                [
+                [
+
                     Param("negate", ParameterKind.Boolean, "false", "Emit NOT EXISTS when true"),
                 ]
             ),
@@ -333,7 +329,8 @@ public static class NodeDefinitionRegistry
                     In("query_text", PinDataType.Text, required: false),
                     Out("result", PinDataType.Boolean),
                 ],
-                [
+                [
+
                     Param("negate", ParameterKind.Boolean, "false", "Emit NOT IN when true"),
                 ]
             ),
@@ -361,7 +358,8 @@ public static class NodeDefinitionRegistry
                         ">=",
                         "<",
                         "<="
-                    ),
+                    ),
+
                 ]
             ),
 
@@ -677,6 +675,17 @@ public static class NodeDefinitionRegistry
                 "Counts all rows",
                 [Out("count", PinDataType.Number)],
                 []
+            ),
+
+            [NodeType.CountDistinct] = new(
+                NodeType.CountDistinct,
+                NodeCategory.Aggregate,
+                "COUNT",
+                "Counts non-null values (optionally DISTINCT)",
+                [In("value", PinDataType.Expression), Out("count", PinDataType.Number)],
+                [
+                    Param("distinct", ParameterKind.Boolean, "true", "Use COUNT(DISTINCT value) when enabled"),
+                ]
             ),
 
             [NodeType.Sum] = new(
@@ -1330,106 +1339,6 @@ public static class NodeDefinitionRegistry
                 []
             ),
 
-            [NodeType.SelectOutput] = new(
-                NodeType.SelectOutput,
-                NodeCategory.Output,
-                "Select Output",
-                "Legacy output sink for final SELECT projection",
-                [
-                    In(
-                        "top",
-                        PinDataType.ColumnSet,
-                        required: false,
-                        desc: "Connect a TOP / LIMIT node to restrict the number of rows"
-                    ),
-                    In(
-                        "where",
-                        PinDataType.Boolean,
-                        required: false,
-                        desc: "Connect a compiled WHERE condition"
-                    ),
-                    In(
-                        "having",
-                        PinDataType.Boolean,
-                        required: false,
-                        desc: "Connect a compiled HAVING condition (post-aggregation filter)"
-                    ),
-                    In(
-                        "qualify",
-                        PinDataType.Boolean,
-                        required: false,
-                        desc: "Connect a QUALIFY condition (post-window filter)"
-                    ),
-                    In(
-                        "order_by",
-                        PinDataType.ColumnRef,
-                        required: false,
-                        multi: true,
-                        desc: "Connect ORDER BY terms (ascending)"
-                    ),
-                    In(
-                        "order_by_desc",
-                        PinDataType.ColumnRef,
-                        required: false,
-                        multi: true,
-                        desc: "Connect ORDER BY terms (descending)"
-                    ),
-                    In(
-                        "group_by",
-                        PinDataType.ColumnRef,
-                        required: false,
-                        multi: true,
-                        desc: "Connect GROUP BY terms"
-                    ),
-                    In(
-                        "columns",
-                        PinDataType.ColumnSet,
-                        required: false,
-                        desc: "Connect ColumnList/ColumnSetBuilder output to include columns in SELECT"
-                    ),
-                    In(
-                        "column",
-                        PinDataType.ColumnRef,
-                        required: false,
-                        multi: true,
-                        desc: "Connect individual columns directly (without ColumnList)"
-                    ),
-                    In(
-                        "set_operation",
-                        PinDataType.ColumnSet,
-                        required: false,
-                        desc: "Connect Set Operation node to combine this SELECT with another query"
-                    ),
-                    Out(
-                        "result",
-                        PinDataType.ColumnSet,
-                        desc: "Connect to an Export node to generate an output file"
-                    ),
-                ],
-                []
-            ),
-
-            [NodeType.WhereOutput] = new(
-                NodeType.WhereOutput,
-                NodeCategory.Output,
-                "Where Output",
-                "Legacy WHERE sink for imported conditions",
-                [
-                    In(
-                        "condition",
-                        PinDataType.Boolean,
-                        required: false,
-                        desc: "Connect a boolean condition"
-                    ),
-                    Out(
-                        "result",
-                        PinDataType.Boolean,
-                        desc: "WHERE condition output"
-                    ),
-                ],
-                []
-            ),
-
             [NodeType.ResultOutput] = new(
                 NodeType.ResultOutput,
                 NodeCategory.Output,
@@ -1513,29 +1422,6 @@ public static class NodeDefinitionRegistry
                     Param("set_query", ParameterKind.Text, "", "Legacy set operation right-side query"),
                     Param("pivot_mode", ParameterKind.Enum, "NONE", "Pivot mode", "NONE", "PIVOT", "UNPIVOT"),
                     Param("pivot_config", ParameterKind.Text, "", "Pivot/Unpivot configuration payload"),
-                ]
-            ),
-
-            [NodeType.ReportOutput] = new(
-                NodeType.ReportOutput,
-                NodeCategory.Output,
-                "Report Output",
-                "Terminal report sink that executes a report query input",
-                [
-                    In(
-                        "query",
-                        PinDataType.ReportQuery,
-                        required: true,
-                        desc: "Connect a ReportQuery-producing node (e.g. Raw SQL Query)"
-                    ),
-                    Out(
-                        "result",
-                        PinDataType.ReportQuery,
-                        desc: "Report query output for downstream report/export handlers"
-                    ),
-                ],
-                [
-                    Param("report_name", ParameterKind.Text, "report", "Logical report identifier"),
                 ]
             ),
 
@@ -2088,3 +1974,4 @@ public static class NodeDefinitionRegistry
         NodeParameter[] ps
     ) => new(t, c, name, desc, pins, ps);
 }
+#pragma warning restore CS0618

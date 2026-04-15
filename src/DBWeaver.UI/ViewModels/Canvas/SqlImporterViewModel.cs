@@ -274,7 +274,7 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
             await Task.Delay(Math.Max(0, ImportStartDelayMs), token); // yield to update UI before heavy work
 
             string sqlToImport = SqlInput.Trim();
-            if (FeatureFlags.UseAstParser)
+            if (FeatureFlags.AstIrPrimary)
             {
                 var parser = new SqlParserService();
                 SqlParseResult parseResult = parser.Parse(sqlToImport);
@@ -284,7 +284,12 @@ public sealed class SqlImporterViewModel(CanvasViewModel canvas) : ViewModelBase
                 sqlToImport = parseResult.NormalizedSql ?? sqlToImport;
             }
 
-            SqlImportExecutionResult result = _executionService.Execute(sqlToImport, Report, token);
+            SqlImportExecutionResult result = _executionService.Execute(
+                sqlToImport,
+                Report,
+                token,
+                FeatureFlags.RoundTripEquivalenceCheck
+            );
             ApplyTelemetry(result.Timing);
             ApplyReportTotals(result.Imported, result.Partial, result.Skipped);
             StatusMessage = string.Format(

@@ -26,7 +26,6 @@ public enum PinDataType
     Constraint,
     IndexDef,
     AlterOp,
-    ReportQuery,
     Expression, // untyped SQL fragment — accepted by any slot
 }
 

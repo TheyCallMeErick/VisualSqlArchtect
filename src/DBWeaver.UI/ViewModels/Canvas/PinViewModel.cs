@@ -342,7 +342,6 @@ public sealed class PinViewModel(PinDescriptor d, NodeViewModel owner) : ViewMod
             PinDataType.TypeDef => "TYPE",
             PinDataType.SequenceDef => "SEQ",
             PinDataType.AlterOp => "ALT",
-            PinDataType.ReportQuery => "RPT",
             PinDataType.Expression => "SQL",
             _ => type.ToString().ToUpperInvariant(),
         };

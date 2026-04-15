@@ -35,6 +35,7 @@ public sealed class ShellViewModel : ViewModelBase
     public enum ESettingsSection
     {
         Appearance,
+        Editor,
         LanguageRegion,
         DateTime,
         KeyboardShortcuts,
@@ -43,10 +44,16 @@ public sealed class ShellViewModel : ViewModelBase
         Accessibility,
     }
 
+    public enum DdlWorkspaceTab
+    {
+        Canvas,
+        SchemaAnalysis,
+    }
+
     private bool _isStartVisible = true;
     private bool _isSettingsVisible;
     private ESettingsSection _selectedSettingsSection = ESettingsSection.Appearance;
-    private AppMode _activeMode = AppMode.Query;
+    private DdlWorkspaceTab _activeDdlWorkspaceTab = DdlWorkspaceTab.Canvas;
     private bool _isViewSubcanvasActive;
     private CanvasViewModel? _canvas;
     private CanvasViewModel? _ddlCanvas;
@@ -98,9 +105,11 @@ public sealed class ShellViewModel : ViewModelBase
             MetadataResolver = ResolveSharedMetadata,
             SharedConnectionManagerResolver = ResolveSharedConnectionManager,
         });
-        QueryModeCommand = new RelayCommand(() => SetActiveMode(AppMode.Query));
-        DdlModeCommand = new RelayCommand(() => SetActiveMode(AppMode.Ddl));
-        SqlEditorModeCommand = new RelayCommand(() => SetActiveMode(AppMode.SqlEditor));
+        QueryModeCommand = new RelayCommand(() => ActivateDocument(WorkspaceDocumentType.QueryCanvas));
+        DdlModeCommand = new RelayCommand(() => ActivateDocument(WorkspaceDocumentType.DdlCanvas));
+        SqlEditorModeCommand = new RelayCommand(() => ActivateDocument(WorkspaceDocumentType.SqlEditor));
+        ShowDdlCanvasWorkspaceTabCommand = new RelayCommand(() => SetActiveDdlWorkspaceTab(DdlWorkspaceTab.Canvas));
+        ShowDdlSchemaAnalysisWorkspaceTabCommand = new RelayCommand(() => SetActiveDdlWorkspaceTab(DdlWorkspaceTab.SchemaAnalysis));
         RefreshConnectionManagerObservers();
         _localizationPropertyChanged = (_, e) =>
         {
@@ -119,7 +128,7 @@ public sealed class ShellViewModel : ViewModelBase
         OutputPreview.PropertyChanged += _outputPreviewPropertyChanged;
         if (_canvas is not null)
             RegisterOrUpdateQueryDocument(_canvas);
-        ActivateDocumentForMode(ActiveMode);
+        ActivateDocumentCore(WorkspaceDocumentType.QueryCanvas);
         SyncExtractedPanels();
     }
 
@@ -189,6 +198,10 @@ public sealed class ShellViewModel : ViewModelBase
 
     public RelayCommand SqlEditorModeCommand { get; }
 
+    public RelayCommand ShowDdlCanvasWorkspaceTabCommand { get; }
+
+    public RelayCommand ShowDdlSchemaAnalysisWorkspaceTabCommand { get; }
+
     public bool IsStartVisible
     {
         get => _isStartVisible;
@@ -206,28 +219,37 @@ public sealed class ShellViewModel : ViewModelBase
 
     public bool IsCanvasVisible => !IsStartVisible;
 
-    public AppMode ActiveMode
+    public AppMode ActiveMode => ActiveWorkspaceDocumentType switch
     {
-        get => _activeMode;
+        WorkspaceDocumentType.DdlCanvas => AppMode.Ddl,
+        WorkspaceDocumentType.SqlEditor => AppMode.SqlEditor,
+        _ => AppMode.Query,
+    };
+
+    public bool IsQueryModeActive => ActiveWorkspaceDocumentType == WorkspaceDocumentType.QueryCanvas;
+
+    public bool IsDdlModeActive => ActiveWorkspaceDocumentType == WorkspaceDocumentType.DdlCanvas;
+
+    public bool IsSqlEditorModeActive => ActiveWorkspaceDocumentType == WorkspaceDocumentType.SqlEditor;
+
+    public bool IsDiagramModeActive => IsDiagramDocumentPageActive;
+
+    public DdlWorkspaceTab ActiveDdlWorkspaceTab
+    {
+        get => _activeDdlWorkspaceTab;
         private set
         {
-            if (!Set(ref _activeMode, value))
+            if (!Set(ref _activeDdlWorkspaceTab, value))
                 return;
 
-            RaisePropertyChanged(nameof(IsQueryModeActive));
-            RaisePropertyChanged(nameof(IsDdlModeActive));
-            RaisePropertyChanged(nameof(IsSqlEditorModeActive));
-            RaisePropertyChanged(nameof(IsDiagramModeActive));
+            RaisePropertyChanged(nameof(IsDdlCanvasWorkspaceTabActive));
+            RaisePropertyChanged(nameof(IsDdlSchemaAnalysisWorkspaceTabActive));
         }
     }
 
-    public bool IsQueryModeActive => ActiveMode == AppMode.Query;
+    public bool IsDdlCanvasWorkspaceTabActive => ActiveDdlWorkspaceTab == DdlWorkspaceTab.Canvas;
 
-    public bool IsDdlModeActive => ActiveMode == AppMode.Ddl;
-
-    public bool IsSqlEditorModeActive => ActiveMode == AppMode.SqlEditor;
-
-    public bool IsDiagramModeActive => IsDiagramDocumentPageActive;
+    public bool IsDdlSchemaAnalysisWorkspaceTabActive => ActiveDdlWorkspaceTab == DdlWorkspaceTab.SchemaAnalysis;
 
     public CanvasContext ActiveCanvasContext
     {
@@ -246,22 +268,16 @@ public sealed class ShellViewModel : ViewModelBase
     public bool IsDiagramOverlayLayerVisible => IsCanvasVisible && IsDiagramDocumentPageActive;
 
     public bool IsConnectionManagerOverlayVisible =>
-        ActiveConnectionManager?.IsVisible == true;
+        IsCanvasVisible && (Canvas?.ConnectionManager.IsVisible == true || DdlCanvas?.ConnectionManager.IsVisible == true);
 
     public bool IsOutputPreviewModalVisible =>
-        IsDiagramOverlayLayerVisible && OutputPreview.IsVisible;
+        IsCanvasVisible && OutputPreview.IsVisible;
 
     public CanvasViewModel? ActiveCanvas =>
         ActiveWorkspaceDocument?.DocumentViewModel as CanvasViewModel;
 
     public ConnectionManagerViewModel? ActiveConnectionManager =>
-        ActiveWorkspaceDocumentType switch
-        {
-            WorkspaceDocumentType.DdlCanvas => DdlCanvas?.ConnectionManager ?? Canvas?.ConnectionManager,
-            WorkspaceDocumentType.QueryCanvas => Canvas?.ConnectionManager ?? DdlCanvas?.ConnectionManager,
-            WorkspaceDocumentType.SqlEditor => ResolveSharedConnectionManager(),
-            _ => ActiveCanvas?.ConnectionManager ?? ResolveSharedConnectionManager(),
-        };
+        ResolveVisibleConnectionManager() ?? ResolveDocumentConnectionManager();
 
     public SidebarViewModel? ActiveDiagramSidebar => ActiveCanvas?.Sidebar;
 
@@ -310,6 +326,7 @@ public sealed class ShellViewModel : ViewModelBase
                 return;
 
             RaisePropertyChanged(nameof(IsAppearanceSectionSelected));
+            RaisePropertyChanged(nameof(IsEditorSectionSelected));
             RaisePropertyChanged(nameof(IsLanguageRegionSectionSelected));
             RaisePropertyChanged(nameof(IsDateTimeSectionSelected));
             RaisePropertyChanged(nameof(IsKeyboardShortcutsSectionSelected));
@@ -324,6 +341,7 @@ public sealed class ShellViewModel : ViewModelBase
     public string SettingsSectionTitle => SelectedSettingsSection switch
     {
         ESettingsSection.Appearance => Localize("settings.section.appearance.title", "Themes"),
+        ESettingsSection.Editor => Localize("settings.section.editor.title", "Editor"),
         ESettingsSection.LanguageRegion => Localize("settings.section.languageRegion.title", "Language & Region"),
         ESettingsSection.DateTime => Localize("settings.section.dateTime.title", "Date & Time"),
         ESettingsSection.KeyboardShortcuts => Localize("settings.section.keyboard.title", "Keyboard Shortcuts"),
@@ -336,6 +354,7 @@ public sealed class ShellViewModel : ViewModelBase
     public string SettingsSectionSubtitle => SelectedSettingsSection switch
     {
         ESettingsSection.Appearance => Localize("settings.section.appearance.subtitle", "Choose your style or customize your theme"),
+        ESettingsSection.Editor => Localize("settings.section.editor.subtitle", "Control SQL safety defaults in editor execution."),
         ESettingsSection.LanguageRegion => Localize("settings.section.languageRegion.subtitle", "Manage language and regional formatting"),
         ESettingsSection.DateTime => Localize("settings.section.wip.subtitle", "Work in progress."),
         ESettingsSection.KeyboardShortcuts => Localize("settings.section.keyboard.subtitle", "Customize keyboard shortcuts used by command palette and canvas execution."),
@@ -346,6 +365,7 @@ public sealed class ShellViewModel : ViewModelBase
     };
 
     public bool IsAppearanceSectionSelected => SelectedSettingsSection == ESettingsSection.Appearance;
+    public bool IsEditorSectionSelected => SelectedSettingsSection == ESettingsSection.Editor;
     public bool IsLanguageRegionSectionSelected => SelectedSettingsSection == ESettingsSection.LanguageRegion;
     public bool IsDateTimeSectionSelected => SelectedSettingsSection == ESettingsSection.DateTime;
     public bool IsKeyboardShortcutsSectionSelected => SelectedSettingsSection == ESettingsSection.KeyboardShortcuts;
@@ -356,7 +376,10 @@ public sealed class ShellViewModel : ViewModelBase
     public CanvasViewModel EnsureCanvas(Func<bool>? isDdlModeActiveResolver = null, Action<TableMetadata, Point>? importDdlTableAction = null)
     {
         if (ActiveQueryCanvasDocument is not null)
+        {
+            SyncCanvasConnectionContext(ActiveQueryCanvasDocument, ResolveKnownDdlCanvas());
             return ActiveQueryCanvasDocument;
+        }
 
         if (Canvas is null)
             Canvas = new CanvasViewModel(
@@ -368,13 +391,18 @@ public sealed class ShellViewModel : ViewModelBase
                 toastCenter: Toasts,
                 connectionManagerFactory: _connectionManagerViewModelFactory);
 
+        SyncCanvasConnectionContext(Canvas, ResolveKnownDdlCanvas());
+
         return Canvas;
     }
 
     public CanvasViewModel EnsureDdlCanvas()
     {
         if (ActiveDdlCanvasDocument is not null)
+        {
+            SyncCanvasConnectionContext(ActiveDdlCanvasDocument, ResolveKnownQueryCanvas());
             return ActiveDdlCanvasDocument;
+        }
 
         if (DdlCanvas is null)
             DdlCanvas = new CanvasViewModel(
@@ -386,27 +414,22 @@ public sealed class ShellViewModel : ViewModelBase
                 toastCenter: Toasts,
                 connectionManagerFactory: _connectionManagerViewModelFactory);
 
+        SyncCanvasConnectionContext(DdlCanvas, ResolveKnownQueryCanvas());
+
         RegisterOrUpdateDdlDocument(DdlCanvas);
 
         return DdlCanvas;
     }
 
-    public void SetActiveMode(AppMode mode)
+    public void SetActiveDdlWorkspaceTab(DdlWorkspaceTab tab)
     {
-        if (!Enum.IsDefined(mode))
-            throw new ArgumentOutOfRangeException(nameof(mode), mode, "Unsupported app mode.");
+        if (!Enum.IsDefined(tab))
+            throw new ArgumentOutOfRangeException(nameof(tab), tab, "Unsupported DDL workspace tab.");
 
-        WorkspaceDocumentType documentType = mode switch
-        {
-            AppMode.Ddl => WorkspaceDocumentType.DdlCanvas,
-            AppMode.SqlEditor => WorkspaceDocumentType.SqlEditor,
-            _ => WorkspaceDocumentType.QueryCanvas,
-        };
-
-        SetActiveDocumentType(documentType);
+        ActiveDdlWorkspaceTab = tab;
     }
 
-    public void SetActiveDocumentType(WorkspaceDocumentType documentType)
+    public void ActivateDocument(WorkspaceDocumentType documentType)
     {
         if (ActiveWorkspaceDocumentType == documentType)
             return;
@@ -420,7 +443,7 @@ public sealed class ShellViewModel : ViewModelBase
             return;
         }
 
-        SynchronizeModeFromActiveDocument();
+        SyncStateFromActiveDocument();
         RaiseActiveDocumentPropertiesChanged();
         SyncExtractedPanels();
     }
@@ -432,7 +455,7 @@ public sealed class ShellViewModel : ViewModelBase
         if (existing is not null)
         {
             _workspaceRouter.TryActivate(existing.Descriptor.DocumentId);
-            SynchronizeModeFromActiveDocument();
+            SyncStateFromActiveDocument();
             RaiseActiveDocumentPropertiesChanged();
             SyncExtractedPanels();
             return existing.Descriptor.DocumentId;
@@ -451,7 +474,7 @@ public sealed class ShellViewModel : ViewModelBase
         if (!_workspaceRouter.TryActivate(documentId))
             return false;
 
-        SynchronizeModeFromActiveDocument();
+        SyncStateFromActiveDocument();
         RaiseActiveDocumentPropertiesChanged();
         SyncExtractedPanels();
         return true;
@@ -466,7 +489,7 @@ public sealed class ShellViewModel : ViewModelBase
         if (_workspaceRouter.ActiveDocument is null)
             _ = OpenNewDocument(WorkspaceDocumentType.QueryCanvas);
 
-        SynchronizeModeFromActiveDocument();
+        SyncStateFromActiveDocument();
         RaiseActiveDocumentPropertiesChanged();
         SyncExtractedPanels();
         return true;
@@ -531,8 +554,27 @@ public sealed class ShellViewModel : ViewModelBase
             .FirstOrDefault(document => document.Descriptor.DocumentType == WorkspaceDocumentType.DdlCanvas)
             ?.DocumentViewModel as CanvasViewModel;
 
-        SynchronizeModeFromActiveDocument();
+        SyncStateFromActiveDocument();
         RaiseActiveDocumentPropertiesChanged();
+        SyncExtractedPanels();
+    }
+
+    public void ImportMigratedSqlScriptsToSqlEditor(IReadOnlyList<string> scripts)
+    {
+        if (scripts is null || scripts.Count == 0)
+            return;
+
+        Guid documentId = OpenNewDocument(WorkspaceDocumentType.SqlEditor);
+        _workspaceRouter.TryActivate(documentId);
+        SyncStateFromActiveDocument();
+        RaiseActiveDocumentPropertiesChanged();
+
+        SqlEditorViewModel targetEditor = ActiveSqlEditorDocument ?? SqlEditor;
+        DatabaseProvider provider = ResolveSharedActiveConnectionConfig()?.Provider ?? DatabaseProvider.Postgres;
+        foreach (string script in scripts.Where(static s => !string.IsNullOrWhiteSpace(s)))
+            targetEditor.ReceiveFromCanvas(script, provider);
+
+        ActivateDocument(WorkspaceDocumentType.SqlEditor);
         SyncExtractedPanels();
     }
 
@@ -547,10 +589,37 @@ public sealed class ShellViewModel : ViewModelBase
         SyncExtractedPanels();
     }
 
+    public bool TryOpenSqlExplainPreview(string sql, DatabaseProvider provider, ConnectionConfig? connectionConfig)
+    {
+        CanvasViewModel? bridgeCanvas = ResolveKnownQueryCanvas() ?? ResolveKnownDdlCanvas();
+        if (bridgeCanvas is null)
+            return false;
+
+        OutputPreview.OpenForSqlExplain(
+            canvas: bridgeCanvas,
+            sql: sql,
+            provider: provider,
+            connectionConfig: connectionConfig);
+        return true;
+    }
+
+    public bool TryOpenSqlBenchmarkPreview(string sql, ConnectionConfig? connectionConfig)
+    {
+        CanvasViewModel? bridgeCanvas = ResolveKnownQueryCanvas() ?? ResolveKnownDdlCanvas();
+        if (bridgeCanvas is null)
+            return false;
+
+        OutputPreview.OpenForSqlBenchmark(
+            canvas: bridgeCanvas,
+            sql: sql,
+            connectionConfig: connectionConfig);
+        return true;
+    }
+
     public void EnterCanvas()
     {
         EnsureCanvas();
-        ActivateDocumentForMode(ActiveMode);
+        ActivateDocumentCore(ActiveWorkspaceDocumentType ?? WorkspaceDocumentType.QueryCanvas);
         IsStartVisible = false;
     }
 
@@ -561,6 +630,22 @@ public sealed class ShellViewModel : ViewModelBase
     public void CloseSettings() => IsSettingsVisible = false;
 
     public void SelectSettingsSection(ESettingsSection section) => SelectedSettingsSection = section;
+
+    public void SetSqlEditorExecutionSafetyOptions(bool top1000WithoutWhereEnabled, bool protectMutationWithoutWhereEnabled)
+    {
+        SqlEditor.SetExecutionSafetyOptions(top1000WithoutWhereEnabled, protectMutationWithoutWhereEnabled);
+
+        foreach (OpenWorkspaceDocument document in _workspaceRouter.OpenDocuments)
+        {
+            if (document.DocumentViewModel is not SqlEditorViewModel sqlEditor)
+                continue;
+
+            if (ReferenceEquals(sqlEditor, SqlEditor))
+                continue;
+
+            sqlEditor.SetExecutionSafetyOptions(top1000WithoutWhereEnabled, protectMutationWithoutWhereEnabled);
+        }
+    }
 
     public void SetCommandPalette(CommandPaletteViewModel viewModel)
     {
@@ -593,6 +678,36 @@ public sealed class ShellViewModel : ViewModelBase
         return asm.GetName().Version?.ToString() ?? "dev";
     }
 
+    private static void SyncCanvasConnectionContext(CanvasViewModel target, CanvasViewModel? source)
+    {
+        if (source is null)
+            return;
+
+        DbMetadata? metadata = source.DatabaseMetadata;
+        ConnectionConfig? config = source.ActiveConnectionConfig;
+        bool sourceHasContext = metadata is not null || config is not null;
+        bool targetNeedsContext = target.DatabaseMetadata is null || target.ActiveConnectionConfig is null;
+        if (!sourceHasContext || !targetNeedsContext)
+            return;
+
+        target.SetDatabaseContext(
+            target.DatabaseMetadata ?? metadata,
+            target.ActiveConnectionConfig ?? config
+        );
+    }
+
+    private CanvasViewModel? ResolveKnownQueryCanvas() =>
+        Canvas
+        ?? _workspaceRouter.OpenDocuments
+            .FirstOrDefault(document => document.Descriptor.DocumentType == WorkspaceDocumentType.QueryCanvas)
+            ?.DocumentViewModel as CanvasViewModel;
+
+    private CanvasViewModel? ResolveKnownDdlCanvas() =>
+        DdlCanvas
+        ?? _workspaceRouter.OpenDocuments
+            .FirstOrDefault(document => document.Descriptor.DocumentType == WorkspaceDocumentType.DdlCanvas)
+            ?.DocumentViewModel as CanvasViewModel;
+
     private void AttachCanvasObservers(CanvasViewModel? _)
     {
         RefreshConnectionManagerObservers();
@@ -604,6 +719,7 @@ public sealed class ShellViewModel : ViewModelBase
         {
             if (e.PropertyName == nameof(ConnectionManagerViewModel.IsVisible))
             {
+                RaisePropertyChanged(nameof(ActiveConnectionManager));
                 RaisePropertyChanged(nameof(IsConnectionManagerVisible));
                 RaisePropertyChanged(nameof(IsConnectionManagerOverlayVisible));
             }
@@ -632,6 +748,36 @@ public sealed class ShellViewModel : ViewModelBase
             if (_observedDdlConnectionManager is not null)
                 _observedDdlConnectionManager.PropertyChanged += _activeConnectionManagerPropertyChanged;
         }
+
+        // Keep overlay bindings in sync even when managers were already visible
+        // before observer wiring completed.
+        RaisePropertyChanged(nameof(ActiveConnectionManager));
+        RaisePropertyChanged(nameof(IsConnectionManagerVisible));
+        RaisePropertyChanged(nameof(IsConnectionManagerOverlayVisible));
+    }
+
+    private ConnectionManagerViewModel? ResolveDocumentConnectionManager() =>
+        ActiveWorkspaceDocumentType switch
+        {
+            WorkspaceDocumentType.DdlCanvas => DdlCanvas?.ConnectionManager ?? Canvas?.ConnectionManager,
+            WorkspaceDocumentType.QueryCanvas => Canvas?.ConnectionManager ?? DdlCanvas?.ConnectionManager,
+            WorkspaceDocumentType.SqlEditor => ResolveSharedConnectionManager(),
+            _ => ActiveCanvas?.ConnectionManager ?? ResolveSharedConnectionManager(),
+        };
+
+    private ConnectionManagerViewModel? ResolveVisibleConnectionManager()
+    {
+        ConnectionManagerViewModel? documentManager = ResolveDocumentConnectionManager();
+        if (documentManager?.IsVisible == true)
+            return documentManager;
+
+        if (Canvas?.ConnectionManager.IsVisible == true)
+            return Canvas.ConnectionManager;
+
+        if (DdlCanvas?.ConnectionManager.IsVisible == true)
+            return DdlCanvas.ConnectionManager;
+
+        return null;
     }
 
     private void SyncExtractedPanels()
@@ -669,23 +815,23 @@ public sealed class ShellViewModel : ViewModelBase
         };
     }
 
-    private void ActivateDocumentForMode(AppMode mode)
+    private void ActivateDocumentCore(WorkspaceDocumentType documentType)
     {
-        if (mode == AppMode.Ddl)
+        if (documentType == WorkspaceDocumentType.DdlCanvas)
             EnsureDdlCanvas();
 
-        bool changed = mode switch
+        bool changed = documentType switch
         {
-            AppMode.Query => _queryDocumentId.HasValue && _workspaceRouter.TryActivate(_queryDocumentId.Value),
-            AppMode.Ddl => _ddlDocumentId.HasValue && _workspaceRouter.TryActivate(_ddlDocumentId.Value),
-            AppMode.SqlEditor => TryActivateLastDocumentByType(WorkspaceDocumentType.SqlEditor),
+            WorkspaceDocumentType.QueryCanvas => _queryDocumentId.HasValue && _workspaceRouter.TryActivate(_queryDocumentId.Value),
+            WorkspaceDocumentType.DdlCanvas => _ddlDocumentId.HasValue && _workspaceRouter.TryActivate(_ddlDocumentId.Value),
+            WorkspaceDocumentType.SqlEditor => TryActivateLastDocumentByType(WorkspaceDocumentType.SqlEditor),
             _ => false,
         };
 
         if (!changed)
             return;
 
-        SynchronizeModeFromActiveDocument();
+        SyncStateFromActiveDocument();
         RaiseActiveDocumentPropertiesChanged();
         SyncExtractedPanels();
     }
@@ -697,23 +843,15 @@ public sealed class ShellViewModel : ViewModelBase
         return target is not null && _workspaceRouter.TryActivate(target.Descriptor.DocumentId);
     }
 
-    private void SynchronizeModeFromActiveDocument()
+    private void SyncStateFromActiveDocument()
     {
-        AppMode targetMode = ActiveWorkspaceDocumentType switch
-        {
-            WorkspaceDocumentType.DdlCanvas => AppMode.Ddl,
-            WorkspaceDocumentType.SqlEditor => AppMode.SqlEditor,
-            _ => AppMode.Query,
-        };
-
-        if (targetMode != AppMode.Ddl)
+        if (ActiveWorkspaceDocumentType != WorkspaceDocumentType.DdlCanvas)
             _isViewSubcanvasActive = false;
 
-        ActiveMode = targetMode;
         RaisePropertyChanged(nameof(ActiveCanvas));
         RaisePropertyChanged(nameof(ActiveDiagramSidebar));
         RaisePropertyChanged(nameof(ActiveDiagramPropertyPanel));
-        if (targetMode == AppMode.SqlEditor)
+        if (ActiveWorkspaceDocumentType == WorkspaceDocumentType.SqlEditor)
             HideDiagramOnlyOverlays();
         UpdateActiveCanvasContext();
     }
@@ -724,6 +862,7 @@ public sealed class ShellViewModel : ViewModelBase
         RaisePropertyChanged(nameof(ActiveWorkspaceDocumentId));
         RaisePropertyChanged(nameof(ActiveWorkspaceDocument));
         RaisePropertyChanged(nameof(ActiveWorkspaceDocumentType));
+        RaisePropertyChanged(nameof(ActiveMode));
         RaisePropertyChanged(nameof(ActivePageContract));
         RaisePropertyChanged(nameof(ActivePreviewContract));
         RaisePropertyChanged(nameof(ActiveDiagnosticsContract));
@@ -733,7 +872,11 @@ public sealed class ShellViewModel : ViewModelBase
         RaisePropertyChanged(nameof(IsQueryDocumentPageActive));
         RaisePropertyChanged(nameof(IsDdlDocumentPageActive));
         RaisePropertyChanged(nameof(IsSqlEditorDocumentPageActive));
+        RaisePropertyChanged(nameof(IsQueryModeActive));
+        RaisePropertyChanged(nameof(IsDdlModeActive));
+        RaisePropertyChanged(nameof(IsSqlEditorModeActive));
         RaisePropertyChanged(nameof(IsDiagramDocumentPageActive));
+        RaisePropertyChanged(nameof(IsDiagramModeActive));
         RaisePropertyChanged(nameof(IsDiagramOverlayLayerVisible));
         RaisePropertyChanged(nameof(ActiveConnectionManager));
         RaisePropertyChanged(nameof(IsConnectionManagerVisible));
@@ -779,7 +922,7 @@ public sealed class ShellViewModel : ViewModelBase
 
         if (shouldActivate)
         {
-            SynchronizeModeFromActiveDocument();
+            SyncStateFromActiveDocument();
             SyncExtractedPanels();
         }
     }
@@ -810,7 +953,7 @@ public sealed class ShellViewModel : ViewModelBase
         Guid documentId = Guid.NewGuid();
         RegisterOrUpdateDocument(documentId, WorkspaceDocumentType.QueryCanvas, title, canvas, activate: true);
         _canvas ??= canvas;
-        SynchronizeModeFromActiveDocument();
+        SyncStateFromActiveDocument();
         RaiseActiveDocumentPropertiesChanged();
         SyncExtractedPanels();
         return documentId;
@@ -832,7 +975,7 @@ public sealed class ShellViewModel : ViewModelBase
         Guid documentId = Guid.NewGuid();
         RegisterOrUpdateDocument(documentId, WorkspaceDocumentType.DdlCanvas, title, ddlCanvas, activate: true);
         _ddlCanvas ??= ddlCanvas;
-        SynchronizeModeFromActiveDocument();
+        SyncStateFromActiveDocument();
         RaiseActiveDocumentPropertiesChanged();
         SyncExtractedPanels();
         return documentId;
@@ -853,7 +996,7 @@ public sealed class ShellViewModel : ViewModelBase
         });
         Guid documentId = Guid.NewGuid();
         RegisterOrUpdateDocument(documentId, WorkspaceDocumentType.SqlEditor, title, sqlEditorDocument, activate: true);
-        SynchronizeModeFromActiveDocument();
+        SyncStateFromActiveDocument();
         RaiseActiveDocumentPropertiesChanged();
         SyncExtractedPanels();
         return documentId;

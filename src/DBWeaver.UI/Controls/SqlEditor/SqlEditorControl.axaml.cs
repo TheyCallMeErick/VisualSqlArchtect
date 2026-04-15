@@ -6,36 +6,79 @@ using AvaloniaEdit;
 using AvaloniaEdit.CodeCompletion;
 using AvaloniaEdit.Document;
 using AvaloniaEdit.Editing;
+using AvaloniaEdit.Folding;
+using AvaloniaEdit.Rendering;
+using AvaloniaEdit.Search;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics;
+using System.Globalization;
 using System.IO;
+using System.Threading;
 using System.Text.RegularExpressions;
+using System;
 using Avalonia.Threading;
-using DBWeaver.UI.Services.SqlEditor.Reports;
 using DBWeaver.UI.Services;
 using DBWeaver.UI.Services.SqlEditor;
 using DBWeaver.UI.Services.Localization;
 using DBWeaver.UI.ViewModels;
-using DBWeaver.UI.Services.Theming;
 
 namespace DBWeaver.UI.Controls.SqlEditor;
 
 [ExcludeFromCodeCoverage]
 public partial class SqlEditorControl : UserControl
 {
-    private const double ResultsSheetMinHeight = 160;
-    private const double ResultsSheetMaxHeightFallback = 720;
+    private const int LargeEditorCompletionThreshold = 10_000;
+    private const int DefaultCompletionDebounceMs = 80;
+    private const int AutoTriggerCompletionDebounceMs = 45;
+    private const int TypingBurstWindowMs = 140;
+    private const int HeavyMetadataAutoCompletionCooldownMs = 140;
+    private const int HoverDocsDebounceMs = 400;
+    private const int SignatureHelpDebounceMs = 70;
+    private const int BracketHighlightDebounceMs = 35;
+    private const int EditorTextSyncDebounceMs = 90;
+    private const int MaxRenderedCompletionSuggestions = 90;
 
     private TextEditor? _editor;
-    private Border? _resultsSheetHost;
-    private Border? _resultsResizeGrip;
+    private Border? _goToLineOverlay;
+    private TextBlock? _goToLineLabel;
+    private TextBox? _goToLineInput;
+    private IBrush? _goToLineDefaultBorderBrush;
+    private IBrush? _goToLineHighlightBrush;
+    private IBrush? _defaultTextViewCurrentLineBackground;
+    private SqlBracketHighlightRenderer? _bracketHighlightRenderer;
+    private SqlExecutionStatementHighlightRenderer? _executionStatementHighlightRenderer;
+    private FoldingManager? _foldingManager;
+    private readonly SqlFoldingStrategy _sqlFoldingStrategy = new();
+    private readonly SqlTokenizer _sqlTokenizer = new();
+    private DispatcherTimer? _foldingRefreshTimer;
+    private CancellationTokenSource? _foldingRefreshCts;
+    private long _foldingRefreshVersion;
+    private DispatcherTimer? _foldingChordTimer;
+    private bool _awaitingFoldingChord;
+    private DispatcherTimer? _goToLineHighlightTimer;
+    private int _goToLineOriginCaretOffset;
     private SqlEditorViewModel? _vm;
+    private SearchPanel? _searchPanel;
     private CompletionWindow? _completionWindow;
-    private readonly SqlEditorReportExportService _reportExportService = new();
-    private bool _isResizingResultsSheet;
-    private Point _resizeStartPointerPosition;
-    private double _resizeStartHeight;
+    private DispatcherTimer? _completionDebounceTimer;
+    private DispatcherTimer? _hoverDocsDebounceTimer;
+    private DispatcherTimer? _signatureHelpDebounceTimer;
+    private DispatcherTimer? _bracketHighlightDebounceTimer;
+    private DispatcherTimer? _editorTextSyncDebounceTimer;
+    private bool _completionOnDemandHintShown;
+    private long _completionRequestVersion;
+    private CancellationTokenSource? _completionRequestCts;
+    private int _lastCompletionFingerprint;
+    private int _lastCompletionItemCount = -1;
+    private int _lastCompletionPrefixLength = -1;
+    private long _lastHeavyMetadataAutoCompletionTickMs;
+    private long _lastEditorTextInputTickMs;
+    private Point _lastHoverPointerPosition;
+    private bool _hasPendingEditorTextSync;
+    private string? _pendingEditorTextSyncTabId;
 
     public SqlEditorControl()
     {
@@ -44,20 +87,41 @@ public partial class SqlEditorControl : UserControl
         DataContextChanged += (_, _) => AttachViewModel();
         AttachedToVisualTree += (_, _) => FocusEditor();
         Loaded += (_, _) => EnsureEditorReady();
+        DetachedFromVisualTree += (_, _) => OnDetachedFromVisualTree();
+    }
+
+    private void OnDetachedFromVisualTree()
+    {
+        DisposeFoldingManager();
+        _foldingRefreshCts?.Cancel();
+        _foldingRefreshCts?.Dispose();
+        _foldingRefreshCts = null;
+        _completionRequestCts?.Cancel();
+        _completionRequestCts?.Dispose();
+        _completionRequestCts = null;
+        _signatureHelpDebounceTimer?.Stop();
+        _bracketHighlightDebounceTimer?.Stop();
+        _editorTextSyncDebounceTimer?.Stop();
+        FlushPendingEditorTextToViewModel();
+        ResetCompletionRenderCache();
     }
 
     private void ConfigureTextEditor()
     {
         _editor = this.FindControl<TextEditor>("SqlTextEditor");
-        _resultsSheetHost = this.FindControl<Border>("ResultsSheetHost");
-        _resultsResizeGrip = this.FindControl<Border>("ResultsResizeGrip");
+        _goToLineOverlay = this.FindControl<Border>("GoToLineOverlay");
+        _goToLineLabel = this.FindControl<TextBlock>("GoToLineLabel");
+        _goToLineInput = this.FindControl<TextBox>("GoToLineInput");
+        _goToLineDefaultBorderBrush = _goToLineInput?.BorderBrush;
+        ConfigureGoToLineLocalization();
         if (_editor is null)
             return;
 
         _editor.Options.EnableHyperlinks = false;
         _editor.Options.EnableEmailHyperlinks = false;
         _editor.Options.HighlightCurrentLine = true;
-        _editor.Options.AllowScrollBelowDocument = false;
+        _editor.Options.AllowScrollBelowDocument = true;
+        _editor.Options.EnableRectangularSelection = true;
         _editor.Options.IndentationSize = 2;
         _editor.Options.ConvertTabsToSpaces = true;
         _editor.IsReadOnly = false;
@@ -65,10 +129,23 @@ public partial class SqlEditorControl : UserControl
         _editor.IsHitTestVisible = true;
         _editor.Cursor = new Cursor(StandardCursorType.Ibeam);
         _editor.SyntaxHighlighting = SqlEditorHighlightingService.GetSqlDefinition();
+        _searchPanel = SearchPanel.Install(_editor);
+        ConfigureBracketHighlighting();
+        _defaultTextViewCurrentLineBackground = _editor.TextArea?.TextView.CurrentLineBackground;
         EnsureEditorDocument();
         _editor.TextChanged += OnEditorTextChanged;
-        _editor.TextArea.TextEntered += OnEditorTextEntered;
+        _editor.PointerMoved += OnEditorPointerMoved;
+        _editor.PointerExited += OnEditorPointerExited;
+        if (_editor.TextArea is TextArea textArea)
+        {
+            textArea.TextEntered += OnEditorTextEntered;
+            textArea.Caret.PositionChanged += OnEditorCaretPositionChanged;
+            ConfigureSqlFolding(textArea);
+        }
         _editor.PointerPressed += (_, _) => FocusEditor();
+        ApplyEditorExecutionState();
+        RefreshBracketHighlight();
+        ScheduleFoldingRefresh();
     }
 
     private void AttachViewModel()
@@ -81,6 +158,7 @@ public partial class SqlEditorControl : UserControl
             _vm.PropertyChanged += OnViewModelPropertyChanged;
 
         SyncEditorTextFromViewModel();
+        ApplyEditorExecutionState();
         FocusEditor();
     }
 
@@ -88,12 +166,30 @@ public partial class SqlEditorControl : UserControl
     {
         if (e.PropertyName == nameof(SqlEditorViewModel.ActiveTab))
             SyncEditorTextFromViewModel();
+
+        if (e.PropertyName == nameof(SqlEditorViewModel.IsExecuting))
+            ApplyEditorExecutionState();
+
+        if (e.PropertyName is nameof(SqlEditorViewModel.ActiveExecutionStatementStartLine)
+            or nameof(SqlEditorViewModel.ActiveExecutionStatementEndLine)
+            or nameof(SqlEditorViewModel.IsExecuting))
+        {
+            RefreshExecutionStatementHighlight();
+        }
     }
 
     private void SyncEditorTextFromViewModel()
     {
         if (_editor is null || _vm is null)
             return;
+
+        if (string.Equals(_pendingEditorTextSyncTabId, _vm.ActiveTab.Id, StringComparison.Ordinal))
+            FlushPendingEditorTextToViewModel();
+        else
+        {
+            _hasPendingEditorTextSync = false;
+            _pendingEditorTextSyncTabId = null;
+        }
 
         EnsureEditorDocument();
         string text = _vm.ActiveTab.SqlText;
@@ -124,6 +220,21 @@ public partial class SqlEditorControl : UserControl
 
         _editor.TextArea.IsEnabled = true;
         _editor.TextArea.Caret.BringCaretToView();
+        ApplyEditorExecutionState();
+        UpdateViewModelCursorPosition();
+        RefreshExecutionStatementHighlight();
+        ScheduleBracketHighlightRefresh(immediate: true);
+        ScheduleSignatureHelpRefresh(immediate: true);
+    }
+
+    private void ApplyEditorExecutionState()
+    {
+        if (_editor is null)
+            return;
+
+        bool isExecuting = _vm?.IsExecuting == true;
+        _editor.IsReadOnly = isExecuting;
+        _editor.Cursor = new Cursor(isExecuting ? StandardCursorType.Wait : StandardCursorType.Ibeam);
     }
 
     private void OnEditorTextChanged(object? sender, EventArgs e)
@@ -131,27 +242,95 @@ public partial class SqlEditorControl : UserControl
         if (_editor is null || _vm is null)
             return;
 
-        string updated = _editor.Text ?? string.Empty;
-        if (string.Equals(_vm.ActiveTab.SqlText, updated, StringComparison.Ordinal))
+        _hasPendingEditorTextSync = true;
+        _pendingEditorTextSyncTabId = _vm.ActiveTab.Id;
+        ScheduleEditorTextSync();
+        _vm.ActiveTab.IsDirty = true;
+        _vm.NotifyActiveTabEdited();
+        _vm.ClearHoverDocumentation();
+        ScheduleFoldingRefresh();
+    }
+
+    private void ScheduleEditorTextSync()
+    {
+        if (_vm is null)
             return;
 
-        _vm.ActiveTab.SqlText = updated;
-        _vm.ActiveTab.IsDirty = true;
+        _editorTextSyncDebounceTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(EditorTextSyncDebounceMs) };
+        _editorTextSyncDebounceTimer.Interval = TimeSpan.FromMilliseconds(EditorTextSyncDebounceMs);
+        _editorTextSyncDebounceTimer.Tick -= OnEditorTextSyncDebounceTick;
+        _editorTextSyncDebounceTimer.Tick += OnEditorTextSyncDebounceTick;
+        _editorTextSyncDebounceTimer.Stop();
+        _editorTextSyncDebounceTimer.Start();
+    }
+
+    private void OnEditorTextSyncDebounceTick(object? sender, EventArgs e)
+    {
+        _editorTextSyncDebounceTimer?.Stop();
+        FlushPendingEditorTextToViewModel();
+    }
+
+    private void FlushPendingEditorTextToViewModel()
+    {
+        if (_vm is null || _editor is null || !_hasPendingEditorTextSync)
+            return;
+
+        if (!string.Equals(_pendingEditorTextSyncTabId, _vm.ActiveTab.Id, StringComparison.Ordinal))
+        {
+            _hasPendingEditorTextSync = false;
+            _pendingEditorTextSyncTabId = null;
+            return;
+        }
+
+        string latestText = _editor.Text ?? string.Empty;
+        if (!string.Equals(_vm.ActiveTab.SqlText, latestText, StringComparison.Ordinal))
+            _vm.ActiveTab.SqlText = latestText;
+
+        _hasPendingEditorTextSync = false;
+        _pendingEditorTextSyncTabId = null;
     }
 
     private void OnEditorTextEntered(object? sender, TextInputEventArgs e)
     {
-        if (_editor is null || _vm is null || _completionWindow is not null)
+        if (_editor is null || _vm is null)
             return;
+
+        _lastEditorTextInputTickMs = Environment.TickCount64;
+
+        bool shouldRefreshSignatureHelp = string.Equals(e.Text, "(", StringComparison.Ordinal)
+            || string.Equals(e.Text, ")", StringComparison.Ordinal)
+            || string.Equals(e.Text, ",", StringComparison.Ordinal);
 
         if (string.Equals(e.Text, ".", StringComparison.Ordinal))
         {
-            ShowCompletionWindow();
+            TriggerCompletion(autoTriggered: true, allowDebounce: true);
+            if (shouldRefreshSignatureHelp)
+                ScheduleSignatureHelpRefresh(immediate: true);
+            return;
+        }
+
+        if (string.Equals(e.Text, "(", StringComparison.Ordinal)
+            || string.Equals(e.Text, ",", StringComparison.Ordinal))
+        {
+            TriggerCompletion(autoTriggered: true, allowDebounce: true);
+            if (shouldRefreshSignatureHelp)
+                ScheduleSignatureHelpRefresh(immediate: true);
             return;
         }
 
         if (string.Equals(e.Text, " ", StringComparison.Ordinal) && ShouldAutoTriggerCompletionAfterSpace())
-            ShowCompletionWindow();
+        {
+            TriggerCompletion(autoTriggered: true, allowDebounce: true);
+            if (shouldRefreshSignatureHelp)
+                ScheduleSignatureHelpRefresh(immediate: true);
+            return;
+        }
+
+        if (ShouldDebounceCompletionAfterTextInput(e.Text))
+            TriggerCompletion(autoTriggered: true, allowDebounce: true);
+
+        if (shouldRefreshSignatureHelp)
+            ScheduleSignatureHelpRefresh(immediate: false);
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
@@ -163,7 +342,17 @@ public partial class SqlEditorControl : UserControl
 
         bool isExecuteSelection = e.Key == Key.F8;
         bool isExecuteAll = e.Key == Key.F5;
+        bool isExplain = e.Key == Key.F4;
+        bool isBenchmark = e.Key == Key.F6;
+        bool isTab = e.Key == Key.Tab && e.KeyModifiers == KeyModifiers.None;
         bool isCompletion = e.Key == Key.Space && e.KeyModifiers.HasFlag(KeyModifiers.Control);
+        bool isFind = e.Key == Key.F && e.KeyModifiers.HasFlag(KeyModifiers.Control) && !e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+        bool isReplace = e.Key == Key.H && e.KeyModifiers.HasFlag(KeyModifiers.Control);
+        bool isGoToLine = e.Key == Key.G && e.KeyModifiers.HasFlag(KeyModifiers.Control);
+        bool isFormatSql = e.Key == Key.F && e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+        bool isCollapseCurrent = e.Key == Key.OemOpenBrackets && e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+        bool isExpandCurrent = e.Key == Key.OemCloseBrackets && e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+        bool isStartFoldingChord = e.Key == Key.K && e.KeyModifiers.HasFlag(KeyModifiers.Control);
         bool isSave = e.Key == Key.S && e.KeyModifiers.HasFlag(KeyModifiers.Control);
         bool isOpen = e.Key == Key.O && e.KeyModifiers.HasFlag(KeyModifiers.Control);
         bool isNewTab = e.Key == Key.T && e.KeyModifiers.HasFlag(KeyModifiers.Control);
@@ -172,9 +361,48 @@ public partial class SqlEditorControl : UserControl
         bool isExecuteCurrent = (e.Key is Key.Enter or Key.Return) && e.KeyModifiers.HasFlag(KeyModifiers.Control);
         bool isCancel = e.Key == Key.Escape;
 
+        if (HandleFoldingChord(e))
+            return;
+
+        if (isTab && TryAdvanceSnippetTabStop())
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (isCancel)
         {
+            if (_vm.ShouldShowResultsSheet)
+            {
+                if (_vm.CloseResultsSheetCommand.CanExecute(null))
+                    _vm.CloseResultsSheetCommand.Execute(null);
+
+                e.Handled = true;
+                return;
+            }
+
+            if (_searchPanel?.IsOpened == true)
+            {
+                _searchPanel.Close();
+                e.Handled = true;
+                return;
+            }
+
             _vm.CancelExecution();
+            e.Handled = true;
+            return;
+        }
+
+        if (isFind)
+        {
+            OpenSearchPanel(isReplaceMode: false);
+            e.Handled = true;
+            return;
+        }
+
+        if (isReplace)
+        {
+            OpenSearchPanel(isReplaceMode: true);
             e.Handled = true;
             return;
         }
@@ -182,6 +410,22 @@ public partial class SqlEditorControl : UserControl
         if (isExecuteAll)
         {
             _ = ExecuteAllWithToastAsync();
+            e.Handled = true;
+            return;
+        }
+
+        if (isExplain)
+        {
+            // Regression anchor: RunExplainAsync
+            _ = RunExplainWithModalAsync(includeAnalyze: false);
+            e.Handled = true;
+            return;
+        }
+
+        if (isBenchmark)
+        {
+            // Regression anchor: RunBenchmarkAsync
+            _ = RunBenchmarkWithModalAsync();
             e.Handled = true;
             return;
         }
@@ -202,7 +446,42 @@ public partial class SqlEditorControl : UserControl
 
         if (isCompletion)
         {
-            ShowCompletionWindow();
+            TriggerCompletion(autoTriggered: false, allowDebounce: false);
+            e.Handled = true;
+            return;
+        }
+
+        if (isGoToLine)
+        {
+            ShowGoToLineOverlay();
+            e.Handled = true;
+            return;
+        }
+
+        if (isFormatSql)
+        {
+            _ = FormatSqlWithToastAsync();
+            e.Handled = true;
+            return;
+        }
+
+        if (isCollapseCurrent)
+        {
+            CollapseCurrentFolding();
+            e.Handled = true;
+            return;
+        }
+
+        if (isExpandCurrent)
+        {
+            ExpandCurrentFolding();
+            e.Handled = true;
+            return;
+        }
+
+        if (isStartFoldingChord)
+        {
+            StartFoldingChord();
             e.Handled = true;
             return;
         }
@@ -243,7 +522,40 @@ public partial class SqlEditorControl : UserControl
         if (_vm is null || _editor is null)
             return;
 
+        FlushPendingEditorTextToViewModel();
+
         SqlEditorResultSet result = await _vm.ExecuteSelectionOrCurrentAsync(_editor.SelectionStart, _editor.SelectionLength, _editor.CaretOffset);
+        ShowToastForResult(result);
+    }
+
+    private void OpenSearchPanel(bool isReplaceMode)
+    {
+        if (_searchPanel is null)
+            return;
+
+        _searchPanel.IsReplaceMode = isReplaceMode;
+        _searchPanel.Open();
+    }
+
+    private async void ExecuteOrCancelPrimaryButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (_vm is null || _editor is null)
+            return;
+
+        if (_vm.IsExecuting)
+        {
+            if (_vm.CanExecuteOrCancel)
+                _vm.CancelExecution();
+
+            return;
+        }
+
+        FlushPendingEditorTextToViewModel();
+
+        SqlEditorResultSet result = await _vm.ExecuteSelectionOrCurrentAsync(
+            _editor.SelectionStart,
+            _editor.SelectionLength,
+            _editor.CaretOffset);
         ShowToastForResult(result);
     }
 
@@ -252,6 +564,8 @@ public partial class SqlEditorControl : UserControl
         if (_vm is null)
             return;
 
+        FlushPendingEditorTextToViewModel();
+
         IReadOnlyList<SqlEditorResultSet> results = await _vm.ExecuteAllAsync();
         if (results.Count == 0)
             return;
@@ -259,25 +573,112 @@ public partial class SqlEditorControl : UserControl
         int failures = results.Count(static r => !r.Success);
         if (failures == 0)
         {
-            ShowShellToastSuccess("Consulta executada.", $"{results.Count} statement(s) executado(s) com sucesso.");
+            ShowShellToastSuccess(
+                L("sqlEditor.toast.scriptSuccessTitle", "Script executado."),
+                string.Format(
+                    L("sqlEditor.toast.scriptSuccessDetail", "{0} instrucao(oes) executada(s) com sucesso."),
+                    results.Count));
             return;
         }
 
-        ShowShellToastWarning("Consulta executada com falhas.", $"{failures} de {results.Count} statement(s) falharam.");
+        ShowShellToastWarning(
+            L("sqlEditor.toast.scriptWarningTitle", "Script executado com falhas."),
+            string.Format(
+                L("sqlEditor.toast.scriptWarningDetail", "{0} de {1} instrucao(oes) falharam."),
+                failures,
+                results.Count));
+    }
+
+    private async Task FormatSqlWithToastAsync()
+    {
+        if (_editor?.Document is null)
+            return;
+
+        int selectionStart = _editor.SelectionStart;
+        int selectionLength = _editor.SelectionLength;
+
+        bool formatSelectionOnly = selectionLength > 0;
+        string sourceSql = formatSelectionOnly
+            ? _editor.Document.GetText(selectionStart, selectionLength)
+            : _editor.Text ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(sourceSql))
+            return;
+
+        var stopwatch = Stopwatch.StartNew();
+        Task<string> formatTask = Task.Run(() => SqlDisplayFormatter.Format(sourceSql));
+        bool formattingToastShown = false;
+
+        Task completed = await Task.WhenAny(formatTask, Task.Delay(300));
+        if (completed != formatTask)
+        {
+            ShowShellToastSuccess(L("sqlEditor.format.status.runningTitle", "Formatando SQL..."), null);
+            formattingToastShown = true;
+        }
+
+        string formatted;
+        try
+        {
+            formatted = await formatTask;
+        }
+        catch
+        {
+            ShowShellToastError(
+                L("sqlEditor.format.status.failedTitle", "Nao foi possivel formatar SQL."),
+                L("sqlEditor.format.status.failedDetail", "Verifique a sintaxe SQL e tente novamente."));
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(formatted))
+        {
+            ShowShellToastError(
+                L("sqlEditor.format.status.failedTitle", "Nao foi possivel formatar SQL."),
+                L("sqlEditor.format.status.failedDetail", "Verifique a sintaxe SQL e tente novamente."));
+            return;
+        }
+
+        if (string.Equals(formatted, sourceSql, StringComparison.Ordinal))
+            return;
+
+        if (formatSelectionOnly)
+        {
+            _editor.Document.Replace(selectionStart, selectionLength, formatted);
+            _editor.Select(selectionStart, formatted.Length);
+        }
+        else
+        {
+            int caret = _editor.CaretOffset;
+            _editor.Document.Replace(0, _editor.Document.TextLength, formatted);
+            _editor.CaretOffset = Math.Clamp(caret, 0, _editor.Document.TextLength);
+            _editor.TextArea?.Caret.BringCaretToView();
+        }
+
+        stopwatch.Stop();
+        if (formattingToastShown)
+        {
+            ShowShellToastSuccess(
+                L("sqlEditor.format.status.successTitle", "SQL formatado."),
+                string.Format(
+                    L("sqlEditor.format.status.successDetail", "Concluido em {0} ms."),
+                    (long)Math.Round(stopwatch.Elapsed.TotalMilliseconds)));
+        }
     }
 
     private void ShowToastForResult(SqlEditorResultSet result)
     {
         if (!result.Success)
         {
-            ShowShellToastError("Falha na execucao da consulta.", result.ErrorMessage);
+            ShowShellToastError(L("sqlEditor.toast.resultErrorTitle", "Falha ao executar instrucao."), result.ErrorMessage);
             return;
         }
 
         long elapsedMs = (long)Math.Round(result.ExecutionTime.TotalMilliseconds);
         long rows = result.Data?.Rows.Count ?? result.RowsAffected ?? 0;
-        string details = $"Rows: {rows}    Time: {elapsedMs} ms";
-        ShowShellToastSuccess("Execucao concluida com sucesso.", details);
+        string details = string.Format(
+            L("sqlEditor.result.summary", "Linhas: {0}    Tempo: {1} ms"),
+            rows,
+            elapsedMs);
+        ShowShellToastSuccess(L("sqlEditor.toast.resultSuccessTitle", "Execucao concluida com sucesso."), details);
     }
 
     private void ShowShellToastSuccess(string message, string? details)
@@ -307,7 +708,7 @@ public partial class SqlEditorControl : UserControl
         if (topLevel?.StorageProvider is null)
             return;
 
-        var sqlFileType = new FilePickerFileType("SQL Files")
+        var sqlFileType = new FilePickerFileType(L("sqlEditor.saveSql.fileType", "Arquivos SQL"))
         {
             Patterns = ["*.sql", "*.txt"],
             MimeTypes = ["text/plain"],
@@ -316,7 +717,7 @@ public partial class SqlEditorControl : UserControl
         IReadOnlyList<IStorageFile> files = await topLevel.StorageProvider.OpenFilePickerAsync(
             new FilePickerOpenOptions
             {
-                Title = "Open SQL File",
+                Title = L("sqlEditor.openSql.pickerTitle", "Abrir arquivo SQL"),
                 AllowMultiple = false,
                 FileTypeFilter = [sqlFileType, FilePickerFileTypes.All],
             });
@@ -333,6 +734,8 @@ public partial class SqlEditorControl : UserControl
         if (_vm is null)
             return;
 
+        FlushPendingEditorTextToViewModel();
+
         if (!string.IsNullOrWhiteSpace(_vm.ActiveTab.FilePath))
         {
             await _vm.SaveActiveTabAsync(_vm.ActiveTab.FilePath);
@@ -343,7 +746,7 @@ public partial class SqlEditorControl : UserControl
         if (topLevel?.StorageProvider is null)
             return;
 
-        var sqlFileType = new FilePickerFileType(L("sqlEditor.saveSql.fileType", "SQL Files"))
+        var sqlFileType = new FilePickerFileType(L("sqlEditor.saveSql.fileType", "Arquivos SQL"))
         {
             Patterns = ["*.sql"],
             MimeTypes = ["text/plain"],
@@ -356,7 +759,7 @@ public partial class SqlEditorControl : UserControl
         IStorageFile? file = await topLevel.StorageProvider.SaveFilePickerAsync(
             new FilePickerSaveOptions
             {
-                Title = L("sqlEditor.saveSql.pickerTitle", "Save SQL File"),
+                Title = L("sqlEditor.saveSql.pickerTitle", "Salvar arquivo SQL"),
                 DefaultExtension = "sql",
                 SuggestedFileName = suggestedName,
                 FileTypeChoices = [sqlFileType],
@@ -369,105 +772,232 @@ public partial class SqlEditorControl : UserControl
         await _vm.SaveActiveTabAsync(path);
     }
 
-    private async void ExportReportBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    private void TriggerCompletion(bool autoTriggered, bool allowDebounce)
     {
-        if (_vm is null)
+        if (_editor is null || _vm is null)
             return;
 
-        if (!_vm.TryBuildReportExportContext(out SqlEditorReportExportContext? context) || context is null)
+        bool isHeavyMetadataContext = false;
+
+        if (autoTriggered && IsLargeEditorText())
         {
-            _vm.PublishStatus(
-                L("sqlEditor.export.status.noResultTitle", "No execution result available for export."),
-                L("sqlEditor.export.status.noResultDetail", "Execute a query first."),
-                hasError: true);
+            PublishCompletionOnDemandHintOnce();
             return;
         }
 
-        TopLevel? topLevel = TopLevel.GetTopLevel(this);
-        if (topLevel is not Window owner || topLevel.StorageProvider is null)
-            return;
+        if (autoTriggered)
+            isHeavyMetadataContext = _vm.IsHeavyCompletionMetadataContext();
 
-        var dialogVm = new SqlEditorReportExportDialogViewModel(context.TabTitle);
-        var dialog = new SqlEditorReportExportDialogWindow(dialogVm);
-
-        await dialog.ShowDialog(owner);
-        if (!dialog.WasConfirmed)
-            return;
-
-        string normalizedExtension = dialogVm.SuggestedExtension.TrimStart('.');
-        var reportFileType = GetExportFileType(dialogVm.SelectedType?.Type ?? SqlEditorReportType.HtmlFullFeature);
-
-        IStorageFile? file = await topLevel.StorageProvider.SaveFilePickerAsync(
-            new FilePickerSaveOptions
-            {
-                Title = L("sqlEditor.export.pickerTitle", "Export SQL Data"),
-                DefaultExtension = normalizedExtension,
-                SuggestedFileName = dialogVm.FileName,
-                FileTypeChoices = [reportFileType],
-            });
-
-        string? outputPath = file?.TryGetLocalPath();
-        if (string.IsNullOrWhiteSpace(outputPath))
-            return;
-
-        try
+        if (autoTriggered && isHeavyMetadataContext)
         {
-            SqlEditorReportExportRequest request = dialogVm.BuildRequest(outputPath);
-            string writtenPath = await _reportExportService.ExportAsync(context, request);
-            _vm.PublishStatus(L("sqlEditor.export.status.successTitle", "Report exported."), writtenPath);
+            allowDebounce = true;
+            if (!CanScheduleHeavyMetadataAutoCompletion())
+                return;
         }
-        catch (Exception ex)
+
+        _completionOnDemandHintShown = false;
+
+        if (!allowDebounce)
         {
-            _vm.PublishStatus(L("sqlEditor.export.status.failedTitle", "Failed to export report."), ex.Message, hasError: true);
+            _completionDebounceTimer?.Stop();
+            _ = ShowCompletionWindowAsync(allowUpdateExisting: true);
+            return;
         }
+
+        int debounceMs = ResolveCompletionDebounceMs(isHeavyMetadataContext);
+        _completionDebounceTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(debounceMs) };
+        _completionDebounceTimer.Interval = TimeSpan.FromMilliseconds(debounceMs);
+        _completionDebounceTimer.Tick -= OnCompletionDebounceTick;
+        _completionDebounceTimer.Tick += OnCompletionDebounceTick;
+        _completionDebounceTimer.Stop();
+        _completionDebounceTimer.Start();
     }
 
-    private static FilePickerFileType GetExportFileType(SqlEditorReportType reportType)
+    private void OnCompletionDebounceTick(object? sender, EventArgs e)
     {
-        return reportType switch
-        {
-            SqlEditorReportType.JsonContract => new FilePickerFileType(L("sqlEditor.export.fileType.json", "JSON File"))
-            {
-                Patterns = ["*.json"],
-                MimeTypes = ["application/json", "text/plain"],
-            },
-            SqlEditorReportType.CsvData => new FilePickerFileType(L("sqlEditor.export.fileType.csv", "CSV File"))
-            {
-                Patterns = ["*.csv"],
-                MimeTypes = ["text/csv", "text/plain"],
-            },
-            SqlEditorReportType.ExcelWorkbook => new FilePickerFileType(L("sqlEditor.export.fileType.xlsx", "Excel Workbook"))
-            {
-                Patterns = ["*.xlsx"],
-                MimeTypes = ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
-            },
-            _ => new FilePickerFileType(L("sqlEditor.export.fileType.html", "HTML File"))
-            {
-                Patterns = ["*.html", "*.htm"],
-                MimeTypes = ["text/html", "text/plain"],
-            },
-        };
+        _completionDebounceTimer?.Stop();
+        _ = ShowCompletionWindowAsync(allowUpdateExisting: true);
     }
 
-    private void ShowCompletionWindow()
+    private void OnEditorPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (_editor is null)
+            return;
+
+        _lastHoverPointerPosition = e.GetPosition(_editor);
+        _hoverDocsDebounceTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(HoverDocsDebounceMs) };
+        _hoverDocsDebounceTimer.Tick -= OnHoverDocsDebounceTick;
+        _hoverDocsDebounceTimer.Tick += OnHoverDocsDebounceTick;
+        _hoverDocsDebounceTimer.Stop();
+        _hoverDocsDebounceTimer.Start();
+    }
+
+    private void OnEditorPointerExited(object? sender, PointerEventArgs e)
+    {
+        _hoverDocsDebounceTimer?.Stop();
+        _vm?.ClearHoverDocumentation();
+    }
+
+    private void OnHoverDocsDebounceTick(object? sender, EventArgs e)
+    {
+        _hoverDocsDebounceTimer?.Stop();
+
+        if (_editor is null || _vm is null)
+            return;
+
+        int? offset = ResolveEditorOffsetFromPointer(_lastHoverPointerPosition);
+        if (offset is null)
+        {
+            _vm.ClearHoverDocumentation();
+            return;
+        }
+
+        _vm.UpdateHoverDocumentation(_editor.Text ?? string.Empty, offset.Value);
+    }
+
+    private async Task ShowCompletionWindowAsync(bool allowUpdateExisting)
     {
         if (_vm is null || _editor is null)
             return;
 
-        if (_completionWindow is not null)
+        if (_completionWindow is not null && !allowUpdateExisting)
             return;
 
-        SqlCompletionRequest request = _vm.GetCompletionRequest(_editor.Text ?? string.Empty, _editor.CaretOffset);
+        _completionRequestCts?.Cancel();
+        _completionRequestCts?.Dispose();
+        _completionRequestCts = new CancellationTokenSource();
+
+        long requestVersion = Interlocked.Increment(ref _completionRequestVersion);
+        CancellationToken cancellationToken = _completionRequestCts.Token;
+        string editorText = _editor.Text ?? string.Empty;
+        int caretOffset = _editor.CaretOffset;
+        bool firstProgressSnapshotApplied = false;
+
+        var progress = new Progress<SqlCompletionStageSnapshot>(snapshot =>
+        {
+            if (requestVersion != _completionRequestVersion)
+                return;
+
+            if (!snapshot.HasSuggestions)
+                return;
+
+            if (firstProgressSnapshotApplied)
+                return;
+
+            firstProgressSnapshotApplied = true;
+            ApplyCompletionRequest(snapshot.Request, allowUpdateExisting);
+        });
+
+        Task<SqlCompletionStageSnapshot> computeTask = _vm.RequestCompletionAsync(
+            editorText,
+            caretOffset,
+            progress,
+            cancellationToken);
+        int debounceMs = ResolveCompletionDebounceMs(isHeavyMetadataContext: _vm.IsHeavyCompletionMetadataContext());
+        Task completed = await Task.WhenAny(computeTask, Task.Delay(debounceMs));
+        if (completed != computeTask && !IsTypingBurstActive())
+            ShowCompletionLoadingPopup(allowUpdateExisting);
+
+        SqlCompletionRequest request;
+        SqlCompletionTelemetry? completionTelemetry = null;
+        try
+        {
+            SqlCompletionStageSnapshot snapshot = await computeTask;
+            request = snapshot.Request;
+            completionTelemetry = snapshot.Telemetry;
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch
+        {
+            try
+            {
+                request = _vm.GetCompletionRequest(editorText, caretOffset);
+            }
+            catch
+            {
+                return;
+            }
+        }
+
+        if (requestVersion != _completionRequestVersion)
+            return;
+
         if (request.Suggestions.Count == 0)
+        {
+            _completionWindow?.Close();
+            _completionWindow = null;
+            ResetCompletionRenderCache();
+            if (completionTelemetry is not null)
+                _vm.RecordCompletionBreakdown(completionTelemetry);
+            return;
+        }
+
+        ApplyCompletionRequest(request, allowUpdateExisting: true);
+
+        if (completionTelemetry is not null)
+            _vm.RecordCompletionBreakdown(completionTelemetry);
+    }
+
+    private int ResolveCompletionDebounceMs(bool isHeavyMetadataContext)
+    {
+        int recommended = _vm?.GetRecommendedCompletionDebounceMs(isHeavyMetadataContext) ?? DefaultCompletionDebounceMs;
+        if (!isHeavyMetadataContext)
+            recommended = Math.Max(AutoTriggerCompletionDebounceMs, recommended);
+
+        return recommended;
+    }
+
+    private bool IsTypingBurstActive()
+    {
+        long lastTick = _lastEditorTextInputTickMs;
+        if (lastTick <= 0)
+            return false;
+
+        return Environment.TickCount64 - lastTick <= TypingBurstWindowMs;
+    }
+
+    private void ApplyCompletionRequest(SqlCompletionRequest request, bool allowUpdateExisting)
+    {
+        if (_editor is null)
+            return;
+
+        Stopwatch? uiApplyStopwatch = _vm is null ? null : Stopwatch.StartNew();
+
+        if (_completionWindow is not null && !allowUpdateExisting)
             return;
 
         IReadOnlyList<SqlCompletionSuggestion> orderedSuggestions = request.Suggestions
             .OrderByDescending(static suggestion => suggestion.Kind == SqlCompletionKind.Keyword)
             .ThenBy(static suggestion => suggestion.Label, StringComparer.OrdinalIgnoreCase)
+            .Take(MaxRenderedCompletionSuggestions)
             .ToList();
 
-        _completionWindow = new CompletionWindow(_editor.TextArea);
-        ConfigureCompletionWindowVisuals(_completionWindow);
+        int fingerprint = ComputeCompletionFingerprint(orderedSuggestions, request.PrefixLength);
+        if (_lastCompletionFingerprint == fingerprint
+            && _lastCompletionItemCount == orderedSuggestions.Count
+            && _lastCompletionPrefixLength == request.PrefixLength)
+        {
+            return;
+        }
+
+        if (_completionWindow is null)
+        {
+            _completionWindow = new CompletionWindow(_editor.TextArea);
+            _completionWindow.Closed += (_, _) =>
+            {
+                _completionWindow = null;
+                ResetCompletionRenderCache();
+            };
+            _completionWindow.Show();
+        }
+
+        if (_vm is null)
+            return;
+
+        _completionWindow.CompletionList.CompletionData.Clear();
         foreach (SqlCompletionSuggestion suggestion in orderedSuggestions)
         {
             _completionWindow.CompletionList.CompletionData.Add(
@@ -475,37 +1005,119 @@ public partial class SqlEditorControl : UserControl
                     suggestion.Label,
                     suggestion.InsertText,
                     suggestion.Detail,
-                    request.PrefixLength));
+                    suggestion.Kind,
+                    request.PrefixLength,
+                    acceptedCallback: label => _vm.RecordCompletionSuggestionAccepted(label)));
         }
 
-        _completionWindow.Closed += (_, _) => _completionWindow = null;
-        _completionWindow.Show();
+        _lastCompletionFingerprint = fingerprint;
+        _lastCompletionItemCount = orderedSuggestions.Count;
+        _lastCompletionPrefixLength = request.PrefixLength;
+
+        if (uiApplyStopwatch is not null)
+        {
+            uiApplyStopwatch.Stop();
+            _vm.RecordCompletionUiApplyLatency(uiApplyStopwatch.Elapsed);
+        }
     }
 
-    private static void ConfigureCompletionWindowVisuals(CompletionWindow window)
+    private void ShowCompletionLoadingPopup(bool allowUpdateExisting)
     {
-        IBrush popupBackground = ResolveBrush("Bg1Brush", UiColorConstants.C_08152A);
-        IBrush popupBorder = ResolveBrush("BorderSubtleBrush", UiColorConstants.C_18355A);
-
-        window.MinWidth = 320;
-        window.MaxHeight = 360;
-
-        ListBox? listBox = window.CompletionList.ListBox;
-        if (listBox is null)
+        if (_editor is null)
             return;
 
-        listBox.Background = popupBackground;
-        listBox.BorderBrush = popupBorder;
-        listBox.BorderThickness = new Avalonia.Thickness(1);
-        listBox.Margin = new Avalonia.Thickness(0);
+        if (_completionWindow is not null && !allowUpdateExisting)
+            return;
+
+        if (_completionWindow is null)
+        {
+            _completionWindow = new CompletionWindow(_editor.TextArea);
+            _completionWindow.Closed += (_, _) => _completionWindow = null;
+            _completionWindow.Show();
+        }
+
+        _completionWindow.CompletionList.CompletionData.Clear();
+        _completionWindow.CompletionList.CompletionData.Add(
+            new SqlEditorCompletionLoadingData(
+                L("sqlEditor.completion.loading", "Carregando sugestoes...")));
+        ResetCompletionRenderCache();
     }
 
-    private static IBrush ResolveBrush(string key, string fallbackHex)
+    private static int ComputeCompletionFingerprint(
+        IReadOnlyList<SqlCompletionSuggestion> suggestions,
+        int prefixLength)
     {
-        if (Application.Current?.TryFindResource(key, out object? resource) == true && resource is IBrush brush)
-            return brush;
+        var hash = new HashCode();
+        hash.Add(prefixLength);
+        hash.Add(suggestions.Count);
 
-        return new SolidColorBrush(Color.Parse(fallbackHex));
+        foreach (SqlCompletionSuggestion suggestion in suggestions)
+        {
+            hash.Add((int)suggestion.Kind);
+            hash.Add(suggestion.Label, StringComparer.Ordinal);
+            hash.Add(suggestion.InsertText, StringComparer.Ordinal);
+            hash.Add(suggestion.Detail, StringComparer.Ordinal);
+        }
+
+        return hash.ToHashCode();
+    }
+
+    private void ResetCompletionRenderCache()
+    {
+        _lastCompletionFingerprint = 0;
+        _lastCompletionItemCount = -1;
+        _lastCompletionPrefixLength = -1;
+    }
+
+    private bool ShouldDebounceCompletionAfterTextInput(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text) || _editor is null)
+            return false;
+
+        char c = text[0];
+        if (char.IsLetter(c) || c == '_')
+            return true;
+
+        if (!char.IsDigit(c))
+            return false;
+
+        string editorText = _editor.Text ?? string.Empty;
+        int caret = _editor.CaretOffset;
+        if (caret <= 1 || caret > editorText.Length)
+            return false;
+
+        char previous = editorText[caret - 2];
+        return char.IsLetter(previous) || previous is '_' or '.';
+    }
+
+    private bool IsLargeEditorText()
+    {
+        return (_editor?.Text?.Length ?? 0) > LargeEditorCompletionThreshold;
+    }
+
+    private bool CanScheduleHeavyMetadataAutoCompletion()
+    {
+        long now = Environment.TickCount64;
+        if (_lastHeavyMetadataAutoCompletionTickMs > 0
+            && now - _lastHeavyMetadataAutoCompletionTickMs < HeavyMetadataAutoCompletionCooldownMs)
+        {
+            return false;
+        }
+
+        _lastHeavyMetadataAutoCompletionTickMs = now;
+        return true;
+    }
+
+    private void PublishCompletionOnDemandHintOnce()
+    {
+        if (_vm is null || _completionOnDemandHintShown)
+            return;
+
+        _vm.PublishStatus(
+            L("sqlEditor.status.completionOnDemand", "Editor grande — completion sob demanda (Ctrl+Space)."),
+            null,
+            hasError: false);
+        _completionOnDemandHintShown = true;
     }
 
     private bool ShouldAutoTriggerCompletionAfterSpace()
@@ -525,66 +1137,19 @@ public partial class SqlEditorControl : UserControl
             RegexOptions.IgnoreCase);
     }
 
-    private void ResultsResizeGrip_OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    private void ResultsModalBackdrop_OnPointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (_vm is null || _resultsResizeGrip is null)
+        if (_vm is null)
             return;
 
-        PointerPointProperties properties = e.GetCurrentPoint(_resultsResizeGrip).Properties;
+        PointerPointProperties properties = e.GetCurrentPoint(this).Properties;
         if (!properties.IsLeftButtonPressed)
             return;
 
-        _isResizingResultsSheet = true;
-        _resizeStartPointerPosition = e.GetPosition(this);
-        _resizeStartHeight = Math.Max(ResultsSheetMinHeight, _vm.ResultsSheetHeight);
-        e.Pointer.Capture(_resultsResizeGrip);
+        if (_vm.CloseResultsSheetCommand.CanExecute(null))
+            _vm.CloseResultsSheetCommand.Execute(null);
+
         e.Handled = true;
-    }
-
-    private void ResultsResizeGrip_OnPointerMoved(object? sender, PointerEventArgs e)
-    {
-        if (!_isResizingResultsSheet || _vm is null)
-            return;
-
-        Point current = e.GetPosition(this);
-        double deltaY = _resizeStartPointerPosition.Y - current.Y;
-        double maxHeight = ResolveResultsSheetMaxHeight();
-        double target = Math.Clamp(_resizeStartHeight + deltaY, ResultsSheetMinHeight, maxHeight);
-        _vm.SetResultsSheetHeight(target);
-        e.Handled = true;
-    }
-
-    private void ResultsResizeGrip_OnPointerReleased(object? sender, PointerReleasedEventArgs e)
-    {
-        EndResultsResize(e.Pointer);
-        e.Handled = true;
-    }
-
-    private void ResultsResizeGrip_OnPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
-    {
-        EndResultsResize(null);
-    }
-
-    private void EndResultsResize(IPointer? pointer)
-    {
-        if (!_isResizingResultsSheet)
-            return;
-
-        _isResizingResultsSheet = false;
-        pointer?.Capture(null);
-        _vm?.PersistResultsSheetHeightPreference();
-    }
-
-    private double ResolveResultsSheetMaxHeight()
-    {
-        if (_resultsSheetHost?.Parent is not Control parent || parent.Bounds.Height <= 0)
-            return ResultsSheetMaxHeightFallback;
-
-        double available = parent.Bounds.Height - 80;
-        if (available < ResultsSheetMinHeight)
-            return ResultsSheetMinHeight;
-
-        return available;
     }
 
     private static int? ResolveTabShortcutIndex(Key key, KeyModifiers modifiers)
@@ -607,6 +1172,410 @@ public partial class SqlEditorControl : UserControl
         };
     }
 
+    private int? ResolveEditorOffsetFromPointer(Point pointerPosition)
+    {
+        if (_editor?.Document is null)
+            return null;
+
+        var viewPosition = _editor.GetPositionFromPoint(pointerPosition);
+        if (viewPosition is null)
+            return null;
+
+        int line = Math.Clamp(viewPosition.Value.Line, 1, _editor.Document.LineCount);
+        DocumentLine documentLine = _editor.Document.GetLineByNumber(line);
+        int column = Math.Clamp(viewPosition.Value.Column, 1, documentLine.Length + 1);
+        return _editor.Document.GetOffset(line, column);
+    }
+
+    private bool TryAdvanceSnippetTabStop()
+    {
+        if (_editor?.Document is null || _editor.TextArea is null)
+            return false;
+
+        SqlEditorSnippetTabStopSession? session = SqlEditorSnippetTabStopSessionStore.TryGet(_editor.Document);
+        if (session is null)
+            return false;
+
+        if (session.MoveToNext(_editor.TextArea))
+            return true;
+
+        SqlEditorSnippetTabStopSessionStore.Clear(_editor.Document);
+        return false;
+    }
+
+    private void ExplainButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        _ = RunExplainWithModalAsync(includeAnalyze: false);
+    }
+
+    private void BenchmarkButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        _ = RunBenchmarkWithModalAsync();
+    }
+
+    private void ExecuteAllButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        _ = ExecuteAllWithToastAsync();
+    }
+
+    private void FormatSqlButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        _ = FormatSqlWithToastAsync();
+    }
+
+    private async Task RunExplainWithModalAsync(bool includeAnalyze)
+    {
+        if (_vm is null)
+            return;
+
+        string sql = ResolveCurrentExecutionSqlForTools();
+
+        TopLevel? topLevel = TopLevel.GetTopLevel(this);
+        if (topLevel is not Window owner)
+            return;
+
+        if (owner.DataContext is ShellViewModel shell
+            && shell.TryOpenSqlExplainPreview(
+                sql,
+                _vm.ActiveTabProvider,
+                _vm.GetActiveConnectionConfigForTools()))
+        {
+            return;
+        }
+
+        await _vm.RunExplainForSqlAsync(sql, includeAnalyze);
+
+        var dialog = new SqlToolOutputDialogWindow(
+            title: "SQL Explain",
+            summary: _vm.ExplainSummaryText,
+            details: _vm.ExplainRawOutput);
+        await dialog.ShowDialog(owner);
+    }
+
+    private async Task RunBenchmarkWithModalAsync()
+    {
+        if (_vm is null)
+            return;
+
+        string sql = ResolveCurrentExecutionSqlForTools();
+
+        TopLevel? topLevel = TopLevel.GetTopLevel(this);
+        if (topLevel is not Window owner)
+            return;
+
+        if (owner.DataContext is ShellViewModel shell
+            && shell.TryOpenSqlBenchmarkPreview(
+                sql,
+                _vm.GetActiveConnectionConfigForTools()))
+        {
+            return;
+        }
+
+        await _vm.RunBenchmarkForSqlAsync(sql);
+
+        string details = string.IsNullOrWhiteSpace(_vm.BenchmarkSummaryText)
+            ? _vm.BenchmarkProgressText
+            : $"{_vm.BenchmarkProgressText}{Environment.NewLine}{Environment.NewLine}{_vm.BenchmarkSummaryText}";
+
+        var dialog = new SqlToolOutputDialogWindow(
+            title: "SQL Benchmark",
+            summary: _vm.BenchmarkProgressText,
+            details: details);
+        await dialog.ShowDialog(owner);
+    }
+
+    private string ResolveCurrentExecutionSqlForTools()
+    {
+        if (_vm is null || _editor is null)
+            return string.Empty;
+
+        FlushPendingEditorTextToViewModel();
+
+        string? sql = _vm.GetSqlForExecution(
+            _editor.SelectionStart,
+            _editor.SelectionLength,
+            _editor.CaretOffset);
+        return string.IsNullOrWhiteSpace(sql) ? _vm.ActiveTab.SqlText ?? string.Empty : sql;
+    }
+
+    private static string L(string key, string fallback)
+    {
+        string value = LocalizationService.Instance[key];
+        return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
+    }
+
+    private void ConfigureBracketHighlighting()
+    {
+        if (_editor?.TextArea?.TextView is not TextView textView)
+            return;
+
+        _bracketHighlightRenderer ??= new SqlBracketHighlightRenderer();
+        if (!textView.BackgroundRenderers.Contains(_bracketHighlightRenderer))
+            textView.BackgroundRenderers.Add(_bracketHighlightRenderer);
+
+        _executionStatementHighlightRenderer ??= new SqlExecutionStatementHighlightRenderer();
+        if (!textView.BackgroundRenderers.Contains(_executionStatementHighlightRenderer))
+            textView.BackgroundRenderers.Add(_executionStatementHighlightRenderer);
+    }
+
+    private void OnEditorCaretPositionChanged(object? sender, EventArgs e)
+    {
+        ScheduleBracketHighlightRefresh(immediate: false);
+        UpdateViewModelCursorPosition();
+        ScheduleSignatureHelpRefresh(immediate: false);
+    }
+
+    private void ScheduleBracketHighlightRefresh(bool immediate)
+    {
+        if (_editor is null || _bracketHighlightRenderer is null)
+            return;
+
+        if (immediate)
+        {
+            _bracketHighlightDebounceTimer?.Stop();
+            RefreshBracketHighlight();
+            return;
+        }
+
+        _bracketHighlightDebounceTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(BracketHighlightDebounceMs) };
+        _bracketHighlightDebounceTimer.Interval = TimeSpan.FromMilliseconds(BracketHighlightDebounceMs);
+        _bracketHighlightDebounceTimer.Tick -= OnBracketHighlightDebounceTick;
+        _bracketHighlightDebounceTimer.Tick += OnBracketHighlightDebounceTick;
+        _bracketHighlightDebounceTimer.Stop();
+        _bracketHighlightDebounceTimer.Start();
+    }
+
+    private void OnBracketHighlightDebounceTick(object? sender, EventArgs e)
+    {
+        _bracketHighlightDebounceTimer?.Stop();
+        RefreshBracketHighlight();
+    }
+
+    private void ScheduleSignatureHelpRefresh(bool immediate)
+    {
+        if (_editor is null || _vm is null)
+            return;
+
+        if (immediate)
+        {
+            _signatureHelpDebounceTimer?.Stop();
+            UpdateSignatureHelpFromCaret();
+            return;
+        }
+
+        _signatureHelpDebounceTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(SignatureHelpDebounceMs) };
+        _signatureHelpDebounceTimer.Interval = TimeSpan.FromMilliseconds(SignatureHelpDebounceMs);
+        _signatureHelpDebounceTimer.Tick -= OnSignatureHelpDebounceTick;
+        _signatureHelpDebounceTimer.Tick += OnSignatureHelpDebounceTick;
+        _signatureHelpDebounceTimer.Stop();
+        _signatureHelpDebounceTimer.Start();
+    }
+
+    private void OnSignatureHelpDebounceTick(object? sender, EventArgs e)
+    {
+        _signatureHelpDebounceTimer?.Stop();
+        UpdateSignatureHelpFromCaret();
+    }
+
+    private void RefreshExecutionStatementHighlight()
+    {
+        if (_editor?.TextArea?.TextView is not TextView textView)
+            return;
+
+        _executionStatementHighlightRenderer ??= new SqlExecutionStatementHighlightRenderer();
+        int start = _vm?.IsExecuting == true ? _vm.ActiveExecutionStatementStartLine : 0;
+        int end = _vm?.IsExecuting == true ? _vm.ActiveExecutionStatementEndLine : 0;
+        _executionStatementHighlightRenderer.Update(start, end);
+        textView.InvalidateLayer(KnownLayer.Selection);
+    }
+
+    private void UpdateViewModelCursorPosition()
+    {
+        if (_editor?.TextArea?.Caret is not Caret caret || _vm is null)
+            return;
+
+        _vm.UpdateCursorPosition(caret.Line, caret.Column);
+    }
+
+    private void UpdateSignatureHelpFromCaret()
+    {
+        if (_editor is null || _vm is null)
+            return;
+
+        _vm.UpdateSignatureHelp(_editor.Text ?? string.Empty, _editor.CaretOffset);
+    }
+
+    private void RefreshBracketHighlight()
+    {
+        if (_editor is null || _bracketHighlightRenderer is null)
+            return;
+
+        _bracketHighlightRenderer.Update(_editor.Text ?? string.Empty, _editor.CaretOffset);
+        _editor.TextArea?.TextView.InvalidateLayer(_bracketHighlightRenderer.Layer);
+    }
+
+    private void ConfigureSqlFolding(TextArea textArea)
+    {
+        _foldingManager = FoldingManager.Install(textArea);
+    }
+
+    private void DisposeFoldingManager()
+    {
+        if (_foldingManager is not null)
+            FoldingManager.Uninstall(_foldingManager);
+
+        _foldingManager = null;
+    }
+
+    private void ScheduleFoldingRefresh()
+    {
+        if (_editor?.Document is null || _foldingManager is null)
+            return;
+
+        int intervalMs = (_editor.Text?.Length ?? 0) > 12_000 ? 320 : 220;
+        _foldingRefreshTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(intervalMs) };
+        _foldingRefreshTimer.Interval = TimeSpan.FromMilliseconds(intervalMs);
+        _foldingRefreshTimer.Tick -= OnFoldingRefreshTimerTick;
+        _foldingRefreshTimer.Tick += OnFoldingRefreshTimerTick;
+        _foldingRefreshTimer.Stop();
+        _foldingRefreshTimer.Start();
+    }
+
+    private async void OnFoldingRefreshTimerTick(object? sender, EventArgs e)
+    {
+        _foldingRefreshTimer?.Stop();
+
+        if (_editor?.Document is null || _foldingManager is null)
+            return;
+
+        _foldingRefreshCts?.Cancel();
+        _foldingRefreshCts?.Dispose();
+        _foldingRefreshCts = new CancellationTokenSource();
+        CancellationToken ct = _foldingRefreshCts.Token;
+        long requestVersion = Interlocked.Increment(ref _foldingRefreshVersion);
+
+        string textSnapshot = _editor.Text ?? string.Empty;
+        IReadOnlyList<DBWeaver.UI.Services.SqlEditor.SqlToken> tokens;
+        try
+        {
+            tokens = await Task.Run(() =>
+            {
+                ct.ThrowIfCancellationRequested();
+                IReadOnlyList<DBWeaver.UI.Services.SqlEditor.SqlToken> localTokens = _sqlTokenizer.Tokenize(textSnapshot);
+                ct.ThrowIfCancellationRequested();
+                return localTokens;
+            }, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (requestVersion != _foldingRefreshVersion)
+            return;
+
+        if (_editor?.Document is null || _foldingManager is null)
+            return;
+
+        _sqlFoldingStrategy.UpdateFoldings(_foldingManager, _editor.Document, tokens);
+    }
+
+    private void CollapseCurrentFolding()
+    {
+        if (_foldingManager is null || _editor is null)
+            return;
+
+        FoldingSection? current = _foldingManager
+            .GetFoldingsContaining(_editor.CaretOffset)
+            .OrderBy(f => f.Length)
+            .FirstOrDefault();
+
+        if (current is not null)
+            current.IsFolded = true;
+    }
+
+    private void ExpandCurrentFolding()
+    {
+        if (_foldingManager is null || _editor is null)
+            return;
+
+        foreach (FoldingSection folding in _foldingManager.GetFoldingsContaining(_editor.CaretOffset))
+            folding.IsFolded = false;
+    }
+
+    private bool HandleFoldingChord(KeyEventArgs e)
+    {
+        if (!_awaitingFoldingChord || !e.KeyModifiers.HasFlag(KeyModifiers.Control))
+            return false;
+
+        if (e.Key == Key.D0)
+        {
+            CollapseAllFoldings();
+            ResetFoldingChord();
+            e.Handled = true;
+            return true;
+        }
+
+        if (e.Key == Key.J)
+        {
+            ExpandAllFoldings();
+            ResetFoldingChord();
+            e.Handled = true;
+            return true;
+        }
+
+        ResetFoldingChord();
+        return false;
+    }
+
+    private void StartFoldingChord()
+    {
+        _awaitingFoldingChord = true;
+        _foldingChordTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
+        _foldingChordTimer.Tick -= OnFoldingChordTimeout;
+        _foldingChordTimer.Tick += OnFoldingChordTimeout;
+        _foldingChordTimer.Stop();
+        _foldingChordTimer.Start();
+    }
+
+    private void OnFoldingChordTimeout(object? sender, EventArgs e)
+    {
+        ResetFoldingChord();
+    }
+
+    private void ResetFoldingChord()
+    {
+        _awaitingFoldingChord = false;
+        _foldingChordTimer?.Stop();
+    }
+
+    private void CollapseAllFoldings()
+    {
+        if (_foldingManager is null)
+            return;
+
+        foreach (FoldingSection folding in _foldingManager.AllFoldings)
+            folding.IsFolded = true;
+    }
+
+    private void ExpandAllFoldings()
+    {
+        if (_foldingManager is null)
+            return;
+
+        foreach (FoldingSection folding in _foldingManager.AllFoldings)
+            folding.IsFolded = false;
+    }
+
+    private void ConfigureGoToLineLocalization()
+    {
+        if (_goToLineLabel is not null)
+            _goToLineLabel.Text = L("sqlEditor.gotoLine.label", "Ir para linha");
+
+        if (_goToLineInput is not null)
+            _goToLineInput.Watermark = L("sqlEditor.gotoLine.watermark", "Numero da linha");
+    }
+
     private void FocusEditor()
     {
         if (_editor is null || !IsVisible)
@@ -623,9 +1592,149 @@ public partial class SqlEditorControl : UserControl
         }, DispatcherPriority.Background);
     }
 
-    private static string L(string key, string fallback)
+    private void ShowGoToLineOverlay()
     {
-        string value = LocalizationService.Instance[key];
-        return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
+        if (_editor is null || _goToLineOverlay is null || _goToLineInput is null)
+            return;
+
+        _goToLineOriginCaretOffset = _editor.CaretOffset;
+        _goToLineInput.Text = (_editor.TextArea?.Caret.Line ?? 1).ToString(CultureInfo.InvariantCulture);
+        ResetGoToLineValidationState();
+        _goToLineOverlay.IsVisible = true;
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            _goToLineInput.Focus();
+            _goToLineInput.SelectAll();
+        }, DispatcherPriority.Background);
+    }
+
+    private void CursorPositionButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        ShowGoToLineOverlay();
+    }
+
+    private void GoToLineInput_OnKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            CloseGoToLineOverlay(restoreOriginalCaret: true);
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key is not (Key.Enter or Key.Return))
+            return;
+
+        if (TryGoToLineFromInput())
+        {
+            CloseGoToLineOverlay(restoreOriginalCaret: false);
+        }
+        else
+        {
+            SetGoToLineValidationErrorState();
+        }
+
+        e.Handled = true;
+    }
+
+    private bool TryGoToLineFromInput()
+    {
+        if (_editor is null || _goToLineInput is null || _editor.Document is null)
+            return false;
+
+        if (!int.TryParse(_goToLineInput.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int lineNumber))
+            return false;
+
+        if (lineNumber < 1 || lineNumber > _editor.Document.LineCount)
+            return false;
+
+        DocumentLine line = _editor.Document.GetLineByNumber(lineNumber);
+        _editor.CaretOffset = line.Offset;
+        _editor.ScrollToLine(lineNumber);
+        _editor.TextArea?.Caret.BringCaretToView();
+        HighlightGoToLine(lineNumber);
+        return true;
+    }
+
+    private void CloseGoToLineOverlay(bool restoreOriginalCaret)
+    {
+        if (_goToLineOverlay is null)
+            return;
+
+        _goToLineOverlay.IsVisible = false;
+        ResetGoToLineValidationState();
+
+        if (restoreOriginalCaret && _editor is not null)
+        {
+            int maxOffset = _editor.Document?.TextLength ?? 0;
+            _editor.CaretOffset = Math.Clamp(_goToLineOriginCaretOffset, 0, maxOffset);
+            _editor.TextArea?.Caret.BringCaretToView();
+        }
+
+        FocusEditor();
+    }
+
+    private void ResetGoToLineValidationState()
+    {
+        if (_goToLineInput is null)
+            return;
+
+        _goToLineInput.BorderBrush = _goToLineDefaultBorderBrush;
+    }
+
+    private void SetGoToLineValidationErrorState()
+    {
+        if (_goToLineInput is null)
+            return;
+
+        if (Application.Current?.TryFindResource("StatusErrorBrush", out object? resource) == true && resource is IBrush brush)
+        {
+            _goToLineInput.BorderBrush = brush;
+            return;
+        }
+
+        _goToLineInput.BorderBrush = _goToLineDefaultBorderBrush;
+    }
+
+    private void HighlightGoToLine(int lineNumber)
+    {
+        if (_editor?.TextArea?.TextView is not TextView textView)
+            return;
+
+        _defaultTextViewCurrentLineBackground ??= textView.CurrentLineBackground;
+        _goToLineHighlightBrush ??= ResolveGoToLineHighlightBrush();
+
+        textView.CurrentLineBackground = _goToLineHighlightBrush;
+        textView.HighlightedLine = lineNumber;
+        textView.InvalidateLayer(KnownLayer.Background);
+
+        _goToLineHighlightTimer?.Stop();
+        _goToLineHighlightTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
+        _goToLineHighlightTimer.Tick -= OnGoToLineHighlightTimerTick;
+        _goToLineHighlightTimer.Tick += OnGoToLineHighlightTimerTick;
+        _goToLineHighlightTimer.Start();
+    }
+
+    private IBrush ResolveGoToLineHighlightBrush()
+    {
+        if (Application.Current?.TryFindResource("AccentSubtleBrush", out object? accentBrush) == true && accentBrush is IBrush resolvedAccent)
+            return resolvedAccent;
+
+        return _defaultTextViewCurrentLineBackground ?? Brushes.Transparent;
+    }
+
+    private void OnGoToLineHighlightTimerTick(object? sender, EventArgs e)
+    {
+        _goToLineHighlightTimer?.Stop();
+
+        if (_editor?.TextArea?.TextView is not TextView textView)
+            return;
+
+        textView.HighlightedLine = 0;
+        if (_defaultTextViewCurrentLineBackground is not null)
+            textView.CurrentLineBackground = _defaultTextViewCurrentLineBackground;
+
+        textView.InvalidateLayer(KnownLayer.Background);
     }
 }

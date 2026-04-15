@@ -95,6 +95,7 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable
     private Action? _propertyPanelWireStyleChangedHandler;
     private readonly HashSet<string> _pendingTableSourceReplacementConfirmations = [];
     private bool _isReplacingTableSourceNode;
+    private string? _primaryFromSourceOverrideNodeId;
 
     // â”€â”€ Canvas state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -306,7 +307,8 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable
             UndoRedo,
             () => Connections,
             () => DatabaseMetadata,
-            OnPropertyPanelParametersCommitted);
+            OnPropertyPanelParametersCommitted,
+            TrySetPrimaryFromSourceNode);
         PropertyPanel.SelectedWireCurveMode = WireCurveMode;
         _localizationService = localizationService ?? LocalizationService.Instance;
         _domainStrategy = domainStrategy ?? new QueryDomainStrategy();
@@ -576,6 +578,7 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable
         RaisePropertyChanged(nameof(HasTwoSelectedTableSources));
         RunSelectedAutoJoinCommand.NotifyCanExecuteChanged();
         ApplyExplainNodeHighlight(ExplainPlan.HighlightedTableName);
+        RefreshPrimaryFromSourceMarkers();
     }
 
     private void AttachNodeTracking(NodeViewModel node)
@@ -662,6 +665,116 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable
         }
 
         PropertyPanel.RefreshConnectionOverrides();
+        RefreshPrimaryFromSourceMarkers();
+    }
+
+    private void RefreshPrimaryFromSourceMarkers()
+    {
+        NodeViewModel? primarySourceNode = ResolvePrimaryFromSourceNode();
+
+        foreach (NodeViewModel node in Nodes)
+            node.IsPrimaryFromSource = ReferenceEquals(node, primarySourceNode);
+
+        PropertyPanel.NotifySelectedNodePrimaryFromSourceChanged();
+    }
+
+    private NodeViewModel? ResolvePrimaryFromSourceNode()
+    {
+        List<NodeViewModel> tableNodes = Nodes.Where(n => n.Type == NodeType.TableSource).ToList();
+        List<NodeViewModel> cteSourceNodes = Nodes.Where(n => n.Type == NodeType.CteSource).ToList();
+        List<NodeViewModel> subqueryNodes = Nodes
+            .Where(n => n.Type is NodeType.Subquery or NodeType.SubqueryReference)
+            .ToList();
+
+        List<NodeViewModel> sourceCandidates =
+        [
+            .. tableNodes,
+            .. cteSourceNodes,
+            .. subqueryNodes,
+        ];
+
+        if (!string.IsNullOrWhiteSpace(_primaryFromSourceOverrideNodeId))
+        {
+            NodeViewModel? overridden = sourceCandidates.FirstOrDefault(node =>
+                string.Equals(node.Id, _primaryFromSourceOverrideNodeId, StringComparison.OrdinalIgnoreCase));
+            if (overridden is not null)
+                return overridden;
+
+            _primaryFromSourceOverrideNodeId = null;
+        }
+
+        NodeViewModel? resultOutputNode = ResolvePrimaryResultOutputNode();
+        if (resultOutputNode is not null)
+        {
+            HashSet<string> upstreamNodeIds = CollectUpstreamNodeIds(resultOutputNode);
+            NodeViewModel? upstreamSource = tableNodes.FirstOrDefault(n => upstreamNodeIds.Contains(n.Id))
+                ?? cteSourceNodes.FirstOrDefault(n => upstreamNodeIds.Contains(n.Id))
+                ?? subqueryNodes.FirstOrDefault(n => upstreamNodeIds.Contains(n.Id));
+
+            if (upstreamSource is not null)
+                return upstreamSource;
+        }
+
+        return tableNodes.FirstOrDefault()
+            ?? cteSourceNodes.FirstOrDefault()
+            ?? subqueryNodes.FirstOrDefault();
+    }
+
+    public bool CanSetPrimaryFromSource(NodeViewModel? node)
+    {
+        return node is not null
+            && node.Type is NodeType.TableSource or NodeType.CteSource or NodeType.Subquery or NodeType.SubqueryReference;
+    }
+
+    public bool TrySetPrimaryFromSourceNode(NodeViewModel? node)
+    {
+        if (!CanSetPrimaryFromSource(node))
+            return false;
+
+        _primaryFromSourceOverrideNodeId = node!.Id;
+        RefreshPrimaryFromSourceMarkers();
+        _validationManager.ScheduleValidation();
+        return true;
+    }
+
+    private HashSet<string> CollectUpstreamNodeIds(NodeViewModel sinkNode)
+    {
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { sinkNode.Id };
+        var queue = new Queue<string>();
+        queue.Enqueue(sinkNode.Id);
+
+        while (queue.Count > 0)
+        {
+            string current = queue.Dequeue();
+            foreach (ConnectionViewModel conn in Connections.Where(c => c.ToPin?.Owner.Id == current))
+            {
+                string fromOwnerId = conn.FromPin.Owner.Id;
+                if (visited.Add(fromOwnerId))
+                    queue.Enqueue(fromOwnerId);
+            }
+        }
+
+        return visited;
+    }
+
+    private NodeViewModel? ResolvePrimaryResultOutputNode()
+    {
+        List<NodeViewModel> outputs = Nodes
+            .Where(n => n.Type == NodeType.ResultOutput)
+            .ToList();
+        if (outputs.Count == 0)
+            return null;
+        if (outputs.Count == 1)
+            return outputs[0];
+
+        NodeViewModel? externalSink = outputs.FirstOrDefault(output =>
+            !Connections.Any(c =>
+                c.FromPin.Owner == output
+                && c.ToPin is not null
+                && c.ToPin.Owner.Type == NodeType.CteDefinition
+                && c.ToPin.Name.Equals("query", StringComparison.OrdinalIgnoreCase)));
+
+        return externalSink ?? outputs[0];
     }
 
     private static bool IsTransientConnectionDragChange(NotifyCollectionChangedEventArgs e)
@@ -1645,6 +1758,8 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable
 
         foreach (ConnectionViewModel connection in connections)
             Connections.Add(connection);
+
+        RefreshPrimaryFromSourceMarkers();
     }
 
     /// <summary>

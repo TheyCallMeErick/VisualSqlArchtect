@@ -235,7 +235,7 @@ public sealed class NodeGraphCompiler(
     private NodeInstance? ResolvePrimaryOutputSink()
     {
         List<NodeInstance> candidates = _graph.Nodes
-            .Where(n => n.Type is NodeType.ResultOutput or NodeType.SelectOutput)
+            .Where(n => n.Type == NodeType.ResultOutput)
             .Where(n => !IsCteSubgraphOutputNode(n.Id))
             .ToList();
 
@@ -245,7 +245,7 @@ public sealed class NodeGraphCompiler(
             return candidates[0];
 
         throw new InvalidOperationException(
-            "Multiple ResultOutput/SelectOutput nodes detected in the same graph. "
+            "Multiple ResultOutput nodes detected in the same graph. "
                 + "Connect exactly one output sink for SQL generation."
         );
     }

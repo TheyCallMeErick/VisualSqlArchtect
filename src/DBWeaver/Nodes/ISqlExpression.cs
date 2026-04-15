@@ -86,7 +86,6 @@ public enum PinDataType
     TypeDef,
     SequenceDef,
     AlterOp,
-    ReportQuery,
     Expression, // untyped SQL fragment — accepted by any slot
 }
 

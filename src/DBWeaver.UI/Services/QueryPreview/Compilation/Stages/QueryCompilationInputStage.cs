@@ -95,7 +95,7 @@ internal sealed class QueryCompilationInputStage(
     private static IReadOnlyList<NodeViewModel> ResolveTopLevelResultOutputNodes(CanvasViewModel canvas)
     {
         IReadOnlyList<NodeViewModel> outputs = canvas.Nodes
-            .Where(n => n.Type is NodeType.ResultOutput or NodeType.SelectOutput)
+            .Where(n => n.Type == NodeType.ResultOutput)
             .ToList();
 
         return outputs

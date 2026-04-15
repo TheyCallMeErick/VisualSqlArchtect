@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Text.RegularExpressions;
+using DBWeaver.SqlImport.Diagnostics;
 using DBWeaver.UI.Services.SqlImport;
 using DBWeaver.UI.Services.SqlImport.Build;
 using DBWeaver.UI.Services.SqlImport.Execution.Parsing;
@@ -23,6 +24,7 @@ internal sealed class SqlImportGroupingClauseApplier : ISqlImportApplyStep
         int imported = 0;
         int partial = 0;
         int skipped = 0;
+        bool fallbackActivated = false;
 
         NodeViewModel result = coreContext.ResultNode;
         var tableNodes = coreContext.TableNodes;
@@ -46,6 +48,7 @@ internal sealed class SqlImportGroupingClauseApplier : ISqlImportApplyStep
 
             string expr = SqlImportIdentifierNormalizer.NormalizeQualifiedIdentifier(termMatch.Groups["expr"].Value);
             string colName = expr.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).LastOrDefault() ?? expr;
+            bool isQualifiedExpression = expr.Contains('.', StringComparison.Ordinal);
 
             PinViewModel? groupPin;
             if (projectedAliases.TryGetValue(colName, out PinViewModel? aliasedPin))
@@ -55,6 +58,8 @@ internal sealed class SqlImportGroupingClauseApplier : ISqlImportApplyStep
                 groupPin = tableNodes
                     .SelectMany(n => n.OutputPins)
                     .FirstOrDefault(p => p.Name.Equals(colName, StringComparison.OrdinalIgnoreCase));
+                if (groupPin is not null && !isQualifiedExpression && tableNodes.Count > 1)
+                    fallbackActivated = true;
             }
 
             if (groupPin is null)
@@ -77,10 +82,8 @@ internal sealed class SqlImportGroupingClauseApplier : ISqlImportApplyStep
         else if (importedTerms > 0)
         {
             report.Add(
-                new ImportReportItem(
+                SqlImportReportFactory.GroupByPartial(
                     $"GROUP BY {SqlImportClauseApplyUtilities.Truncate(query.GroupBy, 30)}",
-                    ImportItemStatus.Partial,
-                    "Some grouping terms could not be mapped and were skipped",
                     result.Id
                 )
             );
@@ -89,10 +92,8 @@ internal sealed class SqlImportGroupingClauseApplier : ISqlImportApplyStep
         else
         {
             report.Add(
-                new ImportReportItem(
-                    $"GROUP BY {SqlImportClauseApplyUtilities.Truncate(query.GroupBy, 30)}",
-                    ImportItemStatus.Skipped,
-                    "Unsupported grouping expression - add manually"
+                SqlImportReportFactory.GroupByUnsupported(
+                    $"GROUP BY {SqlImportClauseApplyUtilities.Truncate(query.GroupBy, 30)}"
                 )
             );
             skipped++;
@@ -128,12 +129,20 @@ internal sealed class SqlImportGroupingClauseApplier : ISqlImportApplyStep
                 continue;
 
             report.Add(
-                new ImportReportItem(
-                    $"GROUP BY conflict: {SqlImportClauseApplyUtilities.Truncate(exprTrimmed, 40)}",
-                    ImportItemStatus.Partial,
-                    "Selected column is neither grouped nor aggregated"
+                SqlImportReportFactory.GroupByConflict(
+                    $"GROUP BY conflict: {SqlImportClauseApplyUtilities.Truncate(exprTrimmed, 40)}"
                 )
             );
+            partial++;
+        }
+
+        if (fallbackActivated)
+        {
+            report.Add(SqlImportReportFactory.Partial(
+                SqlImportDiagnosticCodes.FallbackRegexUsed,
+                "GROUP BY fallback",
+                SqlImportDiagnosticMessages.GroupByColumnFallbackReportNote,
+                result.Id));
             partial++;
         }
 

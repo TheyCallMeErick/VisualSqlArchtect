@@ -45,6 +45,7 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
     private readonly IFireAndForgetSafetyExecutor _fireAndForgetSafetyExecutor;
     private readonly IConnectionHealthLifecycleCoordinator _healthLifecycleCoordinator;
     private readonly IGlobalModalManager _globalModalManager;
+    private readonly IConnectionCatalogCapabilityProvider _connectionCatalogCapabilityProvider;
 
     /// <summary>
     /// Reference to the canvas search menu where database tables will be loaded.
@@ -85,6 +86,8 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
             RaisePropertyChanged(nameof(SidebarSelectedConnection));
             RaisePropertyChanged(nameof(SidebarConnectionName));
             RaisePropertyChanged(nameof(SidebarConnectionSubtitle));
+            RaisePropertyChanged(nameof(IsDatabaseSelectionVisible));
+            SwitchDatabaseCommand.NotifyCanExecuteChanged();
         }
     }
 
@@ -111,6 +114,8 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
             RefreshHealthCommand.NotifyCanExecuteChanged();
             ReloadMetadataCommand.NotifyCanExecuteChanged();
             SwitchSchemaCommand.NotifyCanExecuteChanged();
+            SwitchDatabaseCommand.NotifyCanExecuteChanged();
+            RaisePropertyChanged(nameof(IsDatabaseSelectionVisible));
             ProfilesChanged?.Invoke();
         }
     }
@@ -129,6 +134,7 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
             ConnectOrOpenManagerCommand.NotifyCanExecuteChanged();
             SwitchConnectionCommand.NotifyCanExecuteChanged();
             SwitchSchemaCommand.NotifyCanExecuteChanged();
+            SwitchDatabaseCommand.NotifyCanExecuteChanged();
             ReloadMetadataCommand.NotifyCanExecuteChanged();
         }
     }
@@ -158,6 +164,7 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
             ConnectOrOpenManagerCommand.NotifyCanExecuteChanged();
             SwitchConnectionCommand.NotifyCanExecuteChanged();
             SwitchSchemaCommand.NotifyCanExecuteChanged();
+            SwitchDatabaseCommand.NotifyCanExecuteChanged();
             ReloadMetadataCommand.NotifyCanExecuteChanged();
         }
     }
@@ -165,6 +172,37 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
     // ── Sidebar schema list ───────────────────────────────────────────────────
 
     public ObservableCollection<string> AvailableSchemas { get; } = [];
+
+    public ObservableCollection<string> AvailableDatabases { get; } = [];
+
+    private string? _selectedDatabase;
+    public string? SelectedDatabase
+    {
+        get => _selectedDatabase;
+        set
+        {
+            if (Set(ref _selectedDatabase, value))
+                SwitchDatabaseCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    public bool IsDatabaseSelectionVisible =>
+        SupportsDatabaseOrCatalogSelection && AvailableDatabases.Count > 0;
+
+    private bool SupportsDatabaseOrCatalogSelection
+    {
+        get
+        {
+            ConnectionProfile? profile = Profiles.FirstOrDefault(x => x.Id == _activeProfileId)
+                ?? SelectedProfile;
+            if (profile is null)
+                return false;
+
+            IReadOnlyList<ConnectionContextLevel> supportedLevels = _connectionCatalogCapabilityProvider
+                .GetSupportedLevels(profile.Provider);
+            return supportedLevels.Contains(ConnectionContextLevel.DatabaseOrCatalog);
+        }
+    }
 
     private string? _selectedSchema;
     public string? SelectedSchema
@@ -505,6 +543,7 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
     public RelayCommand ConnectOrOpenManagerCommand { get; }
     public RelayCommand RefreshHealthCommand { get; }
     public RelayCommand<ConnectionProfile> SwitchConnectionCommand { get; }
+    public RelayCommand<string> SwitchDatabaseCommand { get; }
     public RelayCommand<string> SwitchSchemaCommand { get; }
     public RelayCommand ReloadMetadataCommand { get; }
     public RelayCommand ClearCanvasAfterConnectCommand { get; }
@@ -533,7 +572,8 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
         IConnectionActivationWorkflow? activationWorkflow = null,
         IFireAndForgetSafetyExecutor? fireAndForgetSafetyExecutor = null,
         IConnectionHealthLifecycleCoordinator? healthLifecycleCoordinator = null,
-        IGlobalModalManager? globalModalManager = null)
+        IGlobalModalManager? globalModalManager = null,
+        IConnectionCatalogCapabilityProvider? connectionCatalogCapabilityProvider = null)
     {
         _logger = NullLogger<ConnectionManagerViewModel>.Instance;
         _dbConnectionService = new DatabaseConnectionService();
@@ -566,6 +606,7 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
         _fireAndForgetSafetyExecutor = fireAndForgetSafetyExecutor ?? new FireAndForgetSafetyExecutor(_logger);
         _healthLifecycleCoordinator = healthLifecycleCoordinator ?? new ConnectionHealthLifecycleCoordinator(_healthMonitorService);
         _globalModalManager = globalModalManager ?? GlobalModalManager.Instance;
+        _connectionCatalogCapabilityProvider = connectionCatalogCapabilityProvider ?? new ConnectionCatalogCapabilityProvider();
 
         _loc.PropertyChanged += (_, _) =>
         {
@@ -598,6 +639,18 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
                     _ = SwitchConnectionAsync(profile);
             },
             profile => profile is not null && !IsConnecting && !IsReloadingSchema);
+        SwitchDatabaseCommand = new RelayCommand<string>(
+            databaseName =>
+            {
+                if (!string.IsNullOrWhiteSpace(databaseName))
+                    _ = SwitchDatabaseAsync(databaseName);
+            },
+            databaseName =>
+                !string.IsNullOrWhiteSpace(databaseName)
+                && SupportsDatabaseOrCatalogSelection
+                && !string.Equals(databaseName, SelectedDatabase, StringComparison.OrdinalIgnoreCase)
+                && !IsConnecting
+                && !IsReloadingSchema);
         SwitchSchemaCommand = new RelayCommand<string>(
             schema =>
             {
@@ -729,21 +782,6 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
             candidate = _formMapper.ToProfile(CaptureFormData());
         }
 
-        OperationResultDto<ConnectionDetailsDto> saveResult = await _connectionCatalogService.SaveAsync(
-            ConnectionContractMapper.ToDetails(candidate),
-            CancellationToken.None);
-        if (!saveResult.Success || saveResult.Payload is null)
-        {
-            ApplyTestStatus(_statusPresenter.Failed(saveResult.UserMessage));
-            NotifyConnectionFailed(saveResult.UserMessage, saveResult.TechnicalError);
-            return;
-        }
-
-        await ReloadProfilesFromCatalogAsync(saveResult.Payload.Id);
-        candidate = ConnectionContractMapper.ToProfile(saveResult.Payload);
-
-        ProfilesChanged?.Invoke();
-
         OperationResultDto<ActiveConnectionSessionDto> connectSessionResult = await _connectionSessionService.ConnectAsync(
             ConnectionContractMapper.ToDetails(candidate),
             CancellationToken.None);
@@ -801,8 +839,11 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
         ActiveProfileId = state.ActiveProfileId;
         ActiveServerVersion = null;
         ActiveLatencyMs = null;
+        AvailableDatabases.Clear();
+        SelectedDatabase = null;
         AvailableSchemas.Clear();
         SelectedSchema = null;
+        RaisePropertyChanged(nameof(IsDatabaseSelectionVisible));
         RaisePropertyChanged(nameof(ActiveMetadataSummary));
         RaisePropertyChanged(nameof(ActiveMetadataDetails));
         RaisePropertyChanged(nameof(SchemaFilterQuery));
@@ -852,6 +893,7 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
                     ActiveServerVersion = await _dbConnectionService.GetServerVersionAsync()
                         ?? $"{profile.Provider} @ {profile.Host}:{profile.Port}";
 
+                    await SyncDatabaseOptionsAsync(ct);
                     SyncSchemaOptions();
                     RaisePropertyChanged(nameof(ActiveMetadataSummary));
                     RaisePropertyChanged(nameof(ActiveMetadataDetails));
@@ -1026,6 +1068,7 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
         {
             CancellationToken token = _connectCts?.Token ?? CancellationToken.None;
             await LoadDatabaseTablesAsync(activeProfile, token);
+            await SyncDatabaseOptionsAsync(token);
             SyncSchemaOptions();
             RaisePropertyChanged(nameof(ActiveMetadataSummary));
             RaisePropertyChanged(nameof(ActiveMetadataDetails));
@@ -1071,6 +1114,44 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
             Canvas.Schema.SelectedSchema = _selectedSchema;
     }
 
+    private async Task SyncDatabaseOptionsAsync(CancellationToken ct)
+    {
+        AvailableDatabases.Clear();
+
+        ConnectionProfile? activeProfile = Profiles.FirstOrDefault(p =>
+            string.Equals(p.Id, ActiveProfileId, StringComparison.OrdinalIgnoreCase));
+        if (activeProfile is null)
+        {
+            SelectedDatabase = null;
+            RaisePropertyChanged(nameof(IsDatabaseSelectionVisible));
+            return;
+        }
+
+        if (!SupportsDatabaseOrCatalogSelection)
+        {
+            SelectedDatabase = activeProfile.Database;
+            RaisePropertyChanged(nameof(IsDatabaseSelectionVisible));
+            return;
+        }
+
+        string[] databases = await _dbConnectionService.ListDatabasesAsync(ct);
+        foreach (string name in databases)
+        {
+            if (!string.IsNullOrWhiteSpace(name))
+                AvailableDatabases.Add(name);
+        }
+
+        string? nextDatabase = AvailableDatabases.Any(name =>
+            string.Equals(name, _selectedDatabase, StringComparison.OrdinalIgnoreCase))
+            ? _selectedDatabase
+            : AvailableDatabases.FirstOrDefault(name =>
+                string.Equals(name, activeProfile.Database, StringComparison.OrdinalIgnoreCase))
+              ?? AvailableDatabases.FirstOrDefault();
+
+        SelectedDatabase = nextDatabase;
+        RaisePropertyChanged(nameof(IsDatabaseSelectionVisible));
+    }
+
     private DbMetadata? ResolveCurrentMetadata() => _dbConnectionService.LoadedMetadata ?? Canvas?.DatabaseMetadata;
 
     private async Task SwitchDatabaseAsync(string databaseName)
@@ -1106,6 +1187,7 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
 
             ActiveServerVersion = await _dbConnectionService.GetServerVersionAsync()
                 ?? ActiveServerVersion;
+            await SyncDatabaseOptionsAsync(CancellationToken.None);
             SyncSchemaOptions();
             RaisePropertyChanged(nameof(ActiveMetadataSummary));
             RaisePropertyChanged(nameof(ActiveMetadataDetails));

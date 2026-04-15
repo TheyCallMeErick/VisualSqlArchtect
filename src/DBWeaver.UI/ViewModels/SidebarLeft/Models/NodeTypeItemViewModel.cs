@@ -98,7 +98,6 @@ public sealed class NodeTypeItemViewModel : ViewModelBase
             PinDataType.TypeDef => ("◇", "Double Diamond"),
             PinDataType.IndexDef => ("▲", "Triangle"),
             PinDataType.AlterOp => ("➤", "Rounded Arrow"),
-            PinDataType.ReportQuery => ("▣", "Report Query"),
             _ => ("●", "Circle"),
         };
 }

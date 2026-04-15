@@ -96,7 +96,7 @@ public class DdlSchemaImporterTests
         NodeGraph? subgraph = JsonSerializer.Deserialize<NodeGraph>(subgraphJson!);
         Assert.NotNull(subgraph);
         Assert.Contains(subgraph!.Nodes, n => n.Type == NodeType.Subquery);
-        Assert.Contains(subgraph.Nodes, n => n.Type is NodeType.ResultOutput or NodeType.SelectOutput);
+        Assert.Contains(subgraph.Nodes, n => n.Type == NodeType.ResultOutput);
         Assert.Equal("(SELECT 1 AS placeholder) view_src", viewNode.Parameters[CanvasSerializer.ViewFromTableParameterKey]);
         Assert.Contains(result.Warnings ?? [], w => w.Contains("v_orders", StringComparison.OrdinalIgnoreCase));
     }

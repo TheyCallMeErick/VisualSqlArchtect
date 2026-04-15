@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
+using DBWeaver.UI.Services.Search;
 using DBWeaver.UI.Services;
 
 namespace DBWeaver.UI.ViewModels;
@@ -12,6 +13,7 @@ public sealed class StartMenuViewModel : ViewModelBase
     private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true };
     private readonly List<StartRecentProjectItem> _allRecentProjects = [];
     private readonly HashSet<string> _favoriteTemplates;
+    private readonly TextSearchService _textSearch = new();
     private string _recentSearchQuery = string.Empty;
 
     public StartMenuViewModel()
@@ -166,8 +168,7 @@ public sealed class StartMenuViewModel : ViewModelBase
         if (!string.IsNullOrWhiteSpace(RecentSearchQuery))
         {
             filtered = filtered.Where(x =>
-                x.DisplayName.Contains(RecentSearchQuery, StringComparison.OrdinalIgnoreCase)
-                || (x.FilePath?.Contains(RecentSearchQuery, StringComparison.OrdinalIgnoreCase) ?? false)
+                _textSearch.Matches(RecentSearchQuery, x.DisplayName, x.FilePath)
             );
         }
 

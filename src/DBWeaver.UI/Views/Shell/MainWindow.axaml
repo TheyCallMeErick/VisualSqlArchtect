@@ -267,7 +267,7 @@
       <Setter Property="HorizontalContentAlignment" Value="Left"/>
       <Setter Property="Padding" Value="8,6"/>
       <Setter Property="CornerRadius" Value="{StaticResource RadiusSM}"/>
-      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="FontSize" Value="{StaticResource FontSizeBody}"/>
       <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Transitions">
         <Transitions>
@@ -351,9 +351,9 @@
                       ToolTip.Tip="{Binding [tooltip.switchToDdlMode], Source={x:Static loc:LocalizationService.Instance}}"/>
               <Button Classes="mode-switch-btn"
                       Name="SqlEditorModeBtn"
-                      Content="SQL"
+                      Content="{Binding [mode.sql], Source={x:Static loc:LocalizationService.Instance}}"
                       Click="SqlEditorModeBtn_Click"
-                      ToolTip.Tip="Switch to SQL editor"/>
+                      ToolTip.Tip="{Binding [tooltip.switchToSqlMode], Source={x:Static loc:LocalizationService.Instance}}"/>
             </StackPanel>
           </Border>
 
@@ -687,7 +687,7 @@
 
     <Panel Grid.RowSpan="5" ZIndex="80" x:CompileBindings="False">
       <ctrl:BottomSheetToast ZIndex="81"
-                             DataContext="{Binding Toasts}"/>
+                 DataContext="{ReflectionBinding DataContext.Toasts, ElementName=RootWindow}"/>
       <Border x:Name="PreviewDockHost"
               IsVisible="{Binding IsDiagramDocumentPageActive}"
               Classes="preview-dock-shell"
@@ -727,7 +727,7 @@
         </StackPanel>
       </Border>
 
-            <Border IsVisible="{Binding Toasts.IsDetailsOpen}"
+            <Border IsVisible="{ReflectionBinding DataContext.Toasts.IsDetailsOpen, ElementName=RootWindow}"
               DataContext="{Binding DataContext, ElementName=RootWindow}"
               Background="{StaticResource MacroScrimBrush}"
               ZIndex="82"
@@ -911,6 +911,11 @@
                   Tag="Appearance"
                   Content="{Binding [settings.nav.appearance], Source={x:Static loc:LocalizationService.Instance}}"/>
                 <Button Classes="settings-nav"
+                  Classes.active="{Binding IsEditorSectionSelected}"
+                  Click="SettingsNavBtn_Click"
+                  Tag="Editor"
+                  Content="Editor"/>
+                <Button Classes="settings-nav"
                   Classes.active="{Binding IsKeyboardShortcutsSectionSelected}"
                   Click="SettingsNavBtn_Click"
                   Tag="KeyboardShortcuts"
@@ -1019,6 +1024,58 @@
                 </StackPanel>
 
                 <Border Height="1" Background="{StaticResource BorderSubtleBrush}" IsVisible="{Binding IsAppearanceSectionSelected}"/>
+
+                <StackPanel Spacing="12" IsVisible="{Binding IsEditorSectionSelected}">
+                  <Border Background="{StaticResource Bg2Brush}"
+                          BorderBrush="{StaticResource BorderSubtleBrush}"
+                          BorderThickness="1"
+                          CornerRadius="{StaticResource RadiusMD}"
+                          Padding="12">
+                    <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                      <StackPanel Grid.Column="0" Spacing="2">
+                        <TextBlock Text="Limitar SELECT sem WHERE em TOP 1000"
+                                   FontSize="{StaticResource FontSizeTitle}"
+                                   FontWeight="{StaticResource FontWeightTitle}"
+                                   Foreground="{StaticResource TextPrimaryBrush}"/>
+                        <TextBlock Text="Quando ativo, consultas sem filtro WHERE executam com limite de 1000 linhas para reduzir risco de carga pesada."
+                                   FontSize="{StaticResource FontSizeCaption}"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   TextWrapping="Wrap"/>
+                      </StackPanel>
+                      <CheckBox Grid.Column="1"
+                                x:Name="SettingsEditorTop1000Toggle"
+                                Margin="10,0,0,0"
+                                VerticalAlignment="Center"
+                                IsCheckedChanged="SettingsEditorTop1000Toggle_Changed"/>
+                    </Grid>
+                  </Border>
+
+                  <Border Background="{StaticResource Bg2Brush}"
+                          BorderBrush="{StaticResource BorderSubtleBrush}"
+                          BorderThickness="1"
+                          CornerRadius="{StaticResource RadiusMD}"
+                          Padding="12">
+                    <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                      <StackPanel Grid.Column="0" Spacing="2">
+                        <TextBlock Text="Proteger UPDATE/DELETE sem WHERE"
+                                   FontSize="{StaticResource FontSizeTitle}"
+                                   FontWeight="{StaticResource FontWeightTitle}"
+                                   Foreground="{StaticResource TextPrimaryBrush}"/>
+                        <TextBlock Text="Quando ativo, o editor exige confirmação para mutações sem filtro WHERE antes de executar."
+                                   FontSize="{StaticResource FontSizeCaption}"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   TextWrapping="Wrap"/>
+                      </StackPanel>
+                      <CheckBox Grid.Column="1"
+                                x:Name="SettingsEditorMutationGuardToggle"
+                                Margin="10,0,0,0"
+                                VerticalAlignment="Center"
+                                IsCheckedChanged="SettingsEditorMutationGuardToggle_Changed"/>
+                    </Grid>
+                  </Border>
+                </StackPanel>
+
+                <Border Height="1" Background="{StaticResource BorderSubtleBrush}" IsVisible="{Binding IsEditorSectionSelected}"/>
 
                 <StackPanel Spacing="8" IsVisible="{Binding IsLanguageRegionSectionSelected}">
                   <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">

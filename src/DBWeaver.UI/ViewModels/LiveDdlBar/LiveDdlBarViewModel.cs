@@ -3,8 +3,11 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using DBWeaver.Core;
 using DBWeaver.Ddl;
+using DBWeaver.Ddl.SchemaAnalysis.Application;
+using DBWeaver.Ddl.SchemaAnalysis.Application.Validation;
 using DBWeaver.Nodes;
 using DBWeaver.Compilation;
+using DBWeaver.Metadata;
 using DBWeaver.UI.Services.Localization;
 
 namespace DBWeaver.UI.ViewModels;
@@ -26,10 +29,19 @@ public sealed class LiveDdlBarViewModel : ViewModelBase
     private DatabaseProvider _provider = DatabaseProvider.SqlServer;
 
     private CancellationTokenSource? _debounce;
+    private readonly SchemaAnalysisService _schemaAnalysisService;
+    private CancellationTokenSource? _schemaAnalysisCts;
+    private bool _isRunningSchemaAnalysis;
 
     public ObservableCollection<string> ErrorHints { get; } = [];
 
     public DdlDiagnosticsPanelViewModel DiagnosticsPanel { get; }
+
+    public SchemaAnalysisPanelViewModel SchemaAnalysisPanel { get; }
+
+    public RelayCommand RunSchemaAnalysisCommand { get; }
+
+    public RelayCommand CancelSchemaAnalysisCommand { get; }
 
     public string RawSql
     {
@@ -69,18 +81,55 @@ public sealed class LiveDdlBarViewModel : ViewModelBase
 
     public bool HasSql => !string.IsNullOrWhiteSpace(RawSql);
 
+    public bool IsRunningSchemaAnalysis
+    {
+        get => _isRunningSchemaAnalysis;
+        private set
+        {
+            if (!Set(ref _isRunningSchemaAnalysis, value))
+                return;
+
+            RunSchemaAnalysisCommand.NotifyCanExecuteChanged();
+            CancelSchemaAnalysisCommand.NotifyCanExecuteChanged();
+        }
+    }
+
     public LiveDdlBarViewModel(CanvasViewModel canvas)
     {
         _canvas = canvas;
+        _schemaAnalysisService = SchemaAnalysisServiceFactory.CreateDefault();
         DiagnosticsPanel = new DdlDiagnosticsPanelViewModel(nodeId => _ = FocusNodeById(nodeId));
+        SchemaAnalysisPanel = new SchemaAnalysisPanelViewModel();
+        RunSchemaAnalysisCommand = new RelayCommand(
+            () => _ = AnalyzeSchemaStructureAsync(),
+            () => !IsRunningSchemaAnalysis && _canvas.DatabaseMetadata is not null
+        );
+        CancelSchemaAnalysisCommand = new RelayCommand(
+            CancelSchemaAnalysis,
+            () => IsRunningSchemaAnalysis
+        );
 
         _canvas.Connections.CollectionChanged += OnConnectionsChanged;
         _canvas.Nodes.CollectionChanged += OnNodesChanged;
+        _canvas.PropertyChanged += OnCanvasPropertyChanged;
 
         foreach (NodeViewModel node in _canvas.Nodes)
             SubscribeNode(node);
 
         Recompile();
+
+        if (_canvas.DatabaseMetadata is null)
+            SchemaAnalysisPanel.SetMetadataUnavailable();
+    }
+
+    private void OnCanvasPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(CanvasViewModel.DatabaseMetadata))
+        {
+            RunSchemaAnalysisCommand.NotifyCanExecuteChanged();
+            if (_canvas.DatabaseMetadata is null)
+                SchemaAnalysisPanel.SetMetadataUnavailable();
+        }
     }
 
     private void OnConnectionsChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -179,6 +228,95 @@ public sealed class LiveDdlBarViewModel : ViewModelBase
             IsCompiling = false;
             RaisePropertyChanged(nameof(HasSql));
         }
+    }
+
+    public async Task AnalyzeSchemaStructureAsync(CancellationToken ct = default)
+    {
+        if (IsRunningSchemaAnalysis)
+            return;
+
+        if (_canvas.DatabaseMetadata is null)
+        {
+            SchemaAnalysisPanel.SetMetadataUnavailable();
+            return;
+        }
+
+        _schemaAnalysisCts?.Cancel();
+        _schemaAnalysisCts?.Dispose();
+        _schemaAnalysisCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+
+        try
+        {
+            IsRunningSchemaAnalysis = true;
+            SchemaAnalysisPanel.SetLoading();
+
+            DbMetadata analysisMetadata = BuildAnalysisMetadata(_canvas.DatabaseMetadata, SchemaAnalysisPanel);
+            var profile = SchemaAnalysisProfileNormalizer.CreateDefaultProfile();
+            var result = await _schemaAnalysisService.AnalyzeAsync(
+                analysisMetadata,
+                profile,
+                _schemaAnalysisCts.Token
+            );
+
+            SchemaAnalysisPanel.ApplyResult(result);
+        }
+        catch (OperationCanceledException)
+        {
+            SchemaAnalysisPanel.SetCancelled();
+        }
+        finally
+        {
+            IsRunningSchemaAnalysis = false;
+        }
+    }
+
+    public void CancelSchemaAnalysis()
+    {
+        _schemaAnalysisCts?.Cancel();
+    }
+
+    private static DbMetadata BuildAnalysisMetadata(DbMetadata metadata, SchemaAnalysisPanelViewModel panel)
+    {
+        IReadOnlyList<SchemaMetadata> filteredSchemas = metadata.Schemas
+            .Select(schema =>
+            {
+                IReadOnlyList<TableMetadata> tables = schema.Tables
+                    .Where(table => !panel.ShouldIgnoreTableForAnalysis(schema.Name, table.Name, table.Kind))
+                    .ToList();
+
+                return new SchemaMetadata(schema.Name, tables);
+            })
+            .Where(schema => schema.Tables.Count > 0)
+            .ToList();
+
+        if (filteredSchemas.Count == metadata.Schemas.Count
+            && filteredSchemas.SelectMany(static schema => schema.Tables).Count() == metadata.AllTables.Count())
+        {
+            return metadata;
+        }
+
+        HashSet<string> survivingTables = filteredSchemas
+            .SelectMany(schema => schema.Tables.Select(table => QualifyTable(schema.Name, table.Name)))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        IReadOnlyList<ForeignKeyRelation> filteredForeignKeys = metadata.AllForeignKeys
+            .Where(foreignKey =>
+                survivingTables.Contains(QualifyTable(foreignKey.ChildSchema, foreignKey.ChildTable))
+                && survivingTables.Contains(QualifyTable(foreignKey.ParentSchema, foreignKey.ParentTable)))
+            .ToList();
+
+        return metadata with
+        {
+            Schemas = filteredSchemas,
+            AllForeignKeys = filteredForeignKeys,
+        };
+    }
+
+    private static string QualifyTable(string? schema, string table)
+    {
+        return string.IsNullOrWhiteSpace(schema)
+            ? table
+            : $"{schema}.{table}";
     }
 
     private NodeGraph BuildNodeGraph()

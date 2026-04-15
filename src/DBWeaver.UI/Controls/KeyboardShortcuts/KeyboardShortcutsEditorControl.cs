@@ -46,14 +46,14 @@ public sealed class KeyboardShortcutsEditorControl : UserControl
             root.Children.Add(new TextBlock
             {
                 Text = L("shortcuts.headerTitle", "DBWeaver — Shortcuts"),
-                FontSize = 20,
-                FontWeight = FontWeight.SemiBold,
+                FontSize = ResourceFontSize("FontSizeHeading", 18),
+                FontWeight = ResourceFontWeight("FontWeightTitle", FontWeight.SemiBold),
                 Foreground = ResourceBrush("TextPrimaryBrush", UiColorConstants.C_E7ECFF),
             });
             root.Children.Add(new TextBlock
             {
                 Text = L("shortcuts.headerHint", "Tip: edit and reset shortcuts below."),
-                FontSize = 12,
+                FontSize = ResourceFontSize("FontSizeBody", 12),
                 Foreground = ResourceBrush("TextMutedBrush", UiColorConstants.C_7F8AAE),
             });
         }
@@ -101,7 +101,7 @@ public sealed class KeyboardShortcutsEditorControl : UserControl
 
         _resultInfo = new TextBlock
         {
-            FontSize = 11,
+            FontSize = ResourceFontSize("FontSizeCaption", 11),
             Foreground = ResourceBrush("TextMutedBrush", UiColorConstants.C_7F8AAE),
         };
         root.Children.Add(_resultInfo);
@@ -155,8 +155,8 @@ public sealed class KeyboardShortcutsEditorControl : UserControl
         rows.Children.Add(new TextBlock
         {
             Text = section.Name,
-            FontSize = 14,
-            FontWeight = FontWeight.SemiBold,
+            FontSize = ResourceFontSize("FontSizeNodeTitle", 14),
+            FontWeight = ResourceFontWeight("FontWeightTitle", FontWeight.SemiBold),
             Foreground = ResourceBrush("AccentPrimaryHoverBrush", UiColorConstants.C_6C8CFF),
         });
 
@@ -194,7 +194,7 @@ public sealed class KeyboardShortcutsEditorControl : UserControl
             {
                 Text = string.IsNullOrWhiteSpace(item.EffectiveGesture) ? "-" : item.EffectiveGesture,
                 FontFamily = new FontFamily("JetBrains Mono,IBM Plex Mono,Cascadia Code,Consolas,monospace"),
-                FontSize = 12,
+                FontSize = ResourceFontSize("FontSizeMonoBody", 12),
                 Foreground = ResourceBrush("TextPrimaryBrush", UiColorConstants.C_E7ECFF),
             },
         };
@@ -203,8 +203,8 @@ public sealed class KeyboardShortcutsEditorControl : UserControl
         var desc = new TextBlock
         {
             Text = item.Name,
-            FontSize = 12,
-            FontWeight = FontWeight.SemiBold,
+            FontSize = ResourceFontSize("FontSizeBody", 12),
+            FontWeight = ResourceFontWeight("FontWeightTitle", FontWeight.SemiBold),
             Foreground = ResourceBrush("TextSecondaryBrush", UiColorConstants.C_AEB9D9),
             VerticalAlignment = VerticalAlignment.Center,
         };
@@ -227,7 +227,7 @@ public sealed class KeyboardShortcutsEditorControl : UserControl
                 Text = item.IsCustomized
                     ? L("shortcuts.customized", "Customized")
                     : L("shortcuts.default", "Default"),
-                FontSize = 10,
+                FontSize = ResourceFontSize("FontSizeMonoSmall", 11),
                 Foreground = ResourceBrush("TextSecondaryBrush", UiColorConstants.C_AEB9D9),
             },
         };
@@ -239,7 +239,7 @@ public sealed class KeyboardShortcutsEditorControl : UserControl
         panel.Children.Add(new TextBlock
         {
             Text = item.Description,
-            FontSize = 11,
+            FontSize = ResourceFontSize("FontSizeCaption", 11),
             Foreground = ResourceBrush("TextMutedBrush", UiColorConstants.C_7F8AAE),
         });
 
@@ -308,7 +308,7 @@ public sealed class KeyboardShortcutsEditorControl : UserControl
                 Text = string.IsNullOrWhiteSpace(item.IssueCode)
                     ? resolvedIssueMessage
                     : $"{item.IssueCode}: {resolvedIssueMessage}",
-                FontSize = 10,
+                FontSize = ResourceFontSize("FontSizeMonoSmall", 11),
                 Foreground = ResourceBrush("StatusWarningBrush", UiColorConstants.C_D9A441),
                 FontFamily = new FontFamily("JetBrains Mono,IBM Plex Mono,Cascadia Code,Consolas,monospace"),
             });
@@ -359,5 +359,29 @@ public sealed class KeyboardShortcutsEditorControl : UserControl
             return radius;
 
         return new CornerRadius(fallbackValue);
+    }
+
+    private static double ResourceFontSize(string key, double fallbackValue)
+    {
+        if (Application.Current?.Resources.TryGetResource(key, null, out object? resource) == true)
+        {
+            if (resource is double size)
+                return size;
+            if (resource is int intSize)
+                return intSize;
+        }
+
+        return fallbackValue;
+    }
+
+    private static FontWeight ResourceFontWeight(string key, FontWeight fallback)
+    {
+        if (Application.Current?.Resources.TryGetResource(key, null, out object? resource) == true
+            && resource is FontWeight fontWeight)
+        {
+            return fontWeight;
+        }
+
+        return fallback;
     }
 }

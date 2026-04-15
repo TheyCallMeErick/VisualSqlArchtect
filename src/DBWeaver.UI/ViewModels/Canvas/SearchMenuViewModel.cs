@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using Avalonia;
+using Avalonia.Threading;
 using DBWeaver.Nodes;
+using DBWeaver.UI.Services.Search;
 using DBWeaver.UI.Serialization;
 
 namespace DBWeaver.UI.ViewModels.Canvas;
@@ -11,11 +13,17 @@ namespace DBWeaver.UI.ViewModels.Canvas;
 /// </summary>
 public sealed class SearchMenuViewModel : ViewModelBase
 {
+    private const int FilterDebounceMs = 80;
+    private const int MaxTableResults = 5;
+    private const int MaxTotalResults = 12;
+
     private string _query = "";
     private bool _isVisible;
     private Point _spawnPos;
     private NodeSearchResultViewModel? _selected;
     private CanvasContext _canvasContext = CanvasContext.Query;
+    private CancellationTokenSource? _filterCts;
+    private int _filterVersion;
 
     /// <summary>
     /// The search query entered by the user.
@@ -27,7 +35,7 @@ public sealed class SearchMenuViewModel : ViewModelBase
         set
         {
             Set(ref _query, value);
-            FilterResults();
+            QueueFilterResults();
         }
     }
 
@@ -69,7 +77,7 @@ public sealed class SearchMenuViewModel : ViewModelBase
             // Context switch must clear stale query/state from previous mode.
             _query = "";
             RaisePropertyChanged(nameof(Query));
-            FilterResults();
+            QueueFilterResults();
         }
     }
 
@@ -91,6 +99,8 @@ public sealed class SearchMenuViewModel : ViewModelBase
         .ToList();
 
     private readonly List<NodeSearchResultViewModel> _tables = [];
+    private readonly List<SavedSnippet> _allSnippets = [];
+    private readonly TextSearchService _textSearch = new();
 
     /// <summary>
     /// Loads available database tables into the search results.
@@ -104,7 +114,7 @@ public sealed class SearchMenuViewModel : ViewModelBase
         _tables.AddRange(
             tables.Select(t => NodeSearchResultViewModel.ForTable(t.FullName, t.Cols))
         );
-        FilterResults();
+        QueueFilterResults();
     }
 
     /// <summary>
@@ -113,18 +123,9 @@ public sealed class SearchMenuViewModel : ViewModelBase
     /// </summary>
     public void LoadSnippets()
     {
-        Snippets.Clear();
-        string q = Query.Trim();
-        foreach (SavedSnippet s in SnippetStore.Load())
-        {
-            if (
-                string.IsNullOrEmpty(q)
-                || s.Name.Contains(q, StringComparison.OrdinalIgnoreCase)
-                || (s.Tags ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)
-            )
-                Snippets.Add(new SnippetViewModel(s));
-        }
-        RaisePropertyChanged(nameof(HasSnippets));
+        _allSnippets.Clear();
+        _allSnippets.AddRange(SnippetStore.Load());
+        QueueFilterResults();
     }
 
     /// <summary>
@@ -133,9 +134,8 @@ public sealed class SearchMenuViewModel : ViewModelBase
     public void Open(Point pos)
     {
         SpawnPosition = pos;
-        Query = "";
         LoadSnippets();
-        FilterResults();
+        Query = "";
         IsVisible = true;
     }
 
@@ -145,42 +145,119 @@ public sealed class SearchMenuViewModel : ViewModelBase
     public void Close()
     {
         IsVisible = false;
+        _filterCts?.Cancel();
         Query = "";
     }
 
     /// <summary>
-    /// Filters results based on current query.
-    /// Shows up to 5 tables and up to 12 total results.
+    /// Filters results based on current query using debounce + cancellation,
+    /// and applies latest-result-wins semantics.
     /// </summary>
-    private void FilterResults()
+    private void QueueFilterResults()
     {
-        Results.Clear();
-        LoadSnippets();
-        string q = Query.Trim();
+        _filterCts?.Cancel();
+        _filterCts?.Dispose();
+        _filterCts = new CancellationTokenSource();
+        int version = Interlocked.Increment(ref _filterVersion);
+        _ = FilterResultsAsync(version, _filterCts.Token);
+    }
 
-        // Tables first (up to 5)
-        IEnumerable<NodeSearchResultViewModel> filteredTables = string.IsNullOrEmpty(q)
-            ? _tables
-            : _tables.Where(t =>
-                t.TableFullName.Contains(q, StringComparison.OrdinalIgnoreCase)
-                || t.Title.Contains(q, StringComparison.OrdinalIgnoreCase)
-            );
-        foreach (NodeSearchResultViewModel? t in filteredTables.Take(5))
-            Results.Add(t);
+    private async Task FilterResultsAsync(int version, CancellationToken cancellationToken)
+    {
+        string query = Query.Trim();
+        if (!string.IsNullOrWhiteSpace(query))
+            await Task.Delay(FilterDebounceMs, cancellationToken);
 
-        // Then node definitions (fill remaining slots up to 12 total)
-        IEnumerable<NodeDefinition> filteredNodes = string.IsNullOrEmpty(q)
-            ? AllDefs
-            : AllDefs.Where(d =>
-                d.DisplayName.Contains(q, StringComparison.OrdinalIgnoreCase)
-                || d.Category.ToString().Contains(q, StringComparison.OrdinalIgnoreCase)
-            );
-        filteredNodes = filteredNodes.Where(IsDefinitionAllowedInContext);
+        List<NodeSearchResultViewModel> tableSnapshot = _tables.ToList();
+        List<SavedSnippet> snippetSnapshot = _allSnippets.ToList();
+        List<NodeDefinition> nodeSnapshot = AllDefs.Where(IsDefinitionAllowedInContext).ToList();
 
-        foreach (NodeDefinition? d in filteredNodes.Take(12 - Results.Count))
-            Results.Add(new NodeSearchResultViewModel(d));
+        (List<NodeSearchResultViewModel> Results, List<SnippetViewModel> Snippets) payload =
+            await Task.Run(() =>
+            {
+                List<NodeSearchResultViewModel> tables = BuildTableResults(tableSnapshot, query);
+                List<NodeSearchResultViewModel> nodes = BuildNodeResults(
+                    nodeSnapshot,
+                    query,
+                    MaxTotalResults - tables.Count);
+                List<SnippetViewModel> snippets = BuildSnippetResults(snippetSnapshot, query);
+                return (tables.Concat(nodes).ToList(), snippets);
+            }, cancellationToken);
 
-        SelectedResult = Results.FirstOrDefault();
+        if (version != _filterVersion || cancellationToken.IsCancellationRequested)
+            return;
+
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            if (version != _filterVersion)
+                return;
+
+            Results.Clear();
+            foreach (NodeSearchResultViewModel result in payload.Results)
+                Results.Add(result);
+
+            Snippets.Clear();
+            foreach (SnippetViewModel snippet in payload.Snippets)
+                Snippets.Add(snippet);
+
+            RaisePropertyChanged(nameof(HasSnippets));
+            SelectedResult = Results.FirstOrDefault();
+        });
+    }
+
+    private List<NodeSearchResultViewModel> BuildTableResults(
+        IReadOnlyList<NodeSearchResultViewModel> tables,
+        string query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            return tables.Take(MaxTableResults).ToList();
+
+        return tables
+            .Select(table => (Item: table, Score: _textSearch.Score(query, table.TableFullName, table.Title)))
+            .Where(item => item.Score > 0)
+            .OrderByDescending(item => item.Score)
+            .ThenBy(item => item.Item.TableFullName, StringComparer.OrdinalIgnoreCase)
+            .Take(MaxTableResults)
+            .Select(item => item.Item)
+            .ToList();
+    }
+
+    private List<NodeSearchResultViewModel> BuildNodeResults(
+        IReadOnlyList<NodeDefinition> definitions,
+        string query,
+        int maxCount)
+    {
+        if (maxCount <= 0)
+            return [];
+
+        if (string.IsNullOrWhiteSpace(query))
+            return definitions.Take(maxCount).Select(def => new NodeSearchResultViewModel(def)).ToList();
+
+        return definitions
+            .Select(definition =>
+                (Definition: definition, Score: _textSearch.Score(query, definition.DisplayName, definition.Category.ToString())))
+            .Where(item => item.Score > 0)
+            .OrderByDescending(item => item.Score)
+            .ThenBy(item => item.Definition.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .Take(maxCount)
+            .Select(item => new NodeSearchResultViewModel(item.Definition))
+            .ToList();
+    }
+
+    private List<SnippetViewModel> BuildSnippetResults(
+        IReadOnlyList<SavedSnippet> snippets,
+        string query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            return snippets.Select(snippet => new SnippetViewModel(snippet)).ToList();
+
+        return snippets
+            .Select(snippet => (Snippet: snippet, Score: _textSearch.Score(query, snippet.Name, snippet.Tags)))
+            .Where(item => item.Score > 0)
+            .OrderByDescending(item => item.Score)
+            .ThenBy(item => item.Snippet.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(item => new SnippetViewModel(item.Snippet))
+            .ToList();
     }
 
     /// <summary>

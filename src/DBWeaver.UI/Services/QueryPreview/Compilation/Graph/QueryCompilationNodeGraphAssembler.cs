@@ -320,7 +320,7 @@ internal sealed class QueryCompilationNodeGraphAssembler(
             ConnectionViewModel? queryWire = _canvas.Connections.FirstOrDefault(c =>
                 c.ToPin?.Owner == definition
                 && c.ToPin?.Name == "query"
-                && c.FromPin.Owner.Type is NodeType.ResultOutput or NodeType.SelectOutput
+                && c.FromPin.Owner.Type == NodeType.ResultOutput
             );
 
             if (queryWire?.FromPin.Owner is NodeViewModel cteOutput)
@@ -405,7 +405,7 @@ internal sealed class QueryCompilationNodeGraphAssembler(
             return false;
 
         NodeViewModel? tempResultOutput = tempCanvas.Nodes.FirstOrDefault(n =>
-            n.Type is NodeType.ResultOutput or NodeType.SelectOutput
+            n.Type == NodeType.ResultOutput
         );
         if (tempResultOutput is null)
             return false;

@@ -171,8 +171,12 @@
                   VerticalScrollBarVisibility="Auto"
                   IsVisible="{Binding HasResults}"
                   Theme="{StaticResource FluentScrollViewer}">
-      <StackPanel Margin="0,0,0,8">
-        <ItemsControl ItemsSource="{Binding FilteredGroups}">
+      <ItemsControl ItemsSource="{Binding FilteredGroups}" Margin="0,0,0,8">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <VirtualizingStackPanel/>
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate DataType="vm:NodeTypeGroupViewModel">
               <StackPanel Spacing="0">
@@ -390,7 +394,6 @@
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
-      </StackPanel>
     </ScrollViewer>
 
     <StackPanel Grid.Row="2"

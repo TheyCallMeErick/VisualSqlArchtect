@@ -8,6 +8,7 @@
              xmlns:loc="using:DBWeaver.UI.Services.Localization"
              xmlns:mi="using:Material.Icons.Avalonia"
              x:Class="DBWeaver.UI.Controls.LiveSqlBar"
+             x:Name="Root"
              x:DataType="vm:LiveSqlBarViewModel">
 
   <UserControl.Resources>
@@ -19,7 +20,7 @@
     <!-- Keyword -->
     <Style Selector="TextBlock.tok-Keyword">
       <Setter Property="Foreground" Value="{StaticResource AccentSecondaryHoverBrush}"/>
-      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="FontWeight" Value="{StaticResource FontWeightHeading}"/>
     </Style>
     <!-- Identifier -->
     <Style Selector="TextBlock.tok-Identifier">
@@ -57,8 +58,8 @@
       <Setter Property="BorderThickness"  Value="0"/>
       <Setter Property="Foreground"       Value="{StaticResource TextMutedBrush}"/>
       <Setter Property="Padding"          Value="6,3"/>
-      <Setter Property="CornerRadius"     Value="5"/>
-      <Setter Property="FontSize"         Value="11"/>
+      <Setter Property="CornerRadius"     Value="{StaticResource RadiusSM}"/>
+      <Setter Property="FontSize"         Value="{StaticResource FontSizeCaption}"/>
       <Setter Property="Cursor"           Value="Hand"/>
     </Style>
     <Style Selector="Button.sql-action:pointerover">
@@ -68,10 +69,10 @@
     <Style Selector="Button.sql-cta">
       <Setter Property="MinWidth" Value="180"/>
       <Setter Property="Padding" Value="12,9"/>
-      <Setter Property="CornerRadius" Value="10"/>
+      <Setter Property="CornerRadius" Value="{StaticResource RadiusMD}"/>
       <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="FontSize" Value="12"/>
-      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="FontSize" Value="{StaticResource FontSizeBody}"/>
+      <Setter Property="FontWeight" Value="{StaticResource FontWeightStrong}"/>
       <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
       <Setter Property="Transitions">
@@ -128,8 +129,8 @@
         <StackPanel Orientation="Horizontal" Spacing="8">
           <Border CornerRadius="{StaticResource RadiusXS}" Background="{StaticResource StatusErrorBrush}" Padding="5,2" VerticalAlignment="Center">
             <StackPanel Orientation="Horizontal" Spacing="4">
-              <mi:MaterialIcon Kind="Lock" Width="10" Height="10" Foreground="White" VerticalAlignment="Center"/>
-              <TextBlock Text="{Binding [liveSql.safePreview], Source={x:Static loc:LocalizationService.Instance}}" FontSize="{StaticResource FontSizeCaption}" FontWeight="{StaticResource FontWeightHeading}" Foreground="White" LetterSpacing="0.8"/>
+              <mi:MaterialIcon Kind="Lock" Width="10" Height="10" Foreground="{StaticResource TextInverseBrush}" VerticalAlignment="Center"/>
+              <TextBlock Text="{Binding [liveSql.safePreview], Source={x:Static loc:LocalizationService.Instance}}" FontSize="{StaticResource FontSizeCaption}" FontWeight="{StaticResource FontWeightHeading}" Foreground="{StaticResource TextInverseBrush}" LetterSpacing="0.8"/>
             </StackPanel>
           </Border>
           <TextBlock Text="{Binding BlockedReason}"
@@ -173,8 +174,8 @@
                 IsVisible="{Binding IsMutatingCommand}"
           ToolTip.Tip="{Binding [tooltip.liveSqlMutatingBlocked], Source={x:Static loc:LocalizationService.Instance}}">
           <StackPanel Orientation="Horizontal" Spacing="4">
-            <mi:MaterialIcon Kind="Lock" Width="10" Height="10" Foreground="White" VerticalAlignment="Center"/>
-            <TextBlock Text="{Binding [liveSql.blocked], Source={x:Static loc:LocalizationService.Instance}}" FontSize="{StaticResource FontSizeCaption}" FontWeight="{StaticResource FontWeightHeading}" Foreground="White"/>
+            <mi:MaterialIcon Kind="Lock" Width="10" Height="10" Foreground="{StaticResource TextInverseBrush}" VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding [liveSql.blocked], Source={x:Static loc:LocalizationService.Instance}}" FontSize="{StaticResource FontSizeCaption}" FontWeight="{StaticResource FontWeightHeading}" Foreground="{StaticResource TextInverseBrush}"/>
           </StackPanel>
         </Border>
 
@@ -351,7 +352,7 @@
                            VerticalAlignment="Center">
                   <ToolTip.Tip>
                     <StackPanel Spacing="3" MaxWidth="340">
-                      <TextBlock Text="{Binding Message}"  FontWeight="{StaticResource FontWeightHeading}" Foreground="White" FontSize="{StaticResource FontSizeCaption}"/>
+                      <TextBlock Text="{Binding Message}"  FontWeight="{StaticResource FontWeightHeading}" Foreground="{StaticResource TextPrimaryBrush}" FontSize="{StaticResource FontSizeCaption}"/>
                       <TextBlock Text="{Binding Suggestion}" Foreground="{StaticResource AccentPrimaryHoverBrush}" FontSize="{StaticResource FontSizeCaption}" TextWrapping="Wrap"/>
                     </StackPanel>
                   </ToolTip.Tip>
@@ -362,13 +363,14 @@
         </ItemsControl.ItemTemplate>
       </ItemsControl>
 
-      <Border Grid.Row="5"
+            <Border Grid.Row="5"
               Margin="12,2,12,10"
               Padding="10,10"
               Background="{StaticResource Bg1Brush}"
               BorderBrush="{StaticResource BorderBrush}"
               BorderThickness="1"
-              CornerRadius="{StaticResource RadiusMD}">
+              CornerRadius="{StaticResource RadiusMD}"
+                IsVisible="{ReflectionBinding ShowPerformanceTools, ElementName=Root}">
         <Grid ColumnDefinitions="*,Auto,Auto,*">
           <TextBlock Grid.Column="0"
                      Text="{Binding [liveSql.actionsHint], Source={x:Static loc:LocalizationService.Instance}, FallbackValue=Performance tools}"

@@ -54,4 +54,83 @@ public class CanvasSerializerDocumentWorkspaceSchemaTests
         Assert.True(result.Success);
         Assert.Equal(WorkspaceDocumentType.DdlCanvas, result.ActiveDocumentType);
     }
+
+    [Fact]
+    public void DeserializeWorkspace_LegacyReportFlow_MigratesSqlScriptsToSqlEditorSeeds()
+    {
+        using var queryVm = new CanvasViewModel();
+        using var ddlVm = new CanvasViewModel(null, null, null, null, new DdlDomainStrategy());
+
+        var queryCanvas = new SavedCanvas(
+            Version: CanvasSerializer.CurrentCanvasSchemaVersion,
+            DatabaseProvider: "Postgres",
+            ConnectionName: "legacy",
+            Zoom: 1,
+            PanX: 0,
+            PanY: 0,
+            Nodes:
+            [
+                new SavedNode(
+                    NodeId: "raw_1",
+                    NodeType: "RawSqlQuery",
+                    X: 40,
+                    Y: 40,
+                    ZOrder: 0,
+                    Alias: null,
+                    TableFullName: null,
+                    Parameters: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["sql"] = "SELECT 42 AS answer"
+                    },
+                    PinLiterals: []),
+                new SavedNode(
+                    NodeId: "report_1",
+                    NodeType: "ReportOutput",
+                    X: 280,
+                    Y: 40,
+                    ZOrder: 1,
+                    Alias: null,
+                    TableFullName: null,
+                    Parameters: [],
+                    PinLiterals: []),
+            ],
+            Connections:
+            [
+                new SavedConnection(
+                    FromNodeId: "raw_1",
+                    FromPinName: "query",
+                    ToNodeId: "report_1",
+                    ToPinName: "query")
+            ],
+            SelectBindings: [],
+            WhereBindings: []
+        );
+
+        var ddlCanvas = new SavedCanvas(
+            Version: CanvasSerializer.CurrentCanvasSchemaVersion,
+            DatabaseProvider: null,
+            ConnectionName: null,
+            Zoom: 1,
+            PanX: 0,
+            PanY: 0,
+            Nodes: [],
+            Connections: [],
+            SelectBindings: [],
+            WhereBindings: []
+        );
+
+        string legacyJson = JsonSerializer.Serialize(new SavedWorkspaceCanvas(
+            Version: 4,
+            QueryCanvas: queryCanvas,
+            DdlCanvas: ddlCanvas));
+
+        CanvasLoadResult result = CanvasSerializer.DeserializeWorkspace(legacyJson, queryVm, ddlVm);
+
+        Assert.True(result.Success);
+        Assert.Empty(queryVm.Nodes);
+        Assert.NotNull(result.SqlEditorSeedScripts);
+        Assert.Contains("SELECT 42 AS answer", result.SqlEditorSeedScripts!);
+        Assert.Contains(result.Warnings ?? [], warning =>
+            warning.Contains("legacy report SQL script", StringComparison.OrdinalIgnoreCase));
+    }
 }

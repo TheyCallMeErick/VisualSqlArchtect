@@ -201,21 +201,21 @@ public partial class MainWindow
 
     private void QueryModeBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        CurrentShell.SetActiveDocumentType(WorkspaceDocumentType.QueryCanvas);
+        CurrentShell.ActivateDocument(WorkspaceDocumentType.QueryCanvas);
         SyncModeToggleState();
         e.Handled = true;
     }
 
     private void DdlModeBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        CurrentShell.SetActiveDocumentType(WorkspaceDocumentType.DdlCanvas);
+        CurrentShell.ActivateDocument(WorkspaceDocumentType.DdlCanvas);
         SyncModeToggleState();
         e.Handled = true;
     }
 
     private void SqlEditorModeBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        CurrentShell.SetActiveDocumentType(WorkspaceDocumentType.SqlEditor);
+        CurrentShell.ActivateDocument(WorkspaceDocumentType.SqlEditor);
         SyncModeToggleState();
         e.Handled = true;
     }
@@ -264,6 +264,29 @@ public partial class MainWindow
             return item;
         }
 
+        MenuItem NewGroupHeader(string header)
+        {
+            var item = new MenuItem
+            {
+                Header = new TextBlock
+                {
+                    Text = header,
+                    VerticalAlignment = VerticalAlignment.Center,
+                },
+                IsEnabled = false,
+            };
+            item.Classes.Add("app-title-menu-group");
+            return item;
+        }
+
+        MenuItem NewDisabledItem(string header, MaterialIconKind icon, string disabledReason)
+        {
+            var item = NewItem(header, icon, () => { });
+            item.IsEnabled = false;
+            ToolTip.SetTip(item, disabledReason);
+            return item;
+        }
+
         Separator NewSeparator()
         {
             var separator = new Separator();
@@ -272,8 +295,10 @@ public partial class MainWindow
         }
 
         bool isDdlModeActive = CurrentShell.IsDdlDocumentPageActive;
+        string ddlModeOnlyReason = L("menu.reason.ddlOnly", "Disponivel apenas no modo DDL.");
         var items = new List<object>
         {
+            NewGroupHeader(L("menu.group.project", "Projeto")),
             NewItem(L("menu.newDiagram", "Novo diagrama"), MaterialIconKind.FileOutline, () =>
             {
                 EnterCanvasMode();
@@ -295,6 +320,7 @@ public partial class MainWindow
                 CurrentVm.FileHistory.Open();
             }),
             NewSeparator(),
+            NewGroupHeader(L("menu.group.currentMode", "Modo Atual")),
             NewItem(L("menu.shortcuts", "Atalhos de teclado"), MaterialIconKind.Keyboard, () => new KeyboardShortcutsWindow().Show(this)),
             NewItem(L("menu.settings", "Configurações"), MaterialIconKind.CogOutline, () =>
             {
@@ -305,6 +331,8 @@ public partial class MainWindow
             {
                 _ = ImportSqlToQuerySafeAsync();
             }),
+            NewSeparator(),
+            NewGroupHeader(L("menu.group.tools", "Ferramentas")),
         };
 
         if (isDdlModeActive)
@@ -321,6 +349,12 @@ public partial class MainWindow
             {
                 _ = ExecuteDdlSafeAsync();
             }));
+        }
+        else
+        {
+            items.Add(NewDisabledItem(L("menu.importDdlSchema", "Importar Schema DDL"), MaterialIconKind.DatabaseImportOutline, ddlModeOnlyReason));
+            items.Add(NewDisabledItem(L("menu.viewDdlSql", "Ver SQL DDL"), MaterialIconKind.CodeBraces, ddlModeOnlyReason));
+            items.Add(NewDisabledItem(L("menu.executeDdl", "Executar DDL"), MaterialIconKind.PlayCircleOutline, ddlModeOnlyReason));
         }
 
         items.Add(NewSeparator());
@@ -452,7 +486,7 @@ public partial class MainWindow
         ddlCanvas.Provider = payload.Provider;
         ddlCanvas.ReplaceGraph(payload.Nodes, payload.Connections);
 
-        CurrentShell.SetActiveDocumentType(WorkspaceDocumentType.DdlCanvas);
+        CurrentShell.ActivateDocument(WorkspaceDocumentType.DdlCanvas);
         SyncModeToggleState();
 
         if (payload.Result.TableCount == 0)
@@ -503,7 +537,7 @@ public partial class MainWindow
         var importer = new DdlSchemaImporter();
         DdlPartialImportResult result = importer.ImportTable(metadata, table.FullName, ddlCanvas, position);
 
-        CurrentShell.SetActiveDocumentType(WorkspaceDocumentType.DdlCanvas);
+        CurrentShell.ActivateDocument(WorkspaceDocumentType.DdlCanvas);
         SyncModeToggleState();
 
         if (!result.TableAdded)
@@ -558,7 +592,7 @@ public partial class MainWindow
         CanvasViewModel ddlCanvas = PrepareDdlPreviewCanvas();
         LiveDdlBarViewModel liveDdl = ddlCanvas.LiveDdl
             ?? throw new InvalidOperationException(
-                L("error.mainWindow.ddlPreviewUnavailable", "DDL preview is unavailable for the current canvas.")
+                L("error.mainWindow.ddlPreviewUnavailable", "Preview DDL indisponivel para o canvas atual.")
             );
         CurrentShell.OutputPreview.OpenForDdl(ddlCanvas, liveDdl, ddlCanvas.Provider.ToString());
         await Task.CompletedTask;
@@ -571,7 +605,7 @@ public partial class MainWindow
         ddlCanvas.Provider = provider;
         LiveDdlBarViewModel liveDdl = ddlCanvas.LiveDdl
             ?? throw new InvalidOperationException(
-                L("error.mainWindow.ddlPreviewUnavailable", "DDL preview is unavailable for the current canvas.")
+                L("error.mainWindow.ddlPreviewUnavailable", "Preview DDL indisponivel para o canvas atual.")
             );
         liveDdl.Recompile();
         return ddlCanvas;
@@ -592,7 +626,7 @@ public partial class MainWindow
         ddlCanvas.Provider = provider;
         LiveDdlBarViewModel liveDdl = ddlCanvas.LiveDdl
             ?? throw new InvalidOperationException(
-                L("error.mainWindow.ddlPreviewUnavailable", "DDL preview is unavailable for the current canvas.")
+                L("error.mainWindow.ddlPreviewUnavailable", "Preview DDL indisponivel para o canvas atual.")
             );
         liveDdl.Recompile();
 
@@ -697,28 +731,26 @@ public partial class MainWindow
     {
         switch (CurrentShell.ActivePreviewContract.Kind)
         {
-            case WorkspaceDocumentPreviewKind.Ddl:
-            {
-                CanvasViewModel ddlCanvas = PrepareDdlPreviewCanvas();
-                LiveDdlBarViewModel liveDdl = ddlCanvas.LiveDdl
-                    ?? throw new InvalidOperationException(
-                        L("error.mainWindow.ddlPreviewUnavailable", "DDL preview is unavailable for the current canvas.")
-                    );
-                CurrentShell.OutputPreview.OpenForDdl(ddlCanvas, liveDdl, ddlCanvas.Provider.ToString());
-                return;
-            }
             case WorkspaceDocumentPreviewKind.Query:
             {
-                CanvasViewModel queryCanvas = CurrentShell.ActiveQueryCanvasDocument
-                    ?? CurrentShell.EnsureCanvas(
-                        isDdlModeActiveResolver: () => CurrentShell.IsDdlDocumentPageActive,
-                        importDdlTableAction: (table, position) => ImportSingleTableToDdl(table, position));
-
-                queryCanvas.DataPreview.IsVisible = true;
-                CurrentShell.OutputPreview.OpenForQuery(queryCanvas);
+                CanvasViewModel queryCanvas = CurrentShell.ActiveQueryCanvasDocument ?? CurrentShell.Canvas
+                    ?? throw new InvalidOperationException(
+                        L("error.mainWindow.queryPreviewUnavailable", "Preview SQL indisponivel para o canvas Query atual."));
+                LiveSqlBarViewModel liveSql = queryCanvas.LiveSql
+                    ?? throw new InvalidOperationException(
+                        L("error.mainWindow.queryPreviewUnavailable", "Preview SQL indisponivel para o canvas Query atual."));
+                liveSql.Recompile();
+                CurrentShell.OutputPreview.OpenForQuery(queryCanvas, liveSql, liveSql.ProviderLabel);
                 await Task.CompletedTask;
                 return;
             }
+
+            case WorkspaceDocumentPreviewKind.Ddl:
+            {
+                await ViewDdlSqlAsync();
+                return;
+            }
+
             default:
             {
                 var contract = CurrentShell.ActivePreviewContract;

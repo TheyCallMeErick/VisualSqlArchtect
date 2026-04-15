@@ -27,6 +27,26 @@ public class OutputPreviewModalControlTemplateRegressionTests
         Assert.Contains("FontFamily\" Value=\"{StaticResource MonoFont}\"", xaml);
     }
 
+    [Fact]
+    public void DdlOutput_StructureDiagnosticsTabHostsSchemaAnalysisWorkspaceControl()
+    {
+        string xaml = ReadControlXaml();
+
+        Assert.Contains("<shell:DdlSchemaAnalysisWorkspaceControl", xaml);
+        Assert.Contains("ShowStructureDiagnosticsContent", xaml);
+        Assert.Contains("DataContext=\"{Binding DdlTool}\"", xaml);
+    }
+
+    [Fact]
+    public void DdlOutput_CanvasDiagnosticsTabKeepsCanvasDiagnosticsControl()
+    {
+        string xaml = ReadControlXaml();
+
+        Assert.Contains("<ctrl:SidebarDiagnosticsControl", xaml);
+        Assert.Contains("ShowCanvasDiagnosticsContent", xaml);
+        Assert.Contains("DataContext=\"{Binding Diagnostics}\"", xaml);
+    }
+
     private static string ReadControlXaml()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

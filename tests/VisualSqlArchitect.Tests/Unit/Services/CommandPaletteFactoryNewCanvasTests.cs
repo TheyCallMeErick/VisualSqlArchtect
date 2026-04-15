@@ -88,6 +88,7 @@ public class CommandPaletteFactoryNewCanvasTests
         var window = (Window)FormatterServices.GetUninitializedObject(typeof(Window));
 #pragma warning restore SYSLIB0050
         var vm = new CanvasViewModel();
+        SeedValidQueryCanvas(vm);
         var shell = new ShellViewModel(vm, connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
         var fileOps = new FileOperationsService(window, vm);
         var export = new ExportService(window, vm);
@@ -108,7 +109,6 @@ public class CommandPaletteFactoryNewCanvasTests
         var cmd = Assert.Single(service.ViewModel.Results, r => r.Shortcut == "F3");
         cmd.Execute();
 
-        Assert.True(vm.DataPreview.IsVisible);
         Assert.True(shell.OutputPreview.IsVisible);
         Assert.Equal(OutputPreviewModalViewModel.EOutputPreviewMode.Query, shell.OutputPreview.Mode);
     }
@@ -122,7 +122,7 @@ public class CommandPaletteFactoryNewCanvasTests
         var queryVm = new CanvasViewModel();
         var shell = new ShellViewModel(queryVm, connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
         var ddlVm = shell.EnsureDdlCanvas();
-        shell.SetActiveMode(ShellViewModel.AppMode.Ddl);
+        shell.ActivateDocument(WorkspaceDocumentType.DdlCanvas);
         var fileOps = new FileOperationsService(window, queryVm, ddlVm);
         var export = new ExportService(window, queryVm);
         var preview = new PreviewService(window, queryVm);
@@ -147,7 +147,7 @@ public class CommandPaletteFactoryNewCanvasTests
     }
 
     [Fact]
-    public void TogglePreviewCommand_InDdlMode_UsesInjectedActiveCanvasAccessor()
+    public void TogglePreviewCommand_InDdlMode_UsesShellDdlCanvas()
     {
 #pragma warning disable SYSLIB0050
         var window = (Window)FormatterServices.GetUninitializedObject(typeof(Window));
@@ -156,7 +156,14 @@ public class CommandPaletteFactoryNewCanvasTests
         var shell = new ShellViewModel(queryVm, connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
         var ensuredDdlCanvas = shell.EnsureDdlCanvas();
         var activeDdlCanvas = CreateValidDdlCanvas();
-        shell.SetActiveMode(ShellViewModel.AppMode.Ddl);
+        shell.ActivateDocument(WorkspaceDocumentType.DdlCanvas);
+
+        ensuredDdlCanvas.Nodes.Clear();
+        ensuredDdlCanvas.Connections.Clear();
+        foreach (var node in activeDdlCanvas.Nodes)
+            ensuredDdlCanvas.Nodes.Add(node);
+        foreach (var conn in activeDdlCanvas.Connections)
+            ensuredDdlCanvas.Connections.Add(conn);
 
         var fileOps = new FileOperationsService(window, queryVm, ensuredDdlCanvas);
         var export = new ExportService(window, queryVm);
@@ -191,7 +198,7 @@ public class CommandPaletteFactoryNewCanvasTests
         var queryVm = new CanvasViewModel();
         var shell = new ShellViewModel(queryVm, connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
         var ddlVm = CreateValidDdlCanvas();
-        shell.SetActiveMode(ShellViewModel.AppMode.Ddl);
+        shell.ActivateDocument(WorkspaceDocumentType.DdlCanvas);
 
         // Ensure shell DDL canvas is the one with valid output graph.
         // We can't directly set DdlCanvas, so materialize then copy content.
@@ -235,7 +242,7 @@ public class CommandPaletteFactoryNewCanvasTests
 #pragma warning restore SYSLIB0050
         var queryVm = new CanvasViewModel();
         var shell = new ShellViewModel(queryVm, connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
-        shell.SetActiveDocumentType(WorkspaceDocumentType.QueryCanvas);
+        shell.ActivateDocument(WorkspaceDocumentType.QueryCanvas);
 
         var fileOps = new FileOperationsService(window, queryVm);
         var export = new ExportService(window, queryVm);
@@ -271,7 +278,7 @@ public class CommandPaletteFactoryNewCanvasTests
         var queryVm = new CanvasViewModel();
         var shell = new ShellViewModel(queryVm, connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
         CanvasViewModel ddlVm = shell.EnsureDdlCanvas();
-        shell.SetActiveDocumentType(WorkspaceDocumentType.DdlCanvas);
+        shell.ActivateDocument(WorkspaceDocumentType.DdlCanvas);
 
         var fileOps = new FileOperationsService(window, queryVm, ddlVm);
         var export = new ExportService(window, queryVm);
@@ -332,5 +339,22 @@ public class CommandPaletteFactoryNewCanvasTests
 
         ddlCanvas.LiveDdl!.Recompile();
         return ddlCanvas;
+    }
+
+    private static void SeedValidQueryCanvas(CanvasViewModel canvas)
+    {
+        var table = new NodeViewModel(NodeDefinitionRegistry.Get(NodeType.TableSource), new Point(0, 0));
+        table.Parameters["table_full_name"] = "public.orders";
+
+        var output = new NodeViewModel(NodeDefinitionRegistry.Get(NodeType.ResultOutput), new Point(220, 0));
+
+        canvas.Nodes.Add(table);
+        canvas.Nodes.Add(output);
+        canvas.Connections.Add(new ConnectionViewModel(
+            table.OutputPins.First(p => p.Name == "*"),
+            new Point(0, 0),
+            new Point(10, 10))
+        { ToPin = output.InputPins.First(p => p.Name == "column") });
+
     }
 }

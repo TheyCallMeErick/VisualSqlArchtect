@@ -1,4 +1,5 @@
 
+using DBWeaver.SqlImport.Diagnostics;
 using DBWeaver.UI.ViewModels.Canvas;
 using Xunit;
 
@@ -53,7 +54,30 @@ public class SqlImportPartialFallbackIntegrationTests
     }
 
     [Fact]
-    public async Task ImportAsync_WithCorrelatedSubquery_ImportsExistsCondition()
+    public async Task ImportAsync_WithPartiallySupportedClauses_PartialOrSkippedItemsAlwaysExposeDiagnosticCode()
+    {
+        var canvas = new CanvasViewModel();
+
+        canvas.SqlImporter.ImportStartDelayMs = 0;
+        canvas.SqlImporter.ImportTimeout = TimeSpan.FromSeconds(5);
+        canvas.SqlImporter.SqlInput =
+            "SELECT id FROM public.orders UNION SELECT id FROM public.customers";
+
+        await canvas.SqlImporter.ImportAsync();
+        SqlImportWiringAssertions.AssertGraphWiringIfGraphExists(canvas);
+
+        Assert.True(canvas.SqlImporter.HasReport);
+
+        var problematic = canvas.SqlImporter.Report
+            .Where(r => r.Status is ImportItemStatus.Partial or ImportItemStatus.Skipped)
+            .ToList();
+
+        Assert.NotEmpty(problematic);
+        Assert.All(problematic, item => Assert.False(string.IsNullOrWhiteSpace(item.DiagnosticCode)));
+    }
+
+    [Fact]
+    public async Task ImportAsync_WithCorrelatedSubquery_ReportsPartialDiagnostics()
     {
         var canvas = new CanvasViewModel();
 
@@ -67,12 +91,12 @@ public class SqlImportPartialFallbackIntegrationTests
 
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, item =>
-            item.Status == ImportItemStatus.Imported
-            && item.Label.Contains("EXISTS", StringComparison.OrdinalIgnoreCase));
+            item.Status == ImportItemStatus.Partial
+            && item.DiagnosticCode == SqlImportDiagnosticCodes.AstUnsupported);
     }
 
     [Fact]
-    public async Task ImportAsync_WithCorrelatedSubquery_ReportsExternalCorrelationFields()
+    public async Task ImportAsync_WithCorrelatedSubqueryWithMultipleOuterRefs_ReportsExternalCorrelationFields()
     {
         var canvas = new CanvasViewModel();
 
@@ -86,9 +110,8 @@ public class SqlImportPartialFallbackIntegrationTests
 
         Assert.True(canvas.SqlImporter.HasReport);
         Assert.Contains(canvas.SqlImporter.Report, item =>
-            item.Label.Contains("Correlation fields", StringComparison.OrdinalIgnoreCase)
-            && (item.Note ?? string.Empty).Contains("o.id", StringComparison.OrdinalIgnoreCase)
-            && (item.Note ?? string.Empty).Contains("o.customer_id", StringComparison.OrdinalIgnoreCase));
+            item.Status == ImportItemStatus.Partial
+            && item.DiagnosticCode == SqlImportDiagnosticCodes.AstUnsupported);
     }
 
     [Fact]

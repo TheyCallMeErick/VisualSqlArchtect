@@ -321,6 +321,13 @@ public partial class MainWindow : Window
         _connectionModule ??= new ConnectionWorkspaceModule(
             getConnectionManager: () =>
             {
+                ConnectionManagerViewModel? sidebarManager = CurrentShell.ActiveDiagramSidebar?.EffectiveConnectionManager;
+                if (sidebarManager is not null)
+                {
+                    WireConnectionActivation(sidebarManager);
+                    return sidebarManager;
+                }
+
                 if (CurrentShell.ActiveCanvas is not null)
                 {
                     WireConnectionActivation(CurrentShell.ActiveCanvas.ConnectionManager);
@@ -408,10 +415,10 @@ public partial class MainWindow : Window
         IReadOnlyList<IStorageFile> files = await StorageProvider.OpenFilePickerAsync(
             new FilePickerOpenOptions
             {
-                Title = L("file.openDialog.title", "Open Canvas"),
+                Title = L("file.openDialog.title", "Abrir Canvas"),
                 FileTypeFilter =
                 [
-                    new FilePickerFileType("SQL Architect Canvas")
+                    new FilePickerFileType(L("file.openDialog.canvasType", "Canvas SQL Architect"))
                     {
                         Patterns = ["*.vsaq"],
                         MimeTypes = ["application/json"],
@@ -487,7 +494,7 @@ public partial class MainWindow : Window
             activeDocumentTypeResolver: () => CurrentShell.ActiveWorkspaceDocumentType ?? WorkspaceDocumentType.QueryCanvas,
             applyActiveDocumentType: documentType =>
             {
-                CurrentShell.SetActiveDocumentType(documentType);
+                CurrentShell.ActivateDocument(documentType);
                 SyncModeToggleState();
             },
             workspaceDocumentsResolver: () => CurrentShell.OpenWorkspaceDocuments,
@@ -506,14 +513,14 @@ public partial class MainWindow : Window
             {
                 if (!hasQueryContent && hasDdlContent)
                 {
-                    CurrentShell.SetActiveDocumentType(WorkspaceDocumentType.DdlCanvas);
+                    CurrentShell.ActivateDocument(WorkspaceDocumentType.DdlCanvas);
                     SyncModeToggleState();
                 }
             },
             activeDocumentTypeResolver: () => CurrentShell.ActiveWorkspaceDocumentType ?? WorkspaceDocumentType.QueryCanvas,
             applyActiveDocumentType: documentType =>
             {
-                CurrentShell.SetActiveDocumentType(documentType);
+                CurrentShell.ActivateDocument(documentType);
                 SyncModeToggleState();
             },
             workspaceDocumentsResolver: () => CurrentShell.OpenWorkspaceDocuments,
@@ -521,6 +528,11 @@ public partial class MainWindow : Window
             applyWorkspaceDocumentsSnapshot: snapshot =>
             {
                 CurrentShell.RestoreWorkspaceDocuments(snapshot);
+                SyncModeToggleState();
+            },
+            applySqlEditorSeedScripts: scripts =>
+            {
+                CurrentShell.ImportMigratedSqlScriptsToSqlEditor(scripts);
                 SyncModeToggleState();
             },
             invalidateActiveCanvasWires: InvalidateActiveDiagramCanvasWires,
@@ -617,7 +629,7 @@ public partial class MainWindow : Window
         try
         {
             await OpenModeAwareOutputPreviewAsync();
-            CurrentShell.OutputPreview.ShowDiagnosticsTabCommand.Execute(null);
+            CurrentShell.OutputPreview.ShowCanvasDiagnosticsTabCommand.Execute(null);
         }
         catch (Exception ex)
         {

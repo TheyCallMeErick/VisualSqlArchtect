@@ -1,4 +1,5 @@
 ﻿using DBWeaver.UI.Services.Benchmark;
+using DBWeaver.UI.Services.Workspace.Models;
 
 using Xunit;
 
@@ -110,6 +111,28 @@ public class ShellViewModelTests
         Assert.False(string.IsNullOrWhiteSpace(vm.SettingsSectionTitle));
         Assert.NotEqual(languageTitle, vm.SettingsSectionTitle);
         Assert.False(string.IsNullOrWhiteSpace(vm.SettingsSectionSubtitle));
+    }
+
+    [Fact]
+    public void SetSqlEditorExecutionSafetyOptions_PropagatesToShellAndDocumentSqlEditors()
+    {
+        var vm = new ShellViewModel(connectionManagerViewModelFactory: global::DBWeaver.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
+
+        _ = vm.OpenNewDocument(WorkspaceDocumentType.SqlEditor);
+        SqlEditorViewModel? documentEditor = vm.ActiveSqlEditorDocument;
+
+        Assert.NotNull(documentEditor);
+        Assert.False(ReferenceEquals(vm.SqlEditor, documentEditor));
+
+        vm.SetSqlEditorExecutionSafetyOptions(
+            top1000WithoutWhereEnabled: false,
+            protectMutationWithoutWhereEnabled: true);
+
+        Assert.False(vm.SqlEditor.Top1000WithoutWhereEnabled);
+        Assert.True(vm.SqlEditor.ProtectMutationWithoutWhereEnabled);
+
+        Assert.False(documentEditor!.Top1000WithoutWhereEnabled);
+        Assert.True(documentEditor.ProtectMutationWithoutWhereEnabled);
     }
 }
 
