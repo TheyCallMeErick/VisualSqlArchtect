@@ -32,14 +32,17 @@
 
     <ScrollViewer Grid.Row="1"
                   HorizontalScrollBarVisibility="Disabled"
-                  VerticalScrollBarVisibility="Auto">
-      <StackPanel Spacing="8" IsVisible="{Binding HasFilteredSchemaTables}">
-        <Expander x:Name="SchemaTableExpander"
-                  IsVisible="False"/>
-        <ItemsControl ItemsSource="{Binding FilteredSchemaTables}">
-          <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="vm:SqlEditorSchemaTableItem">
-              <Expander Margin="0,0,0,6">
+                  VerticalScrollBarVisibility="Auto"
+                  IsVisible="{Binding HasFilteredSchemaTables}">
+      <ItemsControl ItemsSource="{Binding FilteredSchemaTables}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <VirtualizingStackPanel/>
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:SqlEditorSchemaTableItem">
+            <Expander Margin="0,0,0,6">
                 <Expander.Header>
                   <Grid ColumnDefinitions="*,Auto" Margin="0,0,4,0">
                     <StackPanel Grid.Column="0" Spacing="2">
@@ -73,75 +76,74 @@
                   </Grid>
                 </Expander.Header>
 
-                <ItemsControl ItemsSource="{Binding Columns}">
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="vm:SqlEditorSchemaColumnItem">
-                      <Border Margin="0,3,0,0"
-                              Padding="8,6"
-                              CornerRadius="{StaticResource RadiusSM}"
-                              Background="{StaticResource Bg1Brush}">
-                        <Grid ColumnDefinitions="Auto,*,Auto">
-                          <mi:MaterialIcon Grid.Column="0"
-                                           Kind="{Binding TypeIcon}"
-                                           Width="14"
-                                           Height="14"
-                                           VerticalAlignment="Center"
-                                           Foreground="{StaticResource AccentPrimaryHoverBrush}"/>
+              <ItemsControl ItemsSource="{Binding Columns}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:SqlEditorSchemaColumnItem">
+                    <Border Margin="0,3,0,0"
+                            Padding="8,6"
+                            CornerRadius="{StaticResource RadiusSM}"
+                            Background="{StaticResource Bg1Brush}">
+                      <Grid ColumnDefinitions="Auto,*,Auto">
+                        <mi:MaterialIcon Grid.Column="0"
+                                         Kind="{Binding TypeIcon}"
+                                         Width="14"
+                                         Height="14"
+                                         VerticalAlignment="Center"
+                                         Foreground="{StaticResource AccentPrimaryHoverBrush}"/>
 
-                          <StackPanel Grid.Column="1" Spacing="1">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                              <TextBlock Text="{Binding Name}"
-                                         FontFamily="{StaticResource MonoFont}"
-                                         FontWeight="{StaticResource FontWeightMonoStrong}"
-                                         Foreground="{StaticResource TextPrimaryBrush}"/>
-                              <TextBlock Text="{Binding DataType}"
-                                         FontSize="{StaticResource FontSizeCaption}"
-                                         Foreground="{StaticResource TextMutedBrush}"/>
-                            </StackPanel>
-                            <TextBlock Text="{Binding RelatedTable, StringFormat='Relaciona com {0}'}"
-                                       IsVisible="{Binding HasRelationship}"
+                        <StackPanel Grid.Column="1" Spacing="1">
+                          <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="{Binding Name}"
+                                       FontFamily="{StaticResource MonoFont}"
+                                       FontWeight="{StaticResource FontWeightMonoStrong}"
+                                       Foreground="{StaticResource TextPrimaryBrush}"/>
+                            <TextBlock Text="{Binding DataType}"
                                        FontSize="{StaticResource FontSizeCaption}"
-                                       Foreground="{StaticResource AccentPrimaryHoverBrush}"/>
+                                       Foreground="{StaticResource TextMutedBrush}"/>
                           </StackPanel>
+                          <TextBlock Text="{Binding RelatedTable, StringFormat='Relaciona com {0}'}"
+                                     IsVisible="{Binding HasRelationship}"
+                                     FontSize="{StaticResource FontSizeCaption}"
+                                     Foreground="{StaticResource AccentPrimaryHoverBrush}"/>
+                        </StackPanel>
 
-                          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <mi:MaterialIcon Kind="KeyVariant"
-                                             Width="13"
-                                             Height="13"
-                                             IsVisible="{Binding IsPrimaryKey}"
-                                             Foreground="#5CE59D"/>
-                            <mi:MaterialIcon Kind="SourceBranch"
-                                             Width="13"
-                                             Height="13"
-                                             IsVisible="{Binding IsForeignKey}"
-                                             Foreground="#72B8FF"/>
-                            <mi:MaterialIcon Kind="Magnify"
-                                             Width="13"
-                                             Height="13"
-                                             IsVisible="{Binding IsIndexed}"
-                                             Foreground="#FFCF75"/>
-                            <mi:MaterialIcon Kind="CertificateOutline"
-                                             Width="13"
-                                             Height="13"
-                                             IsVisible="{Binding IsUnique}"
-                                             Foreground="#D6B5FF"/>
-                            <Button Padding="6,2"
-                                    MinHeight="20"
-                                    Tag="{Binding Name}"
-                                    Click="InsertColumnButton_Click">
-                              <mi:MaterialIcon Kind="Plus" Width="12" Height="12"/>
-                            </Button>
-                          </StackPanel>
-                        </Grid>
-                      </Border>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-              </Expander>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-      </StackPanel>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                          <mi:MaterialIcon Kind="KeyVariant"
+                                           Width="13"
+                                           Height="13"
+                                           IsVisible="{Binding IsPrimaryKey}"
+                                           Foreground="#5CE59D"/>
+                          <mi:MaterialIcon Kind="SourceBranch"
+                                           Width="13"
+                                           Height="13"
+                                           IsVisible="{Binding IsForeignKey}"
+                                           Foreground="#72B8FF"/>
+                          <mi:MaterialIcon Kind="Magnify"
+                                           Width="13"
+                                           Height="13"
+                                           IsVisible="{Binding IsIndexed}"
+                                           Foreground="#FFCF75"/>
+                          <mi:MaterialIcon Kind="CertificateOutline"
+                                           Width="13"
+                                           Height="13"
+                                           IsVisible="{Binding IsUnique}"
+                                           Foreground="#D6B5FF"/>
+                          <Button Padding="6,2"
+                                  MinHeight="20"
+                                  Tag="{Binding Name}"
+                                  Click="InsertColumnButton_Click">
+                            <mi:MaterialIcon Kind="Plus" Width="12" Height="12"/>
+                          </Button>
+                        </StackPanel>
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </Expander>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
     </ScrollViewer>
 
     <TextBlock Grid.Row="1"

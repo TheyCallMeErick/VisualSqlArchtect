@@ -41,4 +41,19 @@ public sealed class SqlSignatureHelpServiceTests
 
         Assert.Null(result);
     }
+
+    [Fact]
+    public void TryResolve_WithLargePrefixAndNearbyFunctionCall_ReturnsSignature()
+    {
+        var sut = new SqlSignatureHelpService();
+        string prefix = new string('x', 10_000);
+        string sql = $"{prefix}\nSELECT DATE_TRUNC('day', NOW())";
+        int caretOffset = sql.IndexOf("NOW", StringComparison.Ordinal);
+
+        SignatureHelpInfo? result = sut.TryResolve(sql, caretOffset, DatabaseProvider.Postgres);
+
+        Assert.NotNull(result);
+        Assert.Equal("DATE_TRUNC", result.Signature.Name);
+        Assert.Equal(1, result.ActiveParameterIndex);
+    }
 }

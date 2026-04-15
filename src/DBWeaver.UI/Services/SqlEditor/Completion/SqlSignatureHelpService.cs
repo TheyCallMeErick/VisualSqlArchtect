@@ -5,6 +5,7 @@ namespace DBWeaver.UI.Services.SqlEditor;
 
 public sealed class SqlSignatureHelpService
 {
+    private const int MaxBackwardScanChars = 2048;
     private readonly FunctionSignatureRegistry _registry;
 
     public SqlSignatureHelpService(FunctionSignatureRegistry? registry = null)
@@ -36,8 +37,9 @@ public sealed class SqlSignatureHelpService
 
     private static bool TryFindCallOpenParen(string text, int caretOffset, out int openParenOffset)
     {
+        int minOffset = Math.Max(0, caretOffset - MaxBackwardScanChars);
         int depth = 0;
-        for (int i = caretOffset - 1; i >= 0; i--)
+        for (int i = caretOffset - 1; i >= minOffset; i--)
         {
             char c = text[i];
             if (c == ')')

@@ -8,6 +8,7 @@ namespace DBWeaver.UI.Controls.SqlEditor;
 
 internal sealed class SqlBracketHighlightRenderer : IBackgroundRenderer
 {
+    private const int MaxMatchScanChars = 2048;
     private int _primaryOffset = -1;
     private int _secondaryOffset = -1;
     private bool _isError;
@@ -81,8 +82,9 @@ internal sealed class SqlBracketHighlightRenderer : IBackgroundRenderer
 
     private static int FindForward(string text, int startOffset, char open, char close)
     {
+        int maxOffset = Math.Min(text.Length - 1, startOffset + MaxMatchScanChars);
         int balance = 0;
-        for (int i = startOffset; i < text.Length; i++)
+        for (int i = startOffset; i <= maxOffset; i++)
         {
             char current = text[i];
             if (current == open)
@@ -99,8 +101,9 @@ internal sealed class SqlBracketHighlightRenderer : IBackgroundRenderer
 
     private static int FindBackward(string text, int startOffset, char open, char close)
     {
+        int minOffset = Math.Max(0, startOffset - MaxMatchScanChars);
         int balance = 0;
-        for (int i = startOffset; i >= 0; i--)
+        for (int i = startOffset; i >= minOffset; i--)
         {
             char current = text[i];
             if (current == close)
@@ -117,13 +120,15 @@ internal sealed class SqlBracketHighlightRenderer : IBackgroundRenderer
 
     private static int FindQuotePair(string text, int quoteOffset, char quoteChar)
     {
-        for (int i = quoteOffset + 1; i < text.Length; i++)
+        int maxOffset = Math.Min(text.Length - 1, quoteOffset + MaxMatchScanChars);
+        for (int i = quoteOffset + 1; i <= maxOffset; i++)
         {
             if (text[i] == quoteChar && !IsEscaped(text, i))
                 return i;
         }
 
-        for (int i = quoteOffset - 1; i >= 0; i--)
+        int minOffset = Math.Max(0, quoteOffset - MaxMatchScanChars);
+        for (int i = quoteOffset - 1; i >= minOffset; i--)
         {
             if (text[i] == quoteChar && !IsEscaped(text, i))
                 return i;

@@ -29,13 +29,6 @@ public sealed class SqlEditorPropertyChangePublisher
         "CursorPositionText",
         "IndentationStatusText",
         "ShowDialectSelector",
-        "SchemaTables",
-        "SchemaSearchText",
-        "FilteredSchemaTables",
-        "HasFilteredSchemaTables",
-        "HasSchemaTables",
-        "IsSchemaEmpty",
-        "SchemaEmptyText",
         "ResultTabs",
         "SelectedOutputPane",
         "IsResultsOutputPaneSelected",
@@ -119,6 +112,17 @@ public sealed class SqlEditorPropertyChangePublisher
         "ManyTabsWarningText",
     ];
 
+    private static readonly string[] SchemaProperties =
+    [
+        "SchemaTables",
+        "SchemaSearchText",
+        "FilteredSchemaTables",
+        "HasFilteredSchemaTables",
+        "HasSchemaTables",
+        "IsSchemaEmpty",
+        "SchemaEmptyText",
+    ];
+
     public void PublishSqlPanelChanges(Action<string> raisePropertyChanged)
     {
         ArgumentNullException.ThrowIfNull(raisePropertyChanged);
@@ -130,6 +134,13 @@ public sealed class SqlEditorPropertyChangePublisher
     {
         ArgumentNullException.ThrowIfNull(raisePropertyChanged);
         foreach (string property in TabStateProperties)
+            raisePropertyChanged(property);
+    }
+
+    public void PublishSchemaChanges(Action<string> raisePropertyChanged)
+    {
+        ArgumentNullException.ThrowIfNull(raisePropertyChanged);
+        foreach (string property in SchemaProperties)
             raisePropertyChanged(property);
     }
 }

@@ -39,4 +39,27 @@ public sealed class SqlEditorCompletionControllerTests
         Assert.Equal("DATE_TRUNC", help!.Signature.Name);
         Assert.False(string.IsNullOrWhiteSpace(help!.DisplayText));
     }
+
+    [Fact]
+    public async Task RequestCompletionAsync_ReturnsFinalSnapshotAndReportsProgress()
+    {
+        var sut = new SqlEditorCompletionController();
+        var stages = new List<SqlCompletionPipelineStage>();
+        var progress = new Progress<SqlCompletionStageSnapshot>(snapshot => stages.Add(snapshot.Stage));
+
+        SqlCompletionStageSnapshot snapshot = await sut.RequestCompletionAsync(
+            fullText: "SEL",
+            caretOffset: 3,
+            metadata: null,
+            provider: DatabaseProvider.Postgres,
+            connectionProfileId: null,
+            progress: progress,
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(snapshot.IsFinal);
+        Assert.Equal(SqlCompletionPipelineStage.Final, snapshot.Stage);
+        Assert.Contains(SqlCompletionPipelineStage.Tier0, stages);
+        Assert.Contains(SqlCompletionPipelineStage.Tier3, stages);
+        Assert.Contains(SqlCompletionPipelineStage.Final, stages);
+    }
 }

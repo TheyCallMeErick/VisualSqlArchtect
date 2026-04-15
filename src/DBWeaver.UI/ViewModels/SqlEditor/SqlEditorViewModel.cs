@@ -23,6 +23,10 @@ public sealed class SqlEditorViewModel : ViewModelBase
     private const double MaxResultsSheetHeight = 720;
     private const int DraftMinimumTextLength = 5;
     private const int HeavyCompletionMetadataTableThreshold = 300;
+    private const int DefaultCompletionDebounceMs = 80;
+    private const int MinCompletionDebounceMs = 60;
+    private const int MaxCompletionDebounceMs = 160;
+    private const int CompletionDebounceCalibrationSamples = 12;
     private static readonly TimeSpan DraftAutoSaveDebounce = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan DraftAutoSaveInterval = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan CompletionMetadataSamplingInterval = TimeSpan.FromSeconds(2);
@@ -92,6 +96,12 @@ public sealed class SqlEditorViewModel : ViewModelBase
     private bool _hasPendingDraftAutoSave;
     private bool _draftAutoSaveTimersStarted;
     private string? _sidebarSelectedConnectionProfileId;
+    private DbMetadata? _cachedSchemaMetadata;
+    private IReadOnlyList<SqlEditorSchemaTableItem> _schemaTablesCache = [];
+    private IReadOnlyList<SqlEditorSchemaTableItem> _filteredSchemaTablesCache = [];
+    private string _filteredSchemaNeedleCache = string.Empty;
+    private bool _isSchemaTablesCacheValid;
+    private bool _isFilteredSchemaTablesCacheValid;
 
     public SqlEditorViewModel(
         DatabaseProvider initialProvider = DatabaseProvider.Postgres,
@@ -657,29 +667,46 @@ public sealed class SqlEditorViewModel : ViewModelBase
             if (!Set(ref _schemaSearchText, normalized))
                 return;
 
-            RaisePropertyChanged(nameof(FilteredSchemaTables));
-            RaisePropertyChanged(nameof(HasFilteredSchemaTables));
-            RaisePropertyChanged(nameof(IsSchemaEmpty));
-            RaisePropertyChanged(nameof(SchemaEmptyText));
+            _isFilteredSchemaTablesCacheValid = false;
+            RaiseSchemaPropertiesChanged();
         }
     }
-    public IReadOnlyList<SqlEditorSchemaTableItem> SchemaTables => BuildSchemaTables();
+    public IReadOnlyList<SqlEditorSchemaTableItem> SchemaTables
+    {
+        get
+        {
+            EnsureSchemaTablesCache();
+            return _schemaTablesCache;
+        }
+    }
     public IReadOnlyList<SqlEditorSchemaTableItem> FilteredSchemaTables
     {
         get
         {
-            IReadOnlyList<SqlEditorSchemaTableItem> tables = SchemaTables;
+            EnsureSchemaTablesCache();
+
             if (string.IsNullOrWhiteSpace(SchemaSearchText))
-                return tables;
+                return _schemaTablesCache;
+
+            if (_isFilteredSchemaTablesCacheValid
+                && string.Equals(_filteredSchemaNeedleCache, SchemaSearchText, StringComparison.Ordinal))
+            {
+                return _filteredSchemaTablesCache;
+            }
 
             string needle = SchemaSearchText.Trim();
-            return tables
+            _filteredSchemaTablesCache = _schemaTablesCache
                 .Where(table =>
                     _textSearch.Matches(
                         needle,
                         table.FullName,
-                        string.Join(' ', table.Columns.Select(column => $"{column.Name} {column.DataType}"))))
+                        table.SearchKey,
+                        table.ColumnSearchText))
                 .ToList();
+
+            _filteredSchemaNeedleCache = needle;
+            _isFilteredSchemaTablesCacheValid = true;
+            return _filteredSchemaTablesCache;
         }
     }
     public bool HasSchemaTables => SchemaTables.Count > 0;
@@ -738,9 +765,13 @@ public sealed class SqlEditorViewModel : ViewModelBase
             : string.Format(
                 L(
                     "sqlEditor.completion.telemetry.summary",
-                    "Completion p95: {0} ms    Ultima: {1} ms    Amostras: {2}    Budget<= {3} ms"),
+                    "Completion p95: {0} ms    Ultima: {1} ms    Engine p95: {2} ms    Fila p95: {3} ms    UI p95: {4} ms    UI ultima: {5} ms    Amostras: {6}    Budget<= {7} ms"),
                 CompletionTelemetry.P95DurationMs,
                 CompletionTelemetry.LastDurationMs,
+                CompletionTelemetry.P95EngineDurationMs,
+                CompletionTelemetry.P95DispatchDelayMs,
+                CompletionTelemetry.P95UiApplyDurationMs,
+                CompletionTelemetry.LastUiApplyDurationMs,
                 CompletionTelemetry.SampleCount,
                 CompletionTelemetry.BudgetMs);
     public string ExecutionTelemetryText =>
@@ -1098,6 +1129,23 @@ public sealed class SqlEditorViewModel : ViewModelBase
             ActiveTabConnectionProfileId);
     }
 
+    public Task<SqlCompletionStageSnapshot> RequestCompletionAsync(
+        string fullText,
+        int caretOffset,
+        IProgress<SqlCompletionStageSnapshot>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        DbMetadata? metadata = _metadataResolver();
+        return _completionController.RequestCompletionAsync(
+            fullText,
+            caretOffset,
+            metadata,
+            ActiveTabProvider,
+            ActiveTabConnectionProfileId,
+            progress,
+            cancellationToken);
+    }
+
     public bool IsHeavyCompletionMetadataContext()
     {
         DateTimeOffset now = DateTimeOffset.UtcNow;
@@ -1134,6 +1182,56 @@ public sealed class SqlEditorViewModel : ViewModelBase
         long durationMs = Math.Max(0, (long)Math.Round(latency.TotalMilliseconds));
         ActiveTab.CompletionTelemetry = ActiveTab.CompletionTelemetryTracker.AddSample(durationMs);
         RaiseSqlPanelPropertiesChanged();
+    }
+
+    public void RecordCompletionBreakdown(SqlCompletionTelemetry telemetry)
+    {
+        ArgumentNullException.ThrowIfNull(telemetry);
+
+        long totalMs = Math.Max(0, telemetry.TotalMs);
+        long engineMs = Math.Max(0, telemetry.WorkerExecutionMs > 0 ? telemetry.WorkerExecutionMs : telemetry.TotalMs);
+        long dispatchMs = Math.Max(0, telemetry.WorkerDispatchDelayMs);
+
+        ActiveTab.CompletionTelemetry = ActiveTab.CompletionTelemetryTracker.AddSample(totalMs);
+        ActiveTab.CompletionTelemetry = ActiveTab.CompletionTelemetryTracker.AddEngineSample(engineMs);
+        ActiveTab.CompletionTelemetry = ActiveTab.CompletionTelemetryTracker.AddDispatchSample(dispatchMs);
+        RaiseSqlPanelPropertiesChanged();
+    }
+
+    public void RecordCompletionUiApplyLatency(TimeSpan latency)
+    {
+        long durationMs = Math.Max(0, (long)Math.Round(latency.TotalMilliseconds));
+        ActiveTab.CompletionTelemetry = ActiveTab.CompletionTelemetryTracker.AddUiApplySample(durationMs);
+        RaiseSqlPanelPropertiesChanged();
+    }
+
+    public int GetRecommendedCompletionDebounceMs(bool isHeavyMetadataContext)
+    {
+        SqlEditorCompletionTelemetry telemetry = CompletionTelemetry;
+        int debounceMs = DefaultCompletionDebounceMs;
+
+        if (telemetry.SampleCount >= CompletionDebounceCalibrationSamples)
+        {
+            long p95 = telemetry.P95DurationMs;
+            long budget = Math.Max(1, telemetry.BudgetMs);
+            long effectiveP95 = Math.Min(p95, budget * 2);
+
+            if (effectiveP95 <= (long)Math.Round(budget * 0.80))
+                debounceMs = 70;
+            else if (effectiveP95 <= budget)
+                debounceMs = 80;
+            else if (effectiveP95 <= (long)Math.Round(budget * 1.30))
+                debounceMs = 90;
+            else if (effectiveP95 <= (long)Math.Round(budget * 1.60))
+                debounceMs = 100;
+            else
+                debounceMs = 110;
+        }
+
+        if (isHeavyMetadataContext)
+            debounceMs += 15;
+
+        return Math.Clamp(debounceMs, MinCompletionDebounceMs, MaxCompletionDebounceMs);
     }
 
     public async Task<bool> SaveActiveTabAsync(string? filePath = null, CancellationToken ct = default)
@@ -1761,8 +1859,49 @@ public sealed class SqlEditorViewModel : ViewModelBase
     {
         RaisePropertyChanged(nameof(SharedConnectionManager));
         RaisePropertyChanged(nameof(HasSharedConnectionManager));
+        InvalidateSchemaTableCaches();
         SyncSidebarConnectionSelectionToActiveTab();
         RaiseSqlPanelPropertiesChanged();
+        RaiseSchemaPropertiesChanged();
+    }
+
+    private void RaiseSchemaPropertiesChanged()
+    {
+        _propertyChangePublisher.PublishSchemaChanges(RaisePropertyChanged);
+    }
+
+    private void InvalidateSchemaTableCaches()
+    {
+        _cachedSchemaMetadata = null;
+        _schemaTablesCache = [];
+        _filteredSchemaTablesCache = [];
+        _filteredSchemaNeedleCache = string.Empty;
+        _isSchemaTablesCacheValid = false;
+        _isFilteredSchemaTablesCacheValid = false;
+    }
+
+    private void EnsureSchemaTablesCache()
+    {
+        DbMetadata? metadata = _metadataResolver();
+        if (metadata is null)
+        {
+            if (_isSchemaTablesCacheValid && _schemaTablesCache.Count == 0)
+                return;
+
+            InvalidateSchemaTableCaches();
+            _isSchemaTablesCacheValid = true;
+            return;
+        }
+
+        if (_isSchemaTablesCacheValid && ReferenceEquals(_cachedSchemaMetadata, metadata))
+            return;
+
+        _schemaTablesCache = BuildSchemaTables(metadata);
+        _cachedSchemaMetadata = metadata;
+        _filteredSchemaTablesCache = [];
+        _filteredSchemaNeedleCache = string.Empty;
+        _isSchemaTablesCacheValid = true;
+        _isFilteredSchemaTablesCacheValid = false;
     }
 
     public bool TryBuildReportExportContext(out SqlEditorReportExportContext? context)
@@ -1975,11 +2114,13 @@ public sealed class SqlEditorViewModel : ViewModelBase
         SyncSidebarConnectionSelectionToActiveTab();
         TryHydrateResultFilterForTab(ActiveTab);
         TryHydrateExecutionHistoryForTab(ActiveTab);
+        InvalidateSchemaTableCaches();
         EnsureHistorySelection();
         SyncTabCommands();
         SyncDialectFromConnection();
         _propertyChangePublisher.PublishTabStateChanges(RaisePropertyChanged);
         RaiseSqlPanelPropertiesChanged();
+        RaiseSchemaPropertiesChanged();
         RaisePropertyChanged(nameof(CanExportReport));
         RaisePropertyChanged(nameof(ShouldShowResultsSheet));
         RaisePropertyChanged(nameof(HasHiddenColumnUndo));
@@ -2312,35 +2453,90 @@ public sealed class SqlEditorViewModel : ViewModelBase
         };
     }
 
-    private IReadOnlyList<SqlEditorSchemaTableItem> BuildSchemaTables()
+    private static IReadOnlyDictionary<string, string> BuildColumnRelationshipIndex(DbMetadata metadata)
     {
-        DbMetadata? metadata = _metadataResolver();
-        if (metadata is null)
-            return [];
+        var index = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (ForeignKeyRelation fk in metadata.AllForeignKeys)
+        {
+            string childKey = BuildColumnRelationshipKey(fk.ChildFullTable, fk.ChildColumn);
+            if (!index.ContainsKey(childKey))
+                index[childKey] = $"{fk.ParentFullTable}.{fk.ParentColumn}";
+
+            string parentKey = BuildColumnRelationshipKey(fk.ParentFullTable, fk.ParentColumn);
+            if (!index.ContainsKey(parentKey))
+                index[parentKey] = $"{fk.ChildFullTable}.{fk.ChildColumn}";
+        }
+
+        return index;
+    }
+
+    private static string BuildColumnRelationshipKey(string tableFullName, string columnName)
+        => $"{tableFullName}|{columnName}";
+
+    private static string ResolveRelatedTable(
+        string tableFullName,
+        string columnName,
+        IReadOnlyDictionary<string, string> relationshipIndex)
+    {
+        string key = BuildColumnRelationshipKey(tableFullName, columnName);
+        return relationshipIndex.TryGetValue(key, out string? related)
+            ? related
+            : string.Empty;
+    }
+
+    private static string BuildSchemaColumnSearchText(IReadOnlyList<SqlEditorSchemaColumnItem> columns)
+    {
+        if (columns.Count == 0)
+            return string.Empty;
+
+        var parts = new List<string>(columns.Count);
+        foreach (SqlEditorSchemaColumnItem column in columns)
+            parts.Add($"{column.Name} {column.DataType}");
+
+        return string.Join(' ', parts);
+    }
+
+    private static IReadOnlyList<SqlEditorSchemaColumnItem> BuildSchemaColumns(
+        TableMetadata table,
+        IReadOnlyDictionary<string, string> relationshipIndex)
+    {
+        return table.Columns
+            .OrderBy(column => column.OrdinalPosition)
+            .Select(column => new SqlEditorSchemaColumnItem
+            {
+                Name = column.Name,
+                DataType = column.DataType,
+                IsPrimaryKey = column.IsPrimaryKey,
+                IsForeignKey = column.IsForeignKey,
+                IsIndexed = column.IsIndexed,
+                IsUnique = column.IsUnique,
+                RelatedTable = ResolveRelatedTable(table.FullName, column.Name, relationshipIndex),
+                TypeIcon = ResolveTypeIcon(column),
+            })
+            .ToList();
+    }
+
+    private IReadOnlyList<SqlEditorSchemaTableItem> BuildSchemaTables(DbMetadata metadata)
+    {
+        IReadOnlyDictionary<string, string> relationshipIndex = BuildColumnRelationshipIndex(metadata);
 
         return metadata.Schemas
-            .SelectMany(schema => schema.Tables.Select(table => new SqlEditorSchemaTableItem
+            .SelectMany(schema => schema.Tables.Select(table =>
             {
+                IReadOnlyList<SqlEditorSchemaColumnItem> columns = BuildSchemaColumns(table, relationshipIndex);
+
+                return new SqlEditorSchemaTableItem
+                {
                 Schema = schema.Name,
                 Name = table.Name,
                 FullName = table.FullName,
-                Columns = table.Columns
-                    .OrderBy(column => column.OrdinalPosition)
-                    .Select(column => new SqlEditorSchemaColumnItem
-                    {
-                        Name = column.Name,
-                        DataType = column.DataType,
-                        IsPrimaryKey = column.IsPrimaryKey,
-                        IsForeignKey = column.IsForeignKey,
-                        IsIndexed = column.IsIndexed,
-                        IsUnique = column.IsUnique,
-                        RelatedTable = ResolveRelatedTable(table.FullName, column.Name, metadata),
-                        TypeIcon = ResolveTypeIcon(column),
-                    })
-                    .ToList(),
-                PrimaryKeyCount = table.Columns.Count(column => column.IsPrimaryKey),
-                ForeignKeyCount = table.Columns.Count(column => column.IsForeignKey),
-                IndexedColumnCount = table.Columns.Count(column => column.IsIndexed),
+                    ColumnSearchText = BuildSchemaColumnSearchText(columns),
+                    Columns = columns,
+                    PrimaryKeyCount = table.Columns.Count(column => column.IsPrimaryKey),
+                    ForeignKeyCount = table.Columns.Count(column => column.IsForeignKey),
+                    IndexedColumnCount = table.Columns.Count(column => column.IsIndexed),
+                };
             }))
             .OrderBy(table => table.Schema)
             .ThenBy(table => table.Name)

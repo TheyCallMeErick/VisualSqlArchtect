@@ -56,14 +56,45 @@ public sealed class SqlEditorViewModelTests
         var sut = new SqlEditorViewModel();
 
         for (int ms = 1; ms <= 20; ms++)
+        {
             sut.RecordCompletionLatency(TimeSpan.FromMilliseconds(ms));
+            sut.RecordCompletionUiApplyLatency(TimeSpan.FromMilliseconds(ms / 2.0));
+        }
 
         Assert.Equal(20, sut.CompletionTelemetry.SampleCount);
         Assert.Equal(20, sut.CompletionTelemetry.LastDurationMs);
         Assert.Equal(19, sut.CompletionTelemetry.P95DurationMs);
+        Assert.Equal(10, sut.CompletionTelemetry.LastUiApplyDurationMs);
+        Assert.Equal(10, sut.CompletionTelemetry.P95UiApplyDurationMs);
         Assert.True(sut.CompletionTelemetry.IsWithinBudget);
         Assert.Contains("Completion p95:", sut.CompletionTelemetryText, StringComparison.Ordinal);
+        Assert.Contains("Engine p95:", sut.CompletionTelemetryText, StringComparison.Ordinal);
+        Assert.Contains("Fila p95:", sut.CompletionTelemetryText, StringComparison.Ordinal);
+        Assert.Contains("UI p95:", sut.CompletionTelemetryText, StringComparison.Ordinal);
         Assert.Contains("Amostras: 20", sut.CompletionTelemetryText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RecordCompletionBreakdown_TracksEngineAndDispatchP95()
+    {
+        var sut = new SqlEditorViewModel();
+
+        for (int i = 0; i < 20; i++)
+        {
+            sut.RecordCompletionBreakdown(new SqlCompletionTelemetry
+            {
+                TotalMs = 120 + i,
+                WorkerExecutionMs = 70 + i,
+                WorkerDispatchDelayMs = 10 + i,
+            });
+        }
+
+        Assert.Equal(20, sut.CompletionTelemetry.SampleCount);
+        Assert.Equal(139, sut.CompletionTelemetry.LastDurationMs);
+        Assert.Equal(89, sut.CompletionTelemetry.LastEngineDurationMs);
+        Assert.Equal(29, sut.CompletionTelemetry.LastDispatchDelayMs);
+        Assert.True(sut.CompletionTelemetry.P95EngineDurationMs >= 88);
+        Assert.True(sut.CompletionTelemetry.P95DispatchDelayMs >= 28);
     }
 
     [Fact]
@@ -79,6 +110,33 @@ public sealed class SqlEditorViewModelTests
         Assert.Equal(240, sut.CompletionTelemetry.P95DurationMs);
         Assert.False(sut.CompletionTelemetry.IsWithinBudget);
         Assert.Contains("Budget<= 100 ms", sut.CompletionTelemetryText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GetRecommendedCompletionDebounceMs_WithLowSampleCount_ReturnsDefault()
+    {
+        var sut = new SqlEditorViewModel();
+
+        for (int i = 0; i < 5; i++)
+            sut.RecordCompletionLatency(TimeSpan.FromMilliseconds(200));
+
+        int debounce = sut.GetRecommendedCompletionDebounceMs(isHeavyMetadataContext: false);
+
+        Assert.Equal(80, debounce);
+    }
+
+    [Fact]
+    public void GetRecommendedCompletionDebounceMs_WithHighP95AndHeavyMetadata_IncreasesDebounce()
+    {
+        var sut = new SqlEditorViewModel();
+
+        for (int i = 0; i < 20; i++)
+            sut.RecordCompletionLatency(TimeSpan.FromMilliseconds(260));
+
+        int debounce = sut.GetRecommendedCompletionDebounceMs(isHeavyMetadataContext: true);
+
+        Assert.True(debounce >= 120);
+        Assert.True(debounce <= 140);
     }
 
     [Fact]

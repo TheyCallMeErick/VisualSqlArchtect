@@ -31,9 +31,15 @@ namespace DBWeaver.UI.Controls.SqlEditor;
 public partial class SqlEditorControl : UserControl
 {
     private const int LargeEditorCompletionThreshold = 10_000;
-    private const int CompletionDebounceMs = 80;
+    private const int DefaultCompletionDebounceMs = 80;
+    private const int AutoTriggerCompletionDebounceMs = 45;
+    private const int TypingBurstWindowMs = 140;
     private const int HeavyMetadataAutoCompletionCooldownMs = 140;
     private const int HoverDocsDebounceMs = 400;
+    private const int SignatureHelpDebounceMs = 70;
+    private const int BracketHighlightDebounceMs = 35;
+    private const int EditorTextSyncDebounceMs = 90;
+    private const int MaxRenderedCompletionSuggestions = 90;
 
     private TextEditor? _editor;
     private Border? _goToLineOverlay;
@@ -48,6 +54,8 @@ public partial class SqlEditorControl : UserControl
     private readonly SqlFoldingStrategy _sqlFoldingStrategy = new();
     private readonly SqlTokenizer _sqlTokenizer = new();
     private DispatcherTimer? _foldingRefreshTimer;
+    private CancellationTokenSource? _foldingRefreshCts;
+    private long _foldingRefreshVersion;
     private DispatcherTimer? _foldingChordTimer;
     private bool _awaitingFoldingChord;
     private DispatcherTimer? _goToLineHighlightTimer;
@@ -57,10 +65,20 @@ public partial class SqlEditorControl : UserControl
     private CompletionWindow? _completionWindow;
     private DispatcherTimer? _completionDebounceTimer;
     private DispatcherTimer? _hoverDocsDebounceTimer;
+    private DispatcherTimer? _signatureHelpDebounceTimer;
+    private DispatcherTimer? _bracketHighlightDebounceTimer;
+    private DispatcherTimer? _editorTextSyncDebounceTimer;
     private bool _completionOnDemandHintShown;
     private long _completionRequestVersion;
+    private CancellationTokenSource? _completionRequestCts;
+    private int _lastCompletionFingerprint;
+    private int _lastCompletionItemCount = -1;
+    private int _lastCompletionPrefixLength = -1;
     private long _lastHeavyMetadataAutoCompletionTickMs;
+    private long _lastEditorTextInputTickMs;
     private Point _lastHoverPointerPosition;
+    private bool _hasPendingEditorTextSync;
+    private string? _pendingEditorTextSyncTabId;
 
     public SqlEditorControl()
     {
@@ -69,7 +87,23 @@ public partial class SqlEditorControl : UserControl
         DataContextChanged += (_, _) => AttachViewModel();
         AttachedToVisualTree += (_, _) => FocusEditor();
         Loaded += (_, _) => EnsureEditorReady();
-        DetachedFromVisualTree += (_, _) => DisposeFoldingManager();
+        DetachedFromVisualTree += (_, _) => OnDetachedFromVisualTree();
+    }
+
+    private void OnDetachedFromVisualTree()
+    {
+        DisposeFoldingManager();
+        _foldingRefreshCts?.Cancel();
+        _foldingRefreshCts?.Dispose();
+        _foldingRefreshCts = null;
+        _completionRequestCts?.Cancel();
+        _completionRequestCts?.Dispose();
+        _completionRequestCts = null;
+        _signatureHelpDebounceTimer?.Stop();
+        _bracketHighlightDebounceTimer?.Stop();
+        _editorTextSyncDebounceTimer?.Stop();
+        FlushPendingEditorTextToViewModel();
+        ResetCompletionRenderCache();
     }
 
     private void ConfigureTextEditor()
@@ -149,6 +183,14 @@ public partial class SqlEditorControl : UserControl
         if (_editor is null || _vm is null)
             return;
 
+        if (string.Equals(_pendingEditorTextSyncTabId, _vm.ActiveTab.Id, StringComparison.Ordinal))
+            FlushPendingEditorTextToViewModel();
+        else
+        {
+            _hasPendingEditorTextSync = false;
+            _pendingEditorTextSyncTabId = null;
+        }
+
         EnsureEditorDocument();
         string text = _vm.ActiveTab.SqlText;
         bool editorDocumentMissing = _editor.Document is null;
@@ -181,7 +223,8 @@ public partial class SqlEditorControl : UserControl
         ApplyEditorExecutionState();
         UpdateViewModelCursorPosition();
         RefreshExecutionStatementHighlight();
-        UpdateSignatureHelpFromCaret();
+        ScheduleBracketHighlightRefresh(immediate: true);
+        ScheduleSignatureHelpRefresh(immediate: true);
     }
 
     private void ApplyEditorExecutionState()
@@ -199,16 +242,52 @@ public partial class SqlEditorControl : UserControl
         if (_editor is null || _vm is null)
             return;
 
-        string updated = _editor.Text ?? string.Empty;
-        if (string.Equals(_vm.ActiveTab.SqlText, updated, StringComparison.Ordinal))
-            return;
-
-        _vm.ActiveTab.SqlText = updated;
+        _hasPendingEditorTextSync = true;
+        _pendingEditorTextSyncTabId = _vm.ActiveTab.Id;
+        ScheduleEditorTextSync();
         _vm.ActiveTab.IsDirty = true;
         _vm.NotifyActiveTabEdited();
         _vm.ClearHoverDocumentation();
-        RefreshBracketHighlight();
         ScheduleFoldingRefresh();
+    }
+
+    private void ScheduleEditorTextSync()
+    {
+        if (_vm is null)
+            return;
+
+        _editorTextSyncDebounceTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(EditorTextSyncDebounceMs) };
+        _editorTextSyncDebounceTimer.Interval = TimeSpan.FromMilliseconds(EditorTextSyncDebounceMs);
+        _editorTextSyncDebounceTimer.Tick -= OnEditorTextSyncDebounceTick;
+        _editorTextSyncDebounceTimer.Tick += OnEditorTextSyncDebounceTick;
+        _editorTextSyncDebounceTimer.Stop();
+        _editorTextSyncDebounceTimer.Start();
+    }
+
+    private void OnEditorTextSyncDebounceTick(object? sender, EventArgs e)
+    {
+        _editorTextSyncDebounceTimer?.Stop();
+        FlushPendingEditorTextToViewModel();
+    }
+
+    private void FlushPendingEditorTextToViewModel()
+    {
+        if (_vm is null || _editor is null || !_hasPendingEditorTextSync)
+            return;
+
+        if (!string.Equals(_pendingEditorTextSyncTabId, _vm.ActiveTab.Id, StringComparison.Ordinal))
+        {
+            _hasPendingEditorTextSync = false;
+            _pendingEditorTextSyncTabId = null;
+            return;
+        }
+
+        string latestText = _editor.Text ?? string.Empty;
+        if (!string.Equals(_vm.ActiveTab.SqlText, latestText, StringComparison.Ordinal))
+            _vm.ActiveTab.SqlText = latestText;
+
+        _hasPendingEditorTextSync = false;
+        _pendingEditorTextSyncTabId = null;
     }
 
     private void OnEditorTextEntered(object? sender, TextInputEventArgs e)
@@ -216,32 +295,34 @@ public partial class SqlEditorControl : UserControl
         if (_editor is null || _vm is null)
             return;
 
+        _lastEditorTextInputTickMs = Environment.TickCount64;
+
         bool shouldRefreshSignatureHelp = string.Equals(e.Text, "(", StringComparison.Ordinal)
             || string.Equals(e.Text, ")", StringComparison.Ordinal)
             || string.Equals(e.Text, ",", StringComparison.Ordinal);
 
         if (string.Equals(e.Text, ".", StringComparison.Ordinal))
         {
-            TriggerCompletion(autoTriggered: true, allowDebounce: false);
+            TriggerCompletion(autoTriggered: true, allowDebounce: true);
             if (shouldRefreshSignatureHelp)
-                UpdateSignatureHelpFromCaret();
+                ScheduleSignatureHelpRefresh(immediate: true);
             return;
         }
 
         if (string.Equals(e.Text, "(", StringComparison.Ordinal)
             || string.Equals(e.Text, ",", StringComparison.Ordinal))
         {
-            TriggerCompletion(autoTriggered: true, allowDebounce: false);
+            TriggerCompletion(autoTriggered: true, allowDebounce: true);
             if (shouldRefreshSignatureHelp)
-                UpdateSignatureHelpFromCaret();
+                ScheduleSignatureHelpRefresh(immediate: true);
             return;
         }
 
         if (string.Equals(e.Text, " ", StringComparison.Ordinal) && ShouldAutoTriggerCompletionAfterSpace())
         {
-            TriggerCompletion(autoTriggered: true, allowDebounce: false);
+            TriggerCompletion(autoTriggered: true, allowDebounce: true);
             if (shouldRefreshSignatureHelp)
-                UpdateSignatureHelpFromCaret();
+                ScheduleSignatureHelpRefresh(immediate: true);
             return;
         }
 
@@ -249,7 +330,7 @@ public partial class SqlEditorControl : UserControl
             TriggerCompletion(autoTriggered: true, allowDebounce: true);
 
         if (shouldRefreshSignatureHelp)
-            UpdateSignatureHelpFromCaret();
+            ScheduleSignatureHelpRefresh(immediate: false);
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
@@ -441,6 +522,8 @@ public partial class SqlEditorControl : UserControl
         if (_vm is null || _editor is null)
             return;
 
+        FlushPendingEditorTextToViewModel();
+
         SqlEditorResultSet result = await _vm.ExecuteSelectionOrCurrentAsync(_editor.SelectionStart, _editor.SelectionLength, _editor.CaretOffset);
         ShowToastForResult(result);
     }
@@ -467,6 +550,8 @@ public partial class SqlEditorControl : UserControl
             return;
         }
 
+        FlushPendingEditorTextToViewModel();
+
         SqlEditorResultSet result = await _vm.ExecuteSelectionOrCurrentAsync(
             _editor.SelectionStart,
             _editor.SelectionLength,
@@ -478,6 +563,8 @@ public partial class SqlEditorControl : UserControl
     {
         if (_vm is null)
             return;
+
+        FlushPendingEditorTextToViewModel();
 
         IReadOnlyList<SqlEditorResultSet> results = await _vm.ExecuteAllAsync();
         if (results.Count == 0)
@@ -647,6 +734,8 @@ public partial class SqlEditorControl : UserControl
         if (_vm is null)
             return;
 
+        FlushPendingEditorTextToViewModel();
+
         if (!string.IsNullOrWhiteSpace(_vm.ActiveTab.FilePath))
         {
             await _vm.SaveActiveTabAsync(_vm.ActiveTab.FilePath);
@@ -688,13 +777,18 @@ public partial class SqlEditorControl : UserControl
         if (_editor is null || _vm is null)
             return;
 
+        bool isHeavyMetadataContext = false;
+
         if (autoTriggered && IsLargeEditorText())
         {
             PublishCompletionOnDemandHintOnce();
             return;
         }
 
-        if (autoTriggered && _vm.IsHeavyCompletionMetadataContext())
+        if (autoTriggered)
+            isHeavyMetadataContext = _vm.IsHeavyCompletionMetadataContext();
+
+        if (autoTriggered && isHeavyMetadataContext)
         {
             allowDebounce = true;
             if (!CanScheduleHeavyMetadataAutoCompletion())
@@ -710,7 +804,9 @@ public partial class SqlEditorControl : UserControl
             return;
         }
 
-        _completionDebounceTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(CompletionDebounceMs) };
+        int debounceMs = ResolveCompletionDebounceMs(isHeavyMetadataContext);
+        _completionDebounceTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(debounceMs) };
+        _completionDebounceTimer.Interval = TimeSpan.FromMilliseconds(debounceMs);
         _completionDebounceTimer.Tick -= OnCompletionDebounceTick;
         _completionDebounceTimer.Tick += OnCompletionDebounceTick;
         _completionDebounceTimer.Stop();
@@ -767,24 +863,63 @@ public partial class SqlEditorControl : UserControl
         if (_completionWindow is not null && !allowUpdateExisting)
             return;
 
+        _completionRequestCts?.Cancel();
+        _completionRequestCts?.Dispose();
+        _completionRequestCts = new CancellationTokenSource();
+
         long requestVersion = Interlocked.Increment(ref _completionRequestVersion);
-        var stopwatch = Stopwatch.StartNew();
+        CancellationToken cancellationToken = _completionRequestCts.Token;
         string editorText = _editor.Text ?? string.Empty;
         int caretOffset = _editor.CaretOffset;
+        bool firstProgressSnapshotApplied = false;
 
-        Task<SqlCompletionRequest> computeTask = Task.Run(() => _vm.GetCompletionRequest(editorText, caretOffset));
-        Task completed = await Task.WhenAny(computeTask, Task.Delay(CompletionDebounceMs));
-        if (completed != computeTask)
+        var progress = new Progress<SqlCompletionStageSnapshot>(snapshot =>
+        {
+            if (requestVersion != _completionRequestVersion)
+                return;
+
+            if (!snapshot.HasSuggestions)
+                return;
+
+            if (firstProgressSnapshotApplied)
+                return;
+
+            firstProgressSnapshotApplied = true;
+            ApplyCompletionRequest(snapshot.Request, allowUpdateExisting);
+        });
+
+        Task<SqlCompletionStageSnapshot> computeTask = _vm.RequestCompletionAsync(
+            editorText,
+            caretOffset,
+            progress,
+            cancellationToken);
+        int debounceMs = ResolveCompletionDebounceMs(isHeavyMetadataContext: _vm.IsHeavyCompletionMetadataContext());
+        Task completed = await Task.WhenAny(computeTask, Task.Delay(debounceMs));
+        if (completed != computeTask && !IsTypingBurstActive())
             ShowCompletionLoadingPopup(allowUpdateExisting);
 
         SqlCompletionRequest request;
+        SqlCompletionTelemetry? completionTelemetry = null;
         try
         {
-            request = await computeTask;
+            SqlCompletionStageSnapshot snapshot = await computeTask;
+            request = snapshot.Request;
+            completionTelemetry = snapshot.Telemetry;
+        }
+        catch (OperationCanceledException)
+        {
+            return;
         }
         catch
         {
-            return;
+            try
+            {
+                request = _vm.GetCompletionRequest(editorText, caretOffset);
+            }
+            catch
+            {
+                return;
+            }
         }
 
         if (requestVersion != _completionRequestVersion)
@@ -794,22 +929,73 @@ public partial class SqlEditorControl : UserControl
         {
             _completionWindow?.Close();
             _completionWindow = null;
-            stopwatch.Stop();
-            _vm.RecordCompletionLatency(stopwatch.Elapsed);
+            ResetCompletionRenderCache();
+            if (completionTelemetry is not null)
+                _vm.RecordCompletionBreakdown(completionTelemetry);
             return;
         }
+
+        ApplyCompletionRequest(request, allowUpdateExisting: true);
+
+        if (completionTelemetry is not null)
+            _vm.RecordCompletionBreakdown(completionTelemetry);
+    }
+
+    private int ResolveCompletionDebounceMs(bool isHeavyMetadataContext)
+    {
+        int recommended = _vm?.GetRecommendedCompletionDebounceMs(isHeavyMetadataContext) ?? DefaultCompletionDebounceMs;
+        if (!isHeavyMetadataContext)
+            recommended = Math.Max(AutoTriggerCompletionDebounceMs, recommended);
+
+        return recommended;
+    }
+
+    private bool IsTypingBurstActive()
+    {
+        long lastTick = _lastEditorTextInputTickMs;
+        if (lastTick <= 0)
+            return false;
+
+        return Environment.TickCount64 - lastTick <= TypingBurstWindowMs;
+    }
+
+    private void ApplyCompletionRequest(SqlCompletionRequest request, bool allowUpdateExisting)
+    {
+        if (_editor is null)
+            return;
+
+        Stopwatch? uiApplyStopwatch = _vm is null ? null : Stopwatch.StartNew();
+
+        if (_completionWindow is not null && !allowUpdateExisting)
+            return;
 
         IReadOnlyList<SqlCompletionSuggestion> orderedSuggestions = request.Suggestions
             .OrderByDescending(static suggestion => suggestion.Kind == SqlCompletionKind.Keyword)
             .ThenBy(static suggestion => suggestion.Label, StringComparer.OrdinalIgnoreCase)
+            .Take(MaxRenderedCompletionSuggestions)
             .ToList();
+
+        int fingerprint = ComputeCompletionFingerprint(orderedSuggestions, request.PrefixLength);
+        if (_lastCompletionFingerprint == fingerprint
+            && _lastCompletionItemCount == orderedSuggestions.Count
+            && _lastCompletionPrefixLength == request.PrefixLength)
+        {
+            return;
+        }
 
         if (_completionWindow is null)
         {
             _completionWindow = new CompletionWindow(_editor.TextArea);
-            _completionWindow.Closed += (_, _) => _completionWindow = null;
+            _completionWindow.Closed += (_, _) =>
+            {
+                _completionWindow = null;
+                ResetCompletionRenderCache();
+            };
             _completionWindow.Show();
         }
+
+        if (_vm is null)
+            return;
 
         _completionWindow.CompletionList.CompletionData.Clear();
         foreach (SqlCompletionSuggestion suggestion in orderedSuggestions)
@@ -824,8 +1010,15 @@ public partial class SqlEditorControl : UserControl
                     acceptedCallback: label => _vm.RecordCompletionSuggestionAccepted(label)));
         }
 
-        stopwatch.Stop();
-        _vm.RecordCompletionLatency(stopwatch.Elapsed);
+        _lastCompletionFingerprint = fingerprint;
+        _lastCompletionItemCount = orderedSuggestions.Count;
+        _lastCompletionPrefixLength = request.PrefixLength;
+
+        if (uiApplyStopwatch is not null)
+        {
+            uiApplyStopwatch.Stop();
+            _vm.RecordCompletionUiApplyLatency(uiApplyStopwatch.Elapsed);
+        }
     }
 
     private void ShowCompletionLoadingPopup(bool allowUpdateExisting)
@@ -847,6 +1040,33 @@ public partial class SqlEditorControl : UserControl
         _completionWindow.CompletionList.CompletionData.Add(
             new SqlEditorCompletionLoadingData(
                 L("sqlEditor.completion.loading", "Carregando sugestoes...")));
+        ResetCompletionRenderCache();
+    }
+
+    private static int ComputeCompletionFingerprint(
+        IReadOnlyList<SqlCompletionSuggestion> suggestions,
+        int prefixLength)
+    {
+        var hash = new HashCode();
+        hash.Add(prefixLength);
+        hash.Add(suggestions.Count);
+
+        foreach (SqlCompletionSuggestion suggestion in suggestions)
+        {
+            hash.Add((int)suggestion.Kind);
+            hash.Add(suggestion.Label, StringComparer.Ordinal);
+            hash.Add(suggestion.InsertText, StringComparer.Ordinal);
+            hash.Add(suggestion.Detail, StringComparer.Ordinal);
+        }
+
+        return hash.ToHashCode();
+    }
+
+    private void ResetCompletionRenderCache()
+    {
+        _lastCompletionFingerprint = 0;
+        _lastCompletionItemCount = -1;
+        _lastCompletionPrefixLength = -1;
     }
 
     private bool ShouldDebounceCompletionAfterTextInput(string? text)
@@ -1069,6 +1289,8 @@ public partial class SqlEditorControl : UserControl
         if (_vm is null || _editor is null)
             return string.Empty;
 
+        FlushPendingEditorTextToViewModel();
+
         string? sql = _vm.GetSqlForExecution(
             _editor.SelectionStart,
             _editor.SelectionLength,
@@ -1098,8 +1320,60 @@ public partial class SqlEditorControl : UserControl
 
     private void OnEditorCaretPositionChanged(object? sender, EventArgs e)
     {
-        RefreshBracketHighlight();
+        ScheduleBracketHighlightRefresh(immediate: false);
         UpdateViewModelCursorPosition();
+        ScheduleSignatureHelpRefresh(immediate: false);
+    }
+
+    private void ScheduleBracketHighlightRefresh(bool immediate)
+    {
+        if (_editor is null || _bracketHighlightRenderer is null)
+            return;
+
+        if (immediate)
+        {
+            _bracketHighlightDebounceTimer?.Stop();
+            RefreshBracketHighlight();
+            return;
+        }
+
+        _bracketHighlightDebounceTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(BracketHighlightDebounceMs) };
+        _bracketHighlightDebounceTimer.Interval = TimeSpan.FromMilliseconds(BracketHighlightDebounceMs);
+        _bracketHighlightDebounceTimer.Tick -= OnBracketHighlightDebounceTick;
+        _bracketHighlightDebounceTimer.Tick += OnBracketHighlightDebounceTick;
+        _bracketHighlightDebounceTimer.Stop();
+        _bracketHighlightDebounceTimer.Start();
+    }
+
+    private void OnBracketHighlightDebounceTick(object? sender, EventArgs e)
+    {
+        _bracketHighlightDebounceTimer?.Stop();
+        RefreshBracketHighlight();
+    }
+
+    private void ScheduleSignatureHelpRefresh(bool immediate)
+    {
+        if (_editor is null || _vm is null)
+            return;
+
+        if (immediate)
+        {
+            _signatureHelpDebounceTimer?.Stop();
+            UpdateSignatureHelpFromCaret();
+            return;
+        }
+
+        _signatureHelpDebounceTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(SignatureHelpDebounceMs) };
+        _signatureHelpDebounceTimer.Interval = TimeSpan.FromMilliseconds(SignatureHelpDebounceMs);
+        _signatureHelpDebounceTimer.Tick -= OnSignatureHelpDebounceTick;
+        _signatureHelpDebounceTimer.Tick += OnSignatureHelpDebounceTick;
+        _signatureHelpDebounceTimer.Stop();
+        _signatureHelpDebounceTimer.Start();
+    }
+
+    private void OnSignatureHelpDebounceTick(object? sender, EventArgs e)
+    {
+        _signatureHelpDebounceTimer?.Stop();
         UpdateSignatureHelpFromCaret();
     }
 
@@ -1158,21 +1432,51 @@ public partial class SqlEditorControl : UserControl
         if (_editor?.Document is null || _foldingManager is null)
             return;
 
-        _foldingRefreshTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(180) };
+        int intervalMs = (_editor.Text?.Length ?? 0) > 12_000 ? 320 : 220;
+        _foldingRefreshTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(intervalMs) };
+        _foldingRefreshTimer.Interval = TimeSpan.FromMilliseconds(intervalMs);
         _foldingRefreshTimer.Tick -= OnFoldingRefreshTimerTick;
         _foldingRefreshTimer.Tick += OnFoldingRefreshTimerTick;
         _foldingRefreshTimer.Stop();
         _foldingRefreshTimer.Start();
     }
 
-    private void OnFoldingRefreshTimerTick(object? sender, EventArgs e)
+    private async void OnFoldingRefreshTimerTick(object? sender, EventArgs e)
     {
         _foldingRefreshTimer?.Stop();
 
         if (_editor?.Document is null || _foldingManager is null)
             return;
 
-        IReadOnlyList<DBWeaver.UI.Services.SqlEditor.SqlToken> tokens = _sqlTokenizer.Tokenize(_editor.Text ?? string.Empty);
+        _foldingRefreshCts?.Cancel();
+        _foldingRefreshCts?.Dispose();
+        _foldingRefreshCts = new CancellationTokenSource();
+        CancellationToken ct = _foldingRefreshCts.Token;
+        long requestVersion = Interlocked.Increment(ref _foldingRefreshVersion);
+
+        string textSnapshot = _editor.Text ?? string.Empty;
+        IReadOnlyList<DBWeaver.UI.Services.SqlEditor.SqlToken> tokens;
+        try
+        {
+            tokens = await Task.Run(() =>
+            {
+                ct.ThrowIfCancellationRequested();
+                IReadOnlyList<DBWeaver.UI.Services.SqlEditor.SqlToken> localTokens = _sqlTokenizer.Tokenize(textSnapshot);
+                ct.ThrowIfCancellationRequested();
+                return localTokens;
+            }, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (requestVersion != _foldingRefreshVersion)
+            return;
+
+        if (_editor?.Document is null || _foldingManager is null)
+            return;
+
         _sqlFoldingStrategy.UpdateFoldings(_foldingManager, _editor.Document, tokens);
     }
 

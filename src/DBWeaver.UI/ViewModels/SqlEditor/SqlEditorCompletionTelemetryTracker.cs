@@ -3,6 +3,9 @@ namespace DBWeaver.UI.ViewModels;
 public sealed class SqlEditorCompletionTelemetryTracker
 {
     private readonly Queue<long> _samples = new();
+    private readonly Queue<long> _engineSamples = new();
+    private readonly Queue<long> _dispatchSamples = new();
+    private readonly Queue<long> _uiApplySamples = new();
 
     public SqlEditorCompletionTelemetryTracker(int maxSamples, long budgetMs)
     {
@@ -26,6 +29,12 @@ public sealed class SqlEditorCompletionTelemetryTracker
                 SampleCount = _samples.Count,
                 LastDurationMs = _samples.Last(),
                 P95DurationMs = ComputeP95(_samples),
+                LastEngineDurationMs = _engineSamples.Count == 0 ? 0 : _engineSamples.Last(),
+                P95EngineDurationMs = _engineSamples.Count == 0 ? 0 : ComputeP95(_engineSamples),
+                LastDispatchDelayMs = _dispatchSamples.Count == 0 ? 0 : _dispatchSamples.Last(),
+                P95DispatchDelayMs = _dispatchSamples.Count == 0 ? 0 : ComputeP95(_dispatchSamples),
+                LastUiApplyDurationMs = _uiApplySamples.Count == 0 ? 0 : _uiApplySamples.Last(),
+                P95UiApplyDurationMs = _uiApplySamples.Count == 0 ? 0 : ComputeP95(_uiApplySamples),
                 BudgetMs = BudgetMs,
             };
 
@@ -35,6 +44,36 @@ public sealed class SqlEditorCompletionTelemetryTracker
         _samples.Enqueue(bounded);
         if (_samples.Count > MaxSamples)
             _samples.Dequeue();
+
+        return Snapshot;
+    }
+
+    public SqlEditorCompletionTelemetry AddEngineSample(long durationMs)
+    {
+        long bounded = Math.Max(0, durationMs);
+        _engineSamples.Enqueue(bounded);
+        if (_engineSamples.Count > MaxSamples)
+            _engineSamples.Dequeue();
+
+        return Snapshot;
+    }
+
+    public SqlEditorCompletionTelemetry AddDispatchSample(long durationMs)
+    {
+        long bounded = Math.Max(0, durationMs);
+        _dispatchSamples.Enqueue(bounded);
+        if (_dispatchSamples.Count > MaxSamples)
+            _dispatchSamples.Dequeue();
+
+        return Snapshot;
+    }
+
+    public SqlEditorCompletionTelemetry AddUiApplySample(long durationMs)
+    {
+        long bounded = Math.Max(0, durationMs);
+        _uiApplySamples.Enqueue(bounded);
+        if (_uiApplySamples.Count > MaxSamples)
+            _uiApplySamples.Dequeue();
 
         return Snapshot;
     }

@@ -377,6 +377,148 @@ public sealed class SqlCompletionProviderTests
         );
     }
 
+    [Fact]
+    public void BuildCompletion_WithMetadata_ReportsOrderedProgressiveStages()
+    {
+        var sut = new SqlCompletionProvider();
+        DbMetadata metadata = BuildMetadata();
+        const string sql = "SELECT * FROM public.orders o WHERE o.";
+        var stages = new List<SqlCompletionPipelineStage>();
+
+        var progress = new InlineProgress<SqlCompletionStageSnapshot>(snapshot => stages.Add(snapshot.Stage));
+
+        SqlCompletionStageSnapshot finalSnapshot = sut.BuildCompletion(
+            new SqlCompletionRequestContext(
+                FullText: sql,
+                CaretOffset: sql.Length,
+                Metadata: metadata,
+                Provider: DatabaseProvider.Postgres,
+                ConnectionProfileId: "conn-a"),
+            progress);
+
+        Assert.True(finalSnapshot.IsFinal);
+        Assert.Equal(SqlCompletionPipelineStage.Final, finalSnapshot.Stage);
+        Assert.NotEmpty(finalSnapshot.Request.Suggestions);
+        Assert.Equal(
+            [
+                SqlCompletionPipelineStage.Tier0,
+                SqlCompletionPipelineStage.Tier1,
+                SqlCompletionPipelineStage.Tier2,
+                SqlCompletionPipelineStage.Tier3,
+                SqlCompletionPipelineStage.Final,
+            ],
+            stages);
+    }
+
+    [Fact]
+    public void BuildCompletion_WhenCancellationAlreadyRequested_ThrowsOperationCanceled()
+    {
+        var sut = new SqlCompletionProvider();
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        Assert.Throws<OperationCanceledException>(() => sut.BuildCompletion(
+            new SqlCompletionRequestContext(
+                FullText: "SELECT * FROM public.orders",
+                CaretOffset: 27,
+                Metadata: BuildMetadata(),
+                Provider: DatabaseProvider.Postgres,
+                ConnectionProfileId: "conn-a"),
+            progress: null,
+            cancellationToken: cts.Token));
+    }
+
+    [Fact]
+    public void BuildCompletion_WithLargeMetadata_ExposesDetailedTelemetrySubsteps()
+    {
+        var sut = new SqlCompletionProvider();
+        DbMetadata metadata = BuildLargeMetadata(tableCount: 720, viewCount: 140);
+        const string sql = "SELECT * FROM public.table_0100 t JOIN public.table_0101 p ON t.parent_id = p.id WHERE t.";
+
+        SqlCompletionStageSnapshot snapshot = sut.BuildCompletion(
+            new SqlCompletionRequestContext(
+                FullText: sql,
+                CaretOffset: sql.Length,
+                Metadata: metadata,
+                Provider: DatabaseProvider.Postgres,
+                ConnectionProfileId: "conn-a"));
+
+        Assert.True(snapshot.IsFinal);
+        Assert.NotEmpty(snapshot.Request.Suggestions);
+        Assert.True(snapshot.Telemetry.TotalMs >= 0);
+        Assert.True(snapshot.Telemetry.TokenizationMs >= 0);
+        Assert.True(snapshot.Telemetry.StatementExtractionMs >= 0);
+        Assert.True(snapshot.Telemetry.ContextDetectionMs >= 0);
+        Assert.True(snapshot.Telemetry.SymbolTableMs >= 0);
+        Assert.True(snapshot.Telemetry.MetadataLookupMs >= 0);
+        Assert.True(snapshot.Telemetry.FuzzyMs >= 0);
+        Assert.True(snapshot.Telemetry.RequestBuildMs >= 0);
+        Assert.True(snapshot.Telemetry.LightweightBuildMs >= 0);
+        Assert.True(snapshot.Telemetry.RankedBuildMs >= 0);
+        Assert.True(snapshot.Telemetry.RequestBuildMs >= snapshot.Telemetry.RankedBuildMs);
+    }
+
+    [Fact]
+    public void BuildCompletion_WithSixHundredPlusTables_CapturesP95LatencyBaseline()
+    {
+        var sut = new SqlCompletionProvider();
+        DbMetadata metadata = BuildLargeMetadata(tableCount: 680, viewCount: 90);
+
+        const int samples = 60;
+        var durations = new List<long>(samples);
+        for (int i = 0; i < samples; i++)
+        {
+            string sql = i % 2 == 0
+                ? "SELECT * FROM public.table_0002 t WHERE t."
+                : "SELECT * FROM public.table_0002 t JOIN public.table_0003 p ON t.parent_id = p.id WHERE p.";
+
+            SqlCompletionStageSnapshot snapshot = sut.BuildCompletion(
+                new SqlCompletionRequestContext(
+                    FullText: sql,
+                    CaretOffset: sql.Length,
+                    Metadata: metadata,
+                    Provider: DatabaseProvider.Postgres,
+                    ConnectionProfileId: "conn-a"));
+
+            durations.Add(snapshot.Telemetry.TotalMs);
+            Assert.NotEmpty(snapshot.Request.Suggestions);
+        }
+
+        long p95 = ComputeP95Ms(durations);
+
+        Assert.Equal(samples, durations.Count);
+        Assert.True(p95 >= 0);
+        Assert.True(
+            p95 <= 1000,
+            $"Expected >=600-table synthetic scenario p95 <= 1000ms, but got {p95}ms.");
+    }
+
+    private static long ComputeP95Ms(IReadOnlyList<long> samples)
+    {
+        if (samples.Count == 0)
+            return 0;
+
+        long[] ordered = samples.OrderBy(static sample => sample).ToArray();
+        int index = (int)Math.Ceiling(0.95 * ordered.Length) - 1;
+        index = Math.Clamp(index, 0, ordered.Length - 1);
+        return ordered[index];
+    }
+
+    private sealed class InlineProgress<T> : IProgress<T>
+    {
+        private readonly Action<T> _onReport;
+
+        public InlineProgress(Action<T> onReport)
+        {
+            _onReport = onReport;
+        }
+
+        public void Report(T value)
+        {
+            _onReport(value);
+        }
+    }
+
     private static DbMetadata BuildLargeMetadata(int tableCount, int viewCount)
     {
         var tables = new List<TableMetadata>(tableCount + viewCount);

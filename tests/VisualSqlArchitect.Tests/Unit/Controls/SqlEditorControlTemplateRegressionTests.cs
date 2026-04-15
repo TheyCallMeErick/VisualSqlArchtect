@@ -61,7 +61,7 @@ public sealed class SqlEditorControlTemplateRegressionTests
         Assert.Contains("LargeEditorCompletionThreshold = 10_000", source);
         Assert.Contains("Editor grande — completion sob demanda (Ctrl+Space).", source);
         Assert.Contains("_completionWindow.CompletionList.CompletionData.Clear();", source);
-        Assert.Contains("_vm.RecordCompletionLatency(stopwatch.Elapsed);", source);
+        Assert.Contains("_vm.RecordCompletionBreakdown(completionTelemetry);", source);
         Assert.Contains("AllowScrollBelowDocument = true", source);
         Assert.Contains("ApplyEditorExecutionState", source);
         Assert.Contains("nameof(SqlEditorViewModel.IsExecuting)", source);
