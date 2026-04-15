@@ -236,6 +236,11 @@
           </StackPanel>
 
           <ItemsControl ItemsSource="{Binding Report}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <VirtualizingStackPanel/>
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="vm:ImportReportItem">
                 <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2">

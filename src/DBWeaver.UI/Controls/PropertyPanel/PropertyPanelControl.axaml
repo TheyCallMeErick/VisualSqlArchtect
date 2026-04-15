@@ -214,6 +214,11 @@
               <TextBlock Classes="section-label" Text="{Binding [property.parameters], Source={x:Static loc:LocalizationService.Instance}}"/>
 
               <ItemsControl ItemsSource="{Binding Parameters}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <VirtualizingStackPanel/>
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:ParameterRowViewModel">
                     <StackPanel Spacing="3" Margin="0,0,0,10">
@@ -314,6 +319,11 @@
               <TextBlock Classes="section-label" Text="{Binding [property.inputPins], Source={x:Static loc:LocalizationService.Instance}}"/>
 
               <ItemsControl ItemsSource="{Binding InputPins}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <VirtualizingStackPanel/>
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:PinInfoRowViewModel">
                     <Border Classes="pin-info-row">
@@ -370,6 +380,11 @@
               <TextBlock Classes="section-label" Text="{Binding [property.outputPins], Source={x:Static loc:LocalizationService.Instance}}"/>
 
               <ItemsControl ItemsSource="{Binding OutputPins}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <VirtualizingStackPanel/>
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:PinInfoRowViewModel">
                     <Border Classes="pin-info-row">

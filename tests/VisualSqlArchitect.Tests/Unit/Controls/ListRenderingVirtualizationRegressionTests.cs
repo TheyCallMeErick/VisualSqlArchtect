@@ -84,6 +84,47 @@ public sealed class ListRenderingVirtualizationRegressionTests
         Assert.Contains("<VirtualizingStackPanel/>", xaml);
     }
 
+    [Fact]
+    public void SqlEditor_ResultAndHistoryLists_UseVirtualizingStackPanel()
+    {
+        string resultPanelXaml = ReadControlXaml("SqlEditor", "SqlEditorResultPanel.axaml");
+        string rightSidebarXaml = ReadControlXaml("SqlEditor", "SqlEditorRightSidebarControl.axaml");
+
+        Assert.Contains("ItemsSource=\"{Binding OutputMessages}\"", resultPanelXaml);
+        Assert.Contains("<VirtualizingStackPanel/>", resultPanelXaml);
+
+        Assert.Contains("ItemsSource=\"{Binding FilteredExecutionHistory}\"", rightSidebarXaml);
+        Assert.Contains("<VirtualizingStackPanel/>", rightSidebarXaml);
+    }
+
+    [Fact]
+    public void ConnectionManager_ProfilesList_UsesVirtualizingStackPanel()
+    {
+        string xaml = ReadControlXaml("ConnectionManager", "ConnectionManagerControl.axaml");
+
+        Assert.Contains("ItemsSource=\"{Binding Profiles}\"", xaml);
+        Assert.Contains("<VirtualizingStackPanel/>", xaml);
+    }
+
+    [Fact]
+    public void FileVersionHistory_List_UsesVirtualizingStackPanel()
+    {
+        string xaml = ReadControlXaml("FileHistory", "FileVersionHistoryOverlay.axaml");
+
+        Assert.Contains("ItemsSource=\"{Binding Versions}\"", xaml);
+        Assert.Contains("<VirtualizingStackPanel/>", xaml);
+    }
+
+    [Fact]
+    public void StartMenu_Carousels_UseHorizontalVirtualizingStackPanel()
+    {
+        string xaml = ReadControlXaml("Start", "StartMenuControl.axaml");
+
+        Assert.Contains("ItemsSource=\"{Binding RecentProjects}\"", xaml);
+        Assert.Contains("ItemsSource=\"{Binding TemplateCatalog}\"", xaml);
+        Assert.Contains("<VirtualizingStackPanel Orientation=\"Horizontal\"", xaml);
+    }
+
     private static string ReadControlXaml(string folder, string fileName)
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

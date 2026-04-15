@@ -46,6 +46,11 @@
                      FontWeight="{StaticResource FontWeightTitle}"
                      Foreground="{StaticResource TextPrimaryBrush}"/>
           <ItemsControl ItemsSource="{Binding PendingMutationIssues}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <VirtualizingStackPanel/>
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="vm:MutationGuardIssue">
                 <TextBlock Text="{Binding Message}"
