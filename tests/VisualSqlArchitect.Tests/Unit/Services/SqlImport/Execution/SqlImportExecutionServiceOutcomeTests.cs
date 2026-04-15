@@ -355,7 +355,7 @@ public sealed class SqlImportExecutionServiceOutcomeTests
     }
 
     [Fact]
-    public void Execute_WithCountColumnHaving_UsesApproximationWithoutFallbackDiagnostic()
+    public void Execute_WithCountColumnHaving_DoesNotEmitFallbackOrTypeInferenceDiagnostic()
     {
         var service = CreateService();
         var report = new ObservableCollection<ImportReportItem>();
@@ -372,7 +372,7 @@ public sealed class SqlImportExecutionServiceOutcomeTests
             diagnostic => diagnostic.Code == SqlImportDiagnosticCodes.FallbackRegexUsed
                 && diagnostic.Clause == SqlImportClause.Having
         );
-        Assert.Contains(
+        Assert.DoesNotContain(
             result.Outcome.NonBlockingDiagnostics,
             diagnostic => diagnostic.Code == SqlImportDiagnosticCodes.TypeInferenceFallback
                 && diagnostic.Clause == SqlImportClause.Having

@@ -102,6 +102,25 @@ internal sealed class SqlImportHavingClauseApplier(CanvasViewModel canvas) : ISq
             }
             else if (functionName == "COUNT")
             {
+                if (!ImportBuildUtilities.TryResolveExpressionPin(argumentExpression, fromParts, tableNodes, out PinViewModel countSourcePin))
+                {
+                    report.Add(
+                        SqlImportReportFactory.HavingUnsupported(
+                            $"HAVING {SqlImportClauseApplyUtilities.Truncate(query.HavingClause, 40)}",
+                            result.Id
+                        )
+                    );
+
+                    report.Add(SqlImportReportFactory.Partial(
+                        SqlImportDiagnosticCodes.FallbackRegexUsed,
+                        "HAVING fallback",
+                        SqlImportDiagnosticMessages.HavingFallbackReportNote,
+                        result.Id));
+                    partial++;
+
+                    return new SqlImportApplyResult(imported, partial, 0);
+                }
+
                 NodeType compType = op switch
                 {
                     "=" => NodeType.Equals,
@@ -114,10 +133,19 @@ internal sealed class SqlImportHavingClauseApplier(CanvasViewModel canvas) : ISq
                 };
 
                 NodeViewModel countNode = new(
-                    NodeDefinitionRegistry.Get(NodeType.CountStar),
+                    NodeDefinitionRegistry.Get(NodeType.CountDistinct),
                     layout.HavingCountPosition(query.FromParts.Count)
                 );
+                countNode.Parameters["distinct"] = "false";
                 _canvas.Nodes.Add(countNode);
+
+                SqlImportClauseApplyUtilities.SafeWire(
+                    countSourcePin.Owner,
+                    countSourcePin.Name,
+                    countNode,
+                    "value",
+                    _canvas
+                );
 
                 NodeViewModel comp = new(
                     NodeDefinitionRegistry.Get(compType),
@@ -136,13 +164,7 @@ internal sealed class SqlImportHavingClauseApplier(CanvasViewModel canvas) : ISq
                         sourceNodeId: comp.Id
                     )
                 );
-                report.Add(SqlImportReportFactory.Partial(
-                    SqlImportDiagnosticCodes.TypeInferenceFallback,
-                    "HAVING COUNT(column) approximation",
-                    SqlImportDiagnosticMessages.HavingCountColumnApproximationReportNote,
-                    comp.Id));
                 imported++;
-                partial++;
             }
             else if (TryMapAggregate(functionName, out NodeType aggregateNodeType, out string aggregateOutputPin))
             {

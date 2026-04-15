@@ -18,6 +18,15 @@ public static class AggregateDefinitions
         []
     );
 
+    public static readonly NodeDefinition CountDistinct = new(
+        NodeType.CountDistinct,
+        NodeCategory.Aggregate,
+        "COUNT",
+        "Counts non-null values (optionally DISTINCT)",
+        [In("value", PinDataType.Expression), Out("count", PinDataType.Number)],
+        []
+    );
+
     public static readonly NodeDefinition Sum = new(
         NodeType.Sum,
         NodeCategory.Aggregate,

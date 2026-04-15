@@ -677,6 +677,17 @@ public static class NodeDefinitionRegistry
                 []
             ),
 
+            [NodeType.CountDistinct] = new(
+                NodeType.CountDistinct,
+                NodeCategory.Aggregate,
+                "COUNT",
+                "Counts non-null values (optionally DISTINCT)",
+                [In("value", PinDataType.Expression), Out("count", PinDataType.Number)],
+                [
+                    Param("distinct", ParameterKind.Boolean, "true", "Use COUNT(DISTINCT value) when enabled"),
+                ]
+            ),
+
             [NodeType.Sum] = new(
                 NodeType.Sum,
                 NodeCategory.Aggregate,

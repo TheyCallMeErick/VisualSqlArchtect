@@ -12,6 +12,7 @@ public sealed class AggregateCompiler : INodeCompiler
     public bool CanCompile(NodeType nodeType) =>
         nodeType
             is NodeType.CountStar
+                or NodeType.CountDistinct
                 or NodeType.Sum
                 or NodeType.Avg
                 or NodeType.Min
@@ -24,6 +25,7 @@ public sealed class AggregateCompiler : INodeCompiler
         return node.Type switch
         {
             NodeType.CountStar => new AggregateExpr(AggregateFunction.Count, null),
+            NodeType.CountDistinct => CompileCountDistinct(node, ctx),
             NodeType.Sum => new AggregateExpr(
                 AggregateFunction.Sum,
                 ctx.ResolveInput(node.Id, "value")
@@ -45,6 +47,20 @@ public sealed class AggregateCompiler : INodeCompiler
 
             _ => throw new NotSupportedException($"Cannot compile {node.Type}"),
         };
+    }
+
+    private static ISqlExpression CompileCountDistinct(NodeInstance node, INodeCompilationContext ctx)
+    {
+        bool distinct =
+            node.Parameters.TryGetValue("distinct", out string? rawDistinct)
+            && bool.TryParse(rawDistinct, out bool parsedDistinct)
+            && parsedDistinct;
+
+        return new AggregateExpr(
+            AggregateFunction.Count,
+            ctx.ResolveInput(node.Id, "value"),
+            distinct
+        );
     }
 
     private static ISqlExpression CompileStringAgg(NodeInstance node, INodeCompilationContext ctx)
