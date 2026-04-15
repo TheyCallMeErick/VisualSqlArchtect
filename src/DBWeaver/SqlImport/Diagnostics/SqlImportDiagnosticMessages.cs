@@ -68,6 +68,9 @@ public static class SqlImportDiagnosticMessages
     public const string UnionNotSupportedReportNote =
         "UNION is not supported";
 
+    public const string JoinFallbackRegexReportNote =
+        "JOIN ON expression used regex fallback; review ON mapping and adjust manually if needed.";
+
     public static string CorrelatedSubqueryFallbackWithExternalRefsReportNote(string correlatedFields)
     {
         return string.IsNullOrWhiteSpace(correlatedFields)

@@ -238,6 +238,12 @@ public sealed class ImportModelToCanvasBuilder(CanvasViewModel canvas)
                 {
                     string rewrittenOnRaw = ImportBuildUtilities.RewriteKnownQualifiersToAliasInExpression(onClause, context.Input.FromParts);
                     joinNode.Parameters["on_raw"] = rewrittenOnRaw;
+                    context.Report.Add(SqlImportReportFactory.Partial(
+                        SqlImportDiagnosticCodes.FallbackRegexUsed,
+                        "JOIN ON fallback",
+                        SqlImportDiagnosticMessages.JoinFallbackRegexReportNote,
+                        joinNode.Id));
+                    context.State.Partial++;
 
                     string firstConjunct = Regex.Split(rewrittenOnRaw, @"\bAND\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)
                         .FirstOrDefault()?.Trim()

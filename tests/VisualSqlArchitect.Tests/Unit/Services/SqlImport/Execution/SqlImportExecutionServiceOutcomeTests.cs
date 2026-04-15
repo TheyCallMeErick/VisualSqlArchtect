@@ -176,6 +176,28 @@ public sealed class SqlImportExecutionServiceOutcomeTests
     }
 
     [Fact]
+    public void Execute_WithJoinOnFallbackRegexPath_ClassifiesAsPartial()
+    {
+        var service = CreateService();
+        var report = new ObservableCollection<ImportReportItem>();
+
+        SqlImportExecutionResult result = service.Execute(
+            "SELECT o.id FROM orders o INNER JOIN customers c ON o.customer_id = c.id AND o.total > c.credit_limit",
+            report,
+            CancellationToken.None
+        );
+
+        Assert.NotNull(result.Outcome);
+        Assert.Equal(ImportOutcomeStatus.Partial, result.Outcome!.Status);
+        Assert.Equal(ImportEquivalenceClass.Partial, result.Outcome.EquivalenceClass);
+        Assert.True(result.Outcome.HasDegradedGraph);
+        Assert.Contains(
+            result.Outcome.NonBlockingDiagnostics,
+            diagnostic => diagnostic.Code == SqlImportDiagnosticCodes.FallbackRegexUsed
+        );
+    }
+
+    [Fact]
     public void Execute_WithAmbiguousBooleanColumn_ClassifiesAsFailed()
     {
         var service = CreateService();

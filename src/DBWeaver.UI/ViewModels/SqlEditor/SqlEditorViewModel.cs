@@ -44,13 +44,10 @@ public sealed class SqlEditorViewModel : ViewModelBase
     private readonly Func<string?, ConnectionConfig?> _connectionConfigByProfileIdResolver;
     private readonly Func<IReadOnlyList<SqlEditorConnectionProfileOption>> _connectionProfilesResolver;
     private readonly Func<ConnectionManagerViewModel?> _sharedConnectionManagerResolver;
-    private readonly SqlCompletionProvider _completionProvider;
-    private readonly SqlSignatureHelpService _signatureHelpService;
-    private readonly SqlHoverDocumentationService _hoverDocumentationService;
+    private readonly SqlEditorCompletionController _completionController;
     private readonly Func<DbMetadata?> _metadataResolver;
-    private readonly SqlEditorExplainService _sqlEditorExplainService;
-    private readonly SqlEditorBenchmarkService _sqlEditorBenchmarkService;
     private readonly TextSearchService _textSearch = new();
+    private readonly SqlEditorExecutionController _executionController;
     private CancellationTokenSource? _executionCts;
     private CancellationTokenSource? _benchmarkCts;
     private CancellationTokenSource? _explainCts;
@@ -112,7 +109,9 @@ public sealed class SqlEditorViewModel : ViewModelBase
         Func<ConnectionManagerViewModel?>? sharedConnectionManagerResolver = null,
         ISqlEditorSessionDraftStore? sessionDraftStore = null,
         SqlEditorExplainService? sqlEditorExplainService = null,
-        SqlEditorBenchmarkService? sqlEditorBenchmarkService = null)
+        SqlEditorBenchmarkService? sqlEditorBenchmarkService = null,
+        SqlEditorCompletionController? completionController = null,
+        SqlEditorExecutionController? executionController = null)
     {
         _localization = localization ?? LocalizationService.Instance;
         _selectionExtractor = selectionExtractor ?? new SqlSelectionExtractor();
@@ -137,12 +136,11 @@ public sealed class SqlEditorViewModel : ViewModelBase
         _connectionConfigByProfileIdResolver = connectionConfigByProfileIdResolver ?? (_ => _connectionConfigResolver());
         _connectionProfilesResolver = connectionProfilesResolver ?? (() => []);
         _sharedConnectionManagerResolver = sharedConnectionManagerResolver ?? (() => null);
-        _completionProvider = completionProvider ?? new SqlCompletionProvider();
-        _signatureHelpService = new SqlSignatureHelpService();
-        _hoverDocumentationService = new SqlHoverDocumentationService();
+        _completionController = completionController ?? new SqlEditorCompletionController(completionProvider);
         _metadataResolver = metadataResolver ?? (() => null);
-        _sqlEditorExplainService = sqlEditorExplainService ?? new SqlEditorExplainService();
-        _sqlEditorBenchmarkService = sqlEditorBenchmarkService ?? new SqlEditorBenchmarkService();
+        _executionController = executionController ?? new SqlEditorExecutionController(
+            sqlEditorExplainService,
+            sqlEditorBenchmarkService);
         _executionStatusText = L("sqlEditor.status.ready", "Pronto.");
         (bool top1000WithoutWhereEnabled, bool protectMutationWithoutWhereEnabled) = AppSettingsStore.LoadSqlEditorSafetySettings();
         _top1000WithoutWhereEnabled = top1000WithoutWhereEnabled;
@@ -1092,7 +1090,7 @@ public sealed class SqlEditorViewModel : ViewModelBase
     public SqlCompletionRequest GetCompletionRequest(string fullText, int caretOffset)
     {
         DbMetadata? metadata = _metadataResolver();
-        return _completionProvider.GetSuggestions(
+        return _completionController.GetCompletionRequest(
             fullText,
             caretOffset,
             metadata,
@@ -1128,7 +1126,7 @@ public sealed class SqlEditorViewModel : ViewModelBase
         if (string.IsNullOrWhiteSpace(suggestionLabel))
             return;
 
-        _completionProvider.RecordAcceptedSuggestion(suggestionLabel, ActiveTabConnectionProfileId);
+        _completionController.RecordSuggestionAccepted(suggestionLabel, ActiveTabConnectionProfileId);
     }
 
     public void RecordCompletionLatency(TimeSpan latency)
@@ -1243,14 +1241,14 @@ public sealed class SqlEditorViewModel : ViewModelBase
 
     public void UpdateSignatureHelp(string fullText, int caretOffset)
     {
-        SignatureHelpInfo? help = _signatureHelpService.TryResolve(fullText, caretOffset, ActiveTabProvider);
+        SignatureHelpInfo? help = _completionController.TryResolveSignatureHelp(fullText, caretOffset, ActiveTabProvider);
         SignatureHelpText = help?.DisplayText ?? string.Empty;
     }
 
     public void UpdateHoverDocumentation(string fullText, int caretOffset)
     {
         DbMetadata? metadata = _metadataResolver();
-        HoverDocumentationInfo? help = _hoverDocumentationService.TryResolve(
+        HoverDocumentationInfo? help = _completionController.TryResolveHoverDocumentation(
             fullText,
             caretOffset,
             metadata,
@@ -1367,7 +1365,7 @@ public sealed class SqlEditorViewModel : ViewModelBase
 
         try
         {
-            ExplainResult result = await _sqlEditorExplainService.RunAsync(
+            ExplainResult result = await _executionController.RunExplainAsync(
                 statement,
                 ActiveTabProvider,
                 ResolveConnectionConfigForActiveTab(),
@@ -1442,7 +1440,7 @@ public sealed class SqlEditorViewModel : ViewModelBase
 
         try
         {
-            BenchmarkRunResult result = await _sqlEditorBenchmarkService.ExecuteAsync(
+            BenchmarkRunResult result = await _executionController.RunBenchmarkAsync(
                 statement,
                 ResolveConnectionConfigForActiveTab,
                 iterations,
