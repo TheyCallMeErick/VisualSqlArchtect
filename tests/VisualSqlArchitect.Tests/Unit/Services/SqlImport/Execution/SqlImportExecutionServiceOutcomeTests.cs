@@ -336,6 +336,25 @@ public sealed class SqlImportExecutionServiceOutcomeTests
     }
 
     [Fact]
+    public void Execute_WithHavingFallbackPath_EmitsFallbackDiagnostic()
+    {
+        var service = CreateService();
+        var report = new ObservableCollection<ImportReportItem>();
+
+        SqlImportExecutionResult result = service.Execute(
+            "SELECT o.id FROM orders o GROUP BY o.id HAVING SUM(o.id) > 1",
+            report,
+            CancellationToken.None
+        );
+
+        Assert.NotNull(result.Outcome);
+        Assert.Contains(
+            result.Outcome!.NonBlockingDiagnostics,
+            diagnostic => diagnostic.Code == SqlImportDiagnosticCodes.FallbackRegexUsed
+        );
+    }
+
+    [Fact]
     public void Execute_WithUnresolvedColumnInWhere_ClassifiesAsFailed()
     {
         var service = CreateService();

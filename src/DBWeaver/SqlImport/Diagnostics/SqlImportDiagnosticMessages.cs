@@ -83,6 +83,9 @@ public static class SqlImportDiagnosticMessages
     public const string GroupByColumnFallbackReportNote =
         "GROUP BY used fallback source-column resolution; review mapped grouping fields if multiple sources are present.";
 
+    public const string HavingFallbackReportNote =
+        "HAVING used fallback path for unsupported predicate shape; complete mapping manually if needed.";
+
     public static string CorrelatedSubqueryFallbackWithExternalRefsReportNote(string correlatedFields)
     {
         return string.IsNullOrWhiteSpace(correlatedFields)

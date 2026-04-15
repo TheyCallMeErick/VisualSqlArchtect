@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Text.RegularExpressions;
 using DBWeaver.Nodes;
+using DBWeaver.SqlImport.Diagnostics;
 using DBWeaver.UI.Services.SqlImport.Build;
 using DBWeaver.UI.Services.SqlImport.Execution.Parsing;
 using DBWeaver.UI.ViewModels;
@@ -82,6 +83,12 @@ internal sealed class SqlImportHavingClauseApplier(CanvasViewModel canvas) : ISq
                     result.Id
                 )
             );
+
+            report.Add(SqlImportReportFactory.Partial(
+                SqlImportDiagnosticCodes.FallbackRegexUsed,
+                "HAVING fallback",
+                SqlImportDiagnosticMessages.HavingFallbackReportNote,
+                result.Id));
             partial++;
         }
 
