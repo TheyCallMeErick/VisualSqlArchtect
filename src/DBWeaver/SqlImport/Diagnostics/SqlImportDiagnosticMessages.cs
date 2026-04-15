@@ -71,6 +71,9 @@ public static class SqlImportDiagnosticMessages
     public const string JoinFallbackRegexReportNote =
         "JOIN ON expression used regex fallback; review ON mapping and adjust manually if needed.";
 
+    public const string WhereColumnFallbackReportNote =
+        "WHERE expression used fallback source-column resolution; review mapped condition if multiple sources are present.";
+
     public static string CorrelatedSubqueryFallbackWithExternalRefsReportNote(string correlatedFields)
     {
         return string.IsNullOrWhiteSpace(correlatedFields)

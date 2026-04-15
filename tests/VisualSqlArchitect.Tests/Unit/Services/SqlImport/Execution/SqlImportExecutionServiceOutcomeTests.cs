@@ -198,6 +198,25 @@ public sealed class SqlImportExecutionServiceOutcomeTests
     }
 
     [Fact]
+    public void Execute_WithWhereSourceFallbackPath_EmitsFallbackDiagnostic()
+    {
+        var service = CreateService();
+        var report = new ObservableCollection<ImportReportItem>();
+
+        SqlImportExecutionResult result = service.Execute(
+            "SELECT o.id FROM orders o INNER JOIN customers c ON o.customer_id = c.id WHERE status = 'OPEN'",
+            report,
+            CancellationToken.None
+        );
+
+        Assert.NotNull(result.Outcome);
+        Assert.Contains(
+            result.Outcome!.NonBlockingDiagnostics,
+            diagnostic => diagnostic.Code == SqlImportDiagnosticCodes.FallbackRegexUsed
+        );
+    }
+
+    [Fact]
     public void Execute_WithAmbiguousBooleanColumn_ClassifiesAsFailed()
     {
         var service = CreateService();

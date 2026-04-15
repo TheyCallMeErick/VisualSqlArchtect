@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using DBWeaver.Nodes;
+using DBWeaver.SqlImport.Diagnostics;
 using DBWeaver.UI.Services.SqlImport;
 using DBWeaver.UI.Services.SqlImport.Build;
 using DBWeaver.UI.Services.SqlImport.Execution.Parsing;
@@ -27,6 +28,7 @@ internal sealed class SqlImportWhereClauseApplier(CanvasViewModel canvas) : ISql
 
         int imported = 0;
         int partial = 0;
+        bool fallbackActivated = false;
 
         var tableNodes = coreContext.TableNodes;
         NodeViewModel result = coreContext.ResultNode;
@@ -45,6 +47,7 @@ internal sealed class SqlImportWhereClauseApplier(CanvasViewModel canvas) : ISql
                 layout,
                 sourceCount,
                 out NodeViewModel? rootCondition,
+            ref fallbackActivated,
                 ref imported,
                 ref partial))
         {
@@ -54,6 +57,16 @@ internal sealed class SqlImportWhereClauseApplier(CanvasViewModel canvas) : ISql
                 $"WHERE {SqlImportClauseApplyUtilities.Truncate(query.WhereClause, 60)}",
                 rootCondition!.Id
             ));
+
+            if (fallbackActivated)
+            {
+                report.Add(SqlImportReportFactory.Partial(
+                    SqlImportDiagnosticCodes.FallbackRegexUsed,
+                    "WHERE fallback",
+                    SqlImportDiagnosticMessages.WhereColumnFallbackReportNote,
+                    rootCondition.Id));
+                partial++;
+            }
         }
         else
         {
@@ -74,6 +87,7 @@ internal sealed class SqlImportWhereClauseApplier(CanvasViewModel canvas) : ISql
         SqlImportLayoutCalculator layout,
         int sourceCount,
         out NodeViewModel? node,
+        ref bool fallbackActivated,
         ref int imported,
         ref int partial)
     {
@@ -84,15 +98,15 @@ internal sealed class SqlImportWhereClauseApplier(CanvasViewModel canvas) : ISql
 
         List<string> orParts = SplitTopLevelByKeyword(normalized, "OR");
         if (orParts.Count > 1)
-            return TryBuildLogicalGate(NodeType.Or, orParts, query, fromParts, tableNodes, layout, sourceCount, out node, ref imported, ref partial);
+            return TryBuildLogicalGate(NodeType.Or, orParts, query, fromParts, tableNodes, layout, sourceCount, out node, ref fallbackActivated, ref imported, ref partial);
 
         List<string> andParts = SplitTopLevelByKeyword(normalized, "AND");
         if (andParts.Count > 1)
-            return TryBuildLogicalGate(NodeType.And, andParts, query, fromParts, tableNodes, layout, sourceCount, out node, ref imported, ref partial);
+            return TryBuildLogicalGate(NodeType.And, andParts, query, fromParts, tableNodes, layout, sourceCount, out node, ref fallbackActivated, ref imported, ref partial);
 
         if (TryStripNotPrefix(normalized, out string inner))
         {
-            if (!TryBuildBooleanExpression(inner, query, fromParts, tableNodes, layout, sourceCount, out NodeViewModel? innerNode, ref imported, ref partial) || innerNode is null)
+            if (!TryBuildBooleanExpression(inner, query, fromParts, tableNodes, layout, sourceCount, out NodeViewModel? innerNode, ref fallbackActivated, ref imported, ref partial) || innerNode is null)
                 return false;
 
             NodeViewModel notNode = new(NodeDefinitionRegistry.Get(NodeType.Not), layout.ComparisonPosition(sourceCount));
@@ -103,7 +117,7 @@ internal sealed class SqlImportWhereClauseApplier(CanvasViewModel canvas) : ISql
             return true;
         }
 
-        return TryBuildPredicateLeaf(normalized, query, fromParts, tableNodes, layout, sourceCount, out node, ref imported, ref partial);
+        return TryBuildPredicateLeaf(normalized, query, fromParts, tableNodes, layout, sourceCount, out node, ref fallbackActivated, ref imported, ref partial);
     }
 
     private bool TryBuildLogicalGate(
@@ -115,6 +129,7 @@ internal sealed class SqlImportWhereClauseApplier(CanvasViewModel canvas) : ISql
         SqlImportLayoutCalculator layout,
         int sourceCount,
         out NodeViewModel? node,
+        ref bool fallbackActivated,
         ref int imported,
         ref int partial)
     {
@@ -123,7 +138,7 @@ internal sealed class SqlImportWhereClauseApplier(CanvasViewModel canvas) : ISql
 
         foreach (string part in parts)
         {
-            if (!TryBuildBooleanExpression(part, query, fromParts, tableNodes, layout, sourceCount, out NodeViewModel? child, ref imported, ref partial) || child is null)
+            if (!TryBuildBooleanExpression(part, query, fromParts, tableNodes, layout, sourceCount, out NodeViewModel? child, ref fallbackActivated, ref imported, ref partial) || child is null)
             {
                 partial++;
                 return false;
@@ -159,6 +174,7 @@ internal sealed class SqlImportWhereClauseApplier(CanvasViewModel canvas) : ISql
         SqlImportLayoutCalculator layout,
         int sourceCount,
         out NodeViewModel? node,
+        ref bool fallbackActivated,
         ref int imported,
         ref int partial)
     {
@@ -205,7 +221,7 @@ internal sealed class SqlImportWhereClauseApplier(CanvasViewModel canvas) : ISql
             inNode.Parameters["negate"] = negate ? "true" : "false";
             _canvas.Nodes.Add(inNode);
 
-            TryWireExpressionToPin(leftExpr, inNode, "value", fromParts, tableNodes);
+            TryWireExpressionToPin(leftExpr, inNode, "value", fromParts, tableNodes, ref fallbackActivated);
             imported++;
             node = inNode;
             return true;
@@ -227,7 +243,7 @@ internal sealed class SqlImportWhereClauseApplier(CanvasViewModel canvas) : ISql
             inNode.Parameters["negate"] = negate ? "true" : "false";
             _canvas.Nodes.Add(inNode);
 
-            TryWireExpressionToPin(leftExpr, inNode, "value", fromParts, tableNodes);
+            TryWireExpressionToPin(leftExpr, inNode, "value", fromParts, tableNodes, ref fallbackActivated);
             imported++;
             node = inNode;
             return true;
@@ -249,7 +265,7 @@ internal sealed class SqlImportWhereClauseApplier(CanvasViewModel canvas) : ISql
             scalarNode.Parameters["operator"] = op == "!=" ? "<>" : op;
             _canvas.Nodes.Add(scalarNode);
 
-            TryWireExpressionToPin(leftExpr, scalarNode, "left", fromParts, tableNodes);
+            TryWireExpressionToPin(leftExpr, scalarNode, "left", fromParts, tableNodes, ref fallbackActivated);
             imported++;
             node = scalarNode;
             return true;
@@ -269,7 +285,7 @@ internal sealed class SqlImportWhereClauseApplier(CanvasViewModel canvas) : ISql
                 layout.ComparisonPosition(sourceCount));
             _canvas.Nodes.Add(isNullNode);
 
-            TryWireExpressionToPin(leftExpr, isNullNode, "value", fromParts, tableNodes);
+            TryWireExpressionToPin(leftExpr, isNullNode, "value", fromParts, tableNodes, ref fallbackActivated);
             imported++;
             node = isNullNode;
             return true;
@@ -291,14 +307,14 @@ internal sealed class SqlImportWhereClauseApplier(CanvasViewModel canvas) : ISql
                 layout.ComparisonPosition(sourceCount));
             _canvas.Nodes.Add(betweenNode);
 
-            TryWireExpressionToPin(leftExpr, betweenNode, "value", fromParts, tableNodes);
-            if (!TryWireExpressionToPin(lowExpr, betweenNode, "low", fromParts, tableNodes)
+            TryWireExpressionToPin(leftExpr, betweenNode, "value", fromParts, tableNodes, ref fallbackActivated);
+            if (!TryWireExpressionToPin(lowExpr, betweenNode, "low", fromParts, tableNodes, ref fallbackActivated)
                 && !TryWireLiteralExpressionToPin(lowExpr, betweenNode, "low", layout, sourceCount))
             {
                 betweenNode.PinLiterals["low"] = NormalizeRawSqlLiteral(lowExpr);
             }
 
-            if (!TryWireExpressionToPin(highExpr, betweenNode, "high", fromParts, tableNodes)
+            if (!TryWireExpressionToPin(highExpr, betweenNode, "high", fromParts, tableNodes, ref fallbackActivated)
                 && !TryWireLiteralExpressionToPin(highExpr, betweenNode, "high", layout, sourceCount))
             {
                 betweenNode.PinLiterals["high"] = NormalizeRawSqlLiteral(highExpr);
@@ -322,7 +338,7 @@ internal sealed class SqlImportWhereClauseApplier(CanvasViewModel canvas) : ISql
             NodeViewModel likeNode = new(NodeDefinitionRegistry.Get(NodeType.Like), layout.ComparisonPosition(sourceCount));
             likeNode.Parameters["pattern"] = UnquoteLiteral(patternExpr);
             _canvas.Nodes.Add(likeNode);
-            TryWireExpressionToPin(leftExpr, likeNode, "text", fromParts, tableNodes);
+            TryWireExpressionToPin(leftExpr, likeNode, "text", fromParts, tableNodes, ref fallbackActivated);
 
             if (!negate)
             {
@@ -364,9 +380,9 @@ internal sealed class SqlImportWhereClauseApplier(CanvasViewModel canvas) : ISql
             NodeViewModel comp = new(NodeDefinitionRegistry.Get(compType), layout.ComparisonPosition(sourceCount));
             _canvas.Nodes.Add(comp);
 
-            TryWireExpressionToPin(leftExpr, comp, "left", fromParts, tableNodes);
+            TryWireExpressionToPin(leftExpr, comp, "left", fromParts, tableNodes, ref fallbackActivated);
 
-            if (IsQualifiedIdentifier(rightExpr) && TryWireExpressionToPin(rightExpr, comp, "right", fromParts, tableNodes))
+            if (IsQualifiedIdentifier(rightExpr) && TryWireExpressionToPin(rightExpr, comp, "right", fromParts, tableNodes, ref fallbackActivated))
             {
                 imported++;
                 node = comp;
@@ -395,7 +411,8 @@ internal sealed class SqlImportWhereClauseApplier(CanvasViewModel canvas) : ISql
         NodeViewModel targetNode,
         string targetPin,
         IReadOnlyList<ImportFromPart> fromParts,
-        IReadOnlyList<NodeViewModel> tableNodes)
+        IReadOnlyList<NodeViewModel> tableNodes,
+        ref bool fallbackActivated)
     {
         if (ImportBuildUtilities.TryResolveExpressionPin(expression, fromParts, tableNodes, out PinViewModel pin))
         {
@@ -425,6 +442,7 @@ internal sealed class SqlImportWhereClauseApplier(CanvasViewModel canvas) : ISql
         if (fallbackPin is null)
             return false;
 
+        fallbackActivated = true;
         SqlImportClauseApplyUtilities.SafeWire(fallbackPin.Owner, fallbackPin.Name, targetNode, targetPin, _canvas);
         return true;
     }
