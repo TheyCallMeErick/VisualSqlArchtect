@@ -1,6 +1,6 @@
-# 📚 Documentação — DbWeaver
+# 📚 Documentação — AkkornStudio
 
-Este é o índice principal da documentação ativa do projeto DbWeaver.
+Este é o índice principal da documentação ativa do projeto AkkornStudio.
 
 ## 🎯 Organização Atual
 

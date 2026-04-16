@@ -1,0 +1,227 @@
+﻿using AkkornStudio.UI.Services.ConnectionManager;
+using AkkornStudio.UI.Services.Benchmark;
+using System.Reflection;
+using AkkornStudio.Core;
+using AkkornStudio.UI.Services.Localization;
+using AkkornStudio.UI.Services.Modal;
+using AkkornStudio.UI.ViewModels;
+using Xunit;
+
+namespace AkkornStudio.Tests.Unit.ViewModels;
+
+public class ConnectionManagerUxStateTests
+{
+    [Fact]
+    public void OpenNewProfileCommand_OpensDialogAndStartsEditing()
+    {
+        var vm = new ConnectionManagerViewModel
+        {
+            IsVisible = false,
+        };
+
+        vm.OpenNewProfileCommand.Execute(null);
+
+        Assert.True(vm.IsVisible);
+        Assert.True(vm.IsEditing);
+    }
+
+    [Fact]
+    public void ConnectOrOpenManagerCommand_WithoutProfiles_OpensDialogAndStartsEditing()
+    {
+        var modalManager = new RecordingModalManager();
+        var vm = new ConnectionManagerViewModel(globalModalManager: modalManager)
+        {
+            IsVisible = false,
+        };
+        vm.Profiles.Clear();
+        vm.SelectedProfile = null;
+
+        vm.ConnectOrOpenManagerCommand.Execute(null);
+
+        Assert.Equal(GlobalModalKind.ConnectionManager, modalManager.LastRequest?.Kind);
+        Assert.True(modalManager.LastRequest?.BeginNewProfile);
+        Assert.False(modalManager.LastRequest?.KeepStartVisible);
+    }
+
+    [Fact]
+    public void ConnectOrOpenManagerCommand_WithInvalidProfile_OnlyOpensManagerWithoutConnecting()
+    {
+        var modalManager = new RecordingModalManager();
+        var vm = new ConnectionManagerViewModel(globalModalManager: modalManager);
+        vm.Profiles.Clear();
+        var profile = new ConnectionProfile
+        {
+            Id = Guid.NewGuid().ToString(),
+            Name = "Local",
+            Provider = DatabaseProvider.Postgres,
+            Host = "localhost",
+            Port = 5432,
+            Database = string.Empty,
+            Username = "u",
+            Password = "p",
+        };
+
+        vm.Profiles.Add(profile);
+        vm.SelectedProfile = profile;
+        vm.IsVisible = false;
+        vm.IsConnecting = false;
+
+        vm.ConnectOrOpenManagerCommand.Execute(null);
+
+        Assert.Equal(GlobalModalKind.ConnectionManager, modalManager.LastRequest?.Kind);
+        Assert.False(modalManager.LastRequest?.BeginNewProfile);
+        Assert.False(vm.IsConnecting);
+    }
+
+    [Fact]
+    public void ConnectOrOpenManagerCommand_WithSavedProfiles_SelectsFirstProfileAndAvoidsEditorMode()
+    {
+        var modalManager = new RecordingModalManager();
+        var vm = new ConnectionManagerViewModel(globalModalManager: modalManager);
+        vm.Profiles.Clear();
+        vm.SelectedProfile = null;
+        var first = new ConnectionProfile
+        {
+            Id = Guid.NewGuid().ToString(),
+            Name = "Primary",
+            Provider = DatabaseProvider.Postgres,
+            Host = "localhost",
+            Port = 5432,
+            Database = "db1",
+            Username = "u",
+            Password = "p",
+        };
+        var second = new ConnectionProfile
+        {
+            Id = Guid.NewGuid().ToString(),
+            Name = "Secondary",
+            Provider = DatabaseProvider.Postgres,
+            Host = "localhost",
+            Port = 5432,
+            Database = "db2",
+            Username = "u",
+            Password = "p",
+        };
+
+        vm.Profiles.Add(first);
+        vm.Profiles.Add(second);
+        vm.SelectedProfile = null;
+        vm.IsEditing = true;
+
+        vm.ConnectOrOpenManagerCommand.Execute(null);
+
+        Assert.Equal(GlobalModalKind.ConnectionManager, modalManager.LastRequest?.Kind);
+        Assert.False(modalManager.LastRequest?.BeginNewProfile);
+        Assert.False(vm.IsConnecting);
+    }
+
+    [Fact]
+    public void ConnectOrOpenManagerCommand_FallsBackToLocalState_WhenNoGlobalHostIsSubscribed()
+    {
+        var vm = new ConnectionManagerViewModel(globalModalManager: new RecordingModalManager(hasSubscriber: false));
+        vm.Profiles.Clear();
+
+        vm.ConnectOrOpenManagerCommand.Execute(null);
+
+        Assert.True(vm.IsVisible);
+        Assert.True(vm.IsEditing);
+    }
+
+    [Fact]
+    public void Connect_DoesNotCloseDialogImmediately()
+    {
+        var vm = new ConnectionManagerViewModel
+        {
+            IsVisible = true,
+        };
+
+        var profile = new ConnectionProfile
+        {
+            Id = Guid.NewGuid().ToString(),
+            Name = "Local",
+            Provider = DatabaseProvider.Postgres,
+            Host = "localhost",
+            Port = 5432,
+            Database = "db",
+            Username = "u",
+            Password = "p",
+        };
+
+        vm.Profiles.Add(profile);
+        vm.SelectedProfile = profile;
+
+        vm.ConnectCommand.Execute(null);
+
+        Assert.True(vm.IsVisible);
+    }
+
+    [Fact]
+    public async Task LoadDatabaseTablesAsync_WithoutSearchMenu_ReportsFailureAndKeepsDialogVisible()
+    {
+        var vm = new ConnectionManagerViewModel
+        {
+            IsVisible = true,
+            SearchMenu = null,
+        };
+
+        var profile = new ConnectionProfile
+        {
+            Id = Guid.NewGuid().ToString(),
+            Name = "Local",
+            Provider = DatabaseProvider.Postgres,
+            Host = "localhost",
+            Port = 5432,
+            Database = "db",
+            Username = "u",
+            Password = "p",
+        };
+
+        MethodInfo method = typeof(ConnectionManagerViewModel)
+            .GetMethod(
+                "LoadDatabaseTablesAsync",
+                BindingFlags.Instance | BindingFlags.NonPublic,
+                binder: null,
+                types: [typeof(ConnectionProfile)],
+                modifiers: null
+            )!;
+
+        var task = (Task)method.Invoke(vm, [profile])!;
+        await task;
+
+        Assert.True(vm.IsVisible);
+        Assert.False(vm.IsConnecting);
+        Assert.Contains(LocalizationService.Instance["connection.status.failedPrefix"], vm.TestStatus, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private sealed class RecordingModalManager(bool hasSubscriber = true) : IGlobalModalManager
+    {
+        public event Action<GlobalModalRequest>? ModalRequested;
+
+        public GlobalModalRequest? LastRequest { get; private set; }
+
+        public bool Request(GlobalModalRequest request)
+        {
+            LastRequest = request;
+            if (!hasSubscriber)
+                return false;
+
+            ModalRequested?.Invoke(request);
+            return true;
+        }
+
+        public bool RequestConnectionManager(bool beginNewProfile = false, bool keepStartVisible = false) =>
+            Request(new GlobalModalRequest(
+                Kind: GlobalModalKind.ConnectionManager,
+                BeginNewProfile: beginNewProfile,
+                KeepStartVisible: keepStartVisible
+            ));
+
+        public bool RequestSettings(bool keepStartVisible = false) =>
+            Request(new GlobalModalRequest(
+                Kind: GlobalModalKind.Settings,
+                KeepStartVisible: keepStartVisible
+            ));
+    }
+}
+
+

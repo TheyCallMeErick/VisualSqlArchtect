@@ -113,8 +113,8 @@ A pasta `Integration/` está reservada para testes que:
 | Categoria | Regras cobertas | Arquivos de teste |
 |---|---|---|
 | Type mismatch | Compatibilidade de pinos e conexoes invalidas | `tests/t/ViewModels/QueryPreview/QueryGraphBuilderConnectionValidationTests.cs` |
-| Predicate | AND/OR/COMPILE WHERE redundante ou vazio; NOT sem condition (ativo) | `tests/t/ViewModels/QueryPreview/QueryGraphBuilderLogicGateValidationTests.cs`; `tests/DBWeaver.Tls/QueryPreview/QueryGraphBuilderNotAndJsonValidationTests.cs` |
-| Comparison | Inputs obrigatorios de comparacao; LIKE sem pattern | `tests/t/ViewModels/QueryPreview/QueryGraphBuilderComparisonValidationTests.cs`; `tests/DBWeaver.Tls/QueryPreview/QueryGraphBuilderQualifyTests.cs` |
+| Predicate | AND/OR/COMPILE WHERE redundante ou vazio; NOT sem condition (ativo) | `tests/t/ViewModels/QueryPreview/QueryGraphBuilderLogicGateValidationTests.cs`; `tests/AkkornStudio.Tls/QueryPreview/QueryGraphBuilderNotAndJsonValidationTests.cs` |
+| Comparison | Inputs obrigatorios de comparacao; LIKE sem pattern | `tests/t/ViewModels/QueryPreview/QueryGraphBuilderComparisonValidationTests.cs`; `tests/AkkornStudio.Tls/QueryPreview/QueryGraphBuilderQualifyTests.cs` |
 | Window | value/order/frame/offset/ntile validation | `tests/t/ViewModels/QueryPreview/QueryGraphBuilderWindowFunctionTests.cs` |
 | CTE | nome, escopo, from inference, recursive prefix, CTE source alias | `tests/t/ViewModels/QueryPreview/QueryGraphBuilderCteTests.cs` |
 | Join | Join explicito por tipo; join incompleto; fallback legado | `tests/t/ViewModels/QueryPreview/QueryGraphBuilderJoinTests.cs` |
@@ -122,7 +122,7 @@ A pasta `Integration/` está reservada para testes que:
 | Set operation | operador suportado, query obrigatoria, shape SELECT | `tests/t/ViewModels/QueryPreview/QueryGraphBuilderSetOperationTests.cs` |
 | Query hints | hints por provider e validacao de sintaxe | `tests/t/ViewModels/QueryPreview/QueryGraphBuilderQueryHintsTests.cs` |
 | Pivot | pivot/unpivot provider-aware e configuracao invalida | `tests/t/ViewModels/QueryPreview/QueryGraphBuilderPivotTests.cs` |
-| Diagnostics estruturados | severidade/categoria/code + compatibilidade com mensagens legadas | `tests/t/ViewModels/QueryPreview/PreviewDiagnosticMapperTests.cs`; `tests/DBWeaver.Tls/QueryPreview/QueryGraphBuilderDiagnosticsTests.cs` |
+| Diagnostics estruturados | severidade/categoria/code + compatibilidade com mensagens legadas | `tests/t/ViewModels/QueryPreview/PreviewDiagnosticMapperTests.cs`; `tests/AkkornStudio.Tls/QueryPreview/QueryGraphBuilderDiagnosticsTests.cs` |
 | Paginacao | TOP/LIMIT <= 0; OFFSET sem ORDER BY deterministico | `tests/t/ViewModels/QueryPreview/QueryGraphBuilderPaginationValidationTests.cs` |
 | Alias ambiguo | duplicidade de alias no mesmo escopo; sem falso positivo cross-scope | `tests/t/ViewModels/QueryPreview/QueryGraphBuilderAliasAmbiguityTests.cs` |
 
