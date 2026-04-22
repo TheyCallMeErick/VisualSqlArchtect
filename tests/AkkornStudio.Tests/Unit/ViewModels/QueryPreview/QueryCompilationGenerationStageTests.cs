@@ -28,6 +28,8 @@ public class QueryCompilationGenerationStageTests
                 errors));
 
         Assert.Equal("SELECT * FROM t --inlined", result.Sql);
+        Assert.Equal("SELECT * FROM t", result.ExecutionSqlTemplate);
+        Assert.Empty(result.Bindings);
         Assert.Empty(result.Errors);
     }
 
@@ -52,6 +54,8 @@ public class QueryCompilationGenerationStageTests
                 errors));
 
         Assert.Equal("fallback-sql", result.Sql);
+        Assert.Null(result.ExecutionSqlTemplate);
+        Assert.Empty(result.Bindings);
         Assert.Contains("mapped: boom", result.Errors);
     }
 
@@ -82,6 +86,8 @@ public class QueryCompilationGenerationStageTests
                 errors));
 
         Assert.Equal("SELECT 42", result.Sql);
+        Assert.Equal("SELECT 42", result.ExecutionSqlTemplate);
+        Assert.Empty(result.Bindings);
         Assert.Equal(0, fallbackCalls);
         Assert.Single(result.Errors);
         Assert.Contains("seed-error", result.Errors);
@@ -108,6 +114,8 @@ public class QueryCompilationGenerationStageTests
                 errors));
 
         Assert.Equal("fallback-sql", result.Sql);
+        Assert.Null(result.ExecutionSqlTemplate);
+        Assert.Empty(result.Bindings);
         Assert.Contains("seed-error", result.Errors);
         Assert.Contains("mapped-a", result.Errors);
         Assert.Contains("mapped-b", result.Errors);

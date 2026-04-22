@@ -13,16 +13,26 @@ public class QueryExecutorServiceSecurityTests
     [InlineData("DELETE FROM users")]
     [InlineData("DROP TABLE users")]
     [InlineData("SELECT 1; DELETE FROM users")]
-    [InlineData("SELECT * FROM users WHERE id = @id")]
-    [InlineData("SELECT * FROM users WHERE id = :id")]
-    [InlineData("SELECT * FROM users WHERE id = ?")]
-    [InlineData("SELECT * FROM users WHERE id = $1")]
     public void ValidatePreviewQuery_RejectsMutatingOrMultiStatementSql(string sql)
     {
         MethodInfo validate = typeof(QueryExecutorService)
             .GetMethod("ValidatePreviewQuery", BindingFlags.NonPublic | BindingFlags.Static)!;
 
-        var ex = Assert.Throws<TargetInvocationException>(() => validate.Invoke(null, [sql]));
+        var ex = Assert.Throws<TargetInvocationException>(() => validate.Invoke(null, [sql, null]));
+        Assert.IsType<ArgumentException>(ex.InnerException);
+    }
+
+    [Theory]
+    [InlineData("SELECT * FROM users WHERE id = @id")]
+    [InlineData("SELECT * FROM users WHERE id = :id")]
+    [InlineData("SELECT * FROM users WHERE id = ?")]
+    [InlineData("SELECT * FROM users WHERE id = $1")]
+    public void ValidatePreviewQuery_RejectsParameterPlaceholdersWithoutValues(string sql)
+    {
+        MethodInfo validate = typeof(QueryExecutorService)
+            .GetMethod("ValidatePreviewQuery", BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        var ex = Assert.Throws<TargetInvocationException>(() => validate.Invoke(null, [sql, null]));
         Assert.IsType<ArgumentException>(ex.InnerException);
     }
 
@@ -36,7 +46,35 @@ public class QueryExecutorServiceSecurityTests
         MethodInfo validate = typeof(QueryExecutorService)
             .GetMethod("ValidatePreviewQuery", BindingFlags.NonPublic | BindingFlags.Static)!;
 
-        Exception? ex = Record.Exception(() => validate.Invoke(null, [sql]));
+        Exception? ex = Record.Exception(() => validate.Invoke(null, [sql, null]));
+        Assert.Null(ex);
+    }
+
+    [Theory]
+    [InlineData("SELECT * FROM users WHERE id = @id", "@id", 1)]
+    [InlineData("SELECT * FROM users WHERE id = :id", "id", 1)]
+    public void ValidatePreviewQuery_AcceptsNamedParametersWhenValuesAreProvided(string sql, string parameterName, int value)
+    {
+        MethodInfo validate = typeof(QueryExecutorService)
+            .GetMethod("ValidatePreviewQuery", BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        var parameters = new[] { new QueryParameter(parameterName, value) };
+
+        Exception? ex = Record.Exception(() => validate.Invoke(null, [sql, parameters]));
+        Assert.Null(ex);
+    }
+
+    [Theory]
+    [InlineData("SELECT * FROM users WHERE id = ?", 1)]
+    [InlineData("SELECT * FROM users WHERE id = $1", 1)]
+    public void ValidatePreviewQuery_AcceptsPositionalParametersWhenValuesAreProvided(string sql, int value)
+    {
+        MethodInfo validate = typeof(QueryExecutorService)
+            .GetMethod("ValidatePreviewQuery", BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        var parameters = new[] { new QueryParameter(null, value) };
+
+        Exception? ex = Record.Exception(() => validate.Invoke(null, [sql, parameters]));
         Assert.Null(ex);
     }
 

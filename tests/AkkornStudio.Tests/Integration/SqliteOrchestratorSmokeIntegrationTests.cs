@@ -56,4 +56,60 @@ INSERT INTO users (name) VALUES ('Alice'), ('Bob'), ('Carol');";
             }
         }
     }
+
+    [Fact]
+    public async Task QueryExecutorService_RealSqliteFile_ExecutesParameterizedPreviewQuery()
+    {
+        string dbPath = Path.Combine(Path.GetTempPath(), "vsa-smoke-" + Guid.NewGuid().ToString("N") + ".db");
+
+        try
+        {
+            using (var conn = new SqliteConnection($"Data Source={dbPath};"))
+            {
+                await conn.OpenAsync();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+INSERT INTO users (name) VALUES ('Alice'), ('Bob'), ('Carol');";
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            var config = new ConnectionConfig(
+                DatabaseProvider.SQLite,
+                Host: "localhost",
+                Port: 0,
+                Database: dbPath,
+                Username: string.Empty,
+                Password: string.Empty,
+                TimeoutSeconds: 30
+            );
+
+            var svc = new QueryExecutorService();
+            var dt = await svc.ExecuteQueryAsync(
+                config,
+                "SELECT id, name FROM users WHERE id >= @minId ORDER BY id",
+                [new QueryParameter("@minId", 2)],
+                maxRows: 10);
+
+            Assert.NotNull(dt);
+            Assert.Equal(2, dt.Rows.Count);
+            Assert.Equal("Bob", dt.Rows[0]["name"]);
+            Assert.Equal("Carol", dt.Rows[1]["name"]);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (File.Exists(dbPath))
+            {
+                try
+                {
+                    File.Delete(dbPath);
+                }
+                catch (IOException)
+                {
+                    // Best-effort cleanup for transient SQLite file handles in CI/test runners.
+                }
+            }
+        }
+    }
 }

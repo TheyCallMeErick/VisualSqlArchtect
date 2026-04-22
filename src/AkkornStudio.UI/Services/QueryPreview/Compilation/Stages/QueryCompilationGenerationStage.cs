@@ -18,13 +18,19 @@ internal sealed class QueryCompilationGenerationStage(
         {
             GeneratedQuery result = _sqlGenerator.Generate(input.FromTable, input.Graph, input.Joins, input.SetOperation);
             string previewSql = _inlineBindingsForPreview(result.Sql, result.Bindings);
-            return new QueryCompilationGenerationStageResult(previewSql, input.Errors);
+            return new QueryCompilationGenerationStageResult(
+                previewSql,
+                result.Sql,
+                result.Bindings,
+                input.Errors);
         }
         catch (Exception ex)
         {
             input.Errors.AddRange(_mapGenerationErrors(ex));
             return new QueryCompilationGenerationStageResult(
                 _fallbackSql(input.FromTable, input.Joins),
+                null,
+                new Dictionary<string, object?>(),
                 input.Errors);
         }
     }

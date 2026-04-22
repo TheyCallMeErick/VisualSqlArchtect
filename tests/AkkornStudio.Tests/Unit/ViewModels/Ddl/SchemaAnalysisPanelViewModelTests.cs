@@ -100,8 +100,17 @@ public sealed class SchemaAnalysisPanelViewModelTests
     public void Commands_RespectCandidateVisibilityRules()
     {
         string? copiedSql = null;
+        SchemaIssue? appliedIssue = null;
+        SchemaSuggestion? appliedSuggestion = null;
         SqlFixCandidate? appliedCandidate = null;
-        var vm = new SchemaAnalysisPanelViewModel(sql => copiedSql = sql, candidate => appliedCandidate = candidate);
+        var vm = new SchemaAnalysisPanelViewModel(
+            sql => copiedSql = sql,
+            (issue, suggestion, candidate) =>
+            {
+                appliedIssue = issue;
+                appliedSuggestion = suggestion;
+                appliedCandidate = candidate;
+            });
 
         SqlFixCandidate readOnlyCandidate = CreateCandidate("c-1", CandidateVisibility.VisibleReadOnly);
         SqlFixCandidate actionableCandidate = CreateCandidate("c-2", CandidateVisibility.VisibleActionable);
@@ -135,7 +144,52 @@ public sealed class SchemaAnalysisPanelViewModelTests
         vm.SelectedSqlCandidate = actionableCandidate;
         Assert.True(vm.CanApplyToCanvas);
         vm.ApplyToCanvasCommand.Execute(null);
+        Assert.Equal(issue, appliedIssue);
+        Assert.Equal(issue.Suggestions[0], appliedSuggestion);
         Assert.Equal(actionableCandidate, appliedCandidate);
+    }
+
+    [Fact]
+    public void CanApplyToCanvas_AllowsNamingIssueWithoutSqlCandidate()
+    {
+        SchemaIssue? appliedIssue = null;
+        SchemaSuggestion? appliedSuggestion = null;
+        SqlFixCandidate? appliedCandidate = null;
+        var vm = new SchemaAnalysisPanelViewModel(
+            applyToCanvas: (issue, suggestion, candidate) =>
+            {
+                appliedIssue = issue;
+                appliedSuggestion = suggestion;
+                appliedCandidate = candidate;
+            });
+
+        SchemaIssue namingIssue = CreateIssue(
+            "i-1",
+            SchemaRuleCode.NAMING_CONVENTION_VIOLATION,
+            SchemaIssueSeverity.Warning,
+            "public",
+            "SalesOrder",
+            0.95d,
+            suggestions:
+            [
+                new SchemaSuggestion(
+                    SuggestionId: "s-1",
+                    Title: "Rename",
+                    Description: "Normalize object name",
+                    Confidence: 0.95d,
+                    SqlCandidates: [])
+            ]);
+
+        vm.ApplyResult(CreateResult([namingIssue], SchemaAnalysisStatus.Completed));
+
+        Assert.Null(vm.SelectedSqlCandidate);
+        Assert.True(vm.CanApplyToCanvas);
+
+        vm.ApplyToCanvasCommand.Execute(null);
+
+        Assert.Equal(namingIssue, appliedIssue);
+        Assert.Equal(namingIssue.Suggestions[0], appliedSuggestion);
+        Assert.Null(appliedCandidate);
     }
 
     [Fact]

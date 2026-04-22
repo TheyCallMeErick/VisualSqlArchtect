@@ -232,6 +232,7 @@ public static partial class CanvasSerializer
 
         vm.Zoom = saved.Zoom;
         vm.PanOffset = new Point(saved.PanX, saved.PanY);
+        vm.ReplacePreviewParameterInputs(saved.PreviewParameterInputs);
 
         var nodeMap = new Dictionary<string, NodeViewModel>(StringComparer.Ordinal);
         var skippedNodes = new List<(string NodeId, string NodeType, string Reason)>();

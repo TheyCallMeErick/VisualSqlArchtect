@@ -21,13 +21,48 @@ public sealed class SchemaAnalysisPanelViewModel : ViewModelBase
     private const string IgnoreTablePlaceholderFallback = "schema.tabela";
 
     private readonly Action<string>? _copySql;
-    private readonly Action<SqlFixCandidate>? _applyToCanvas;
+    private readonly Action<SchemaIssue, SchemaSuggestion?, SqlFixCandidate?>? _applyToCanvas;
     private static readonly TextSearchService TextSearch = new();
 
     private readonly List<SchemaIssue> _rawIssues = [];
     private readonly List<SchemaRuleExecutionDiagnostic> _diagnostics = [];
     private readonly HashSet<SchemaIssueSeverity> _severityFilter = [];
     private readonly HashSet<SchemaRuleCode> _ruleFilter = [];
+
+    private double _overallScore;
+    public double OverallScore
+    {
+        get => _overallScore;
+        private set => Set(ref _overallScore, value);
+    }
+
+    private int _quickWinCount;
+    public int QuickWinCount
+    {
+        get => _quickWinCount;
+        private set => Set(ref _quickWinCount, value);
+    }
+
+    private string _dominantNamingConvention = string.Empty;
+    public string DominantNamingConvention
+    {
+        get => _dominantNamingConvention;
+        private set => Set(ref _dominantNamingConvention, value);
+    }
+
+    private string _dominantPkPattern = string.Empty;
+    public string DominantPkPattern
+    {
+        get => _dominantPkPattern;
+        private set => Set(ref _dominantPkPattern, value);
+    }
+
+    private string _dominantFkPattern = string.Empty;
+    public string DominantFkPattern
+    {
+        get => _dominantFkPattern;
+        private set => Set(ref _dominantFkPattern, value);
+    }
 
     private SchemaAnalysisViewState _state;
     private string _stateMessage = L("preview.schemaAnalysis.state.metadataUnavailable", MetadataUnavailableMessageFallback);
@@ -47,6 +82,7 @@ public sealed class SchemaAnalysisPanelViewModel : ViewModelBase
     private bool _includeNf1HintMultiValued = true;
     private bool _includeNf2HintPartialDependency = true;
     private bool _includeNf3HintTransitiveDependency = true;
+    private bool _quickWinsOnly;
     private bool _ignoreViews;
     private string _ignoredTableInput = string.Empty;
     private string? _selectedIgnoredTable;
@@ -54,7 +90,7 @@ public sealed class SchemaAnalysisPanelViewModel : ViewModelBase
 
     public SchemaAnalysisPanelViewModel(
         Action<string>? copySql = null,
-        Action<SqlFixCandidate>? applyToCanvas = null
+        Action<SchemaIssue, SchemaSuggestion?, SqlFixCandidate?>? applyToCanvas = null
     )
     {
         _copySql = copySql;
@@ -72,8 +108,8 @@ public sealed class SchemaAnalysisPanelViewModel : ViewModelBase
         ApplyToCanvasCommand = new RelayCommand(
             () =>
             {
-                if (SelectedSqlCandidate is not null)
-                    _applyToCanvas?.Invoke(SelectedSqlCandidate);
+                if (SelectedIssue is not null)
+                    _applyToCanvas?.Invoke(SelectedIssue, SelectedSuggestion, SelectedSqlCandidate);
             },
             () => CanApplyToCanvas
         );
@@ -234,13 +270,22 @@ public sealed class SchemaAnalysisPanelViewModel : ViewModelBase
         && SelectedSqlCandidate.Visibility is CandidateVisibility.VisibleReadOnly or CandidateVisibility.VisibleActionable;
 
     public bool CanApplyToCanvas =>
-        SelectedSqlCandidate is not null
-        && SelectedSqlCandidate.Visibility == CandidateVisibility.VisibleActionable;
+        SelectedIssue is not null
+        && (
+            SelectedSqlCandidate?.Visibility == CandidateVisibility.VisibleActionable
+            || IsCanvasAutoApplicableIssue(SelectedIssue)
+        );
 
     public string ActionBlockedTooltip =>
         CanCopySql || CanApplyToCanvas
             ? string.Empty
             : L("preview.schemaAnalysis.actionBlockedTooltip", ActionBlockedTooltipFallback);
+
+    private static bool IsCanvasAutoApplicableIssue(SchemaIssue issue)
+    {
+        return issue.RuleCode is SchemaRuleCode.NAMING_CONVENTION_VIOLATION
+            or SchemaRuleCode.MISSING_REQUIRED_COMMENT;
+    }
 
     public RelayCommand CopySqlCommand { get; }
 
@@ -279,6 +324,18 @@ public sealed class SchemaAnalysisPanelViewModel : ViewModelBase
     public bool CanSelectNextIssue => TryGetSelectionIndex(out int index) && index < VisibleIssues.Count - 1;
 
     public bool CanSelectPreviousIssue => TryGetSelectionIndex(out int index) && index > 0;
+
+    public bool QuickWinsOnly
+    {
+        get => _quickWinsOnly;
+        set
+        {
+            if (!Set(ref _quickWinsOnly, value))
+                return;
+
+            ApplyFilters();
+        }
+    }
 
     public bool IgnoreViews
     {
@@ -551,6 +608,7 @@ public sealed class SchemaAnalysisPanelViewModel : ViewModelBase
         _tableTextFilter = string.Empty;
         RaisePropertyChanged(nameof(MinConfidenceFilter));
         RaisePropertyChanged(nameof(TableTextFilter));
+        QuickWinsOnly = false;
         IgnoreViews = false;
         ClearIgnoredTables();
         RebuildSeverityFilterFromFlags(applyFilters: false);
@@ -591,6 +649,12 @@ public sealed class SchemaAnalysisPanelViewModel : ViewModelBase
         _diagnostics.Clear();
         _diagnostics.AddRange(result.Diagnostics);
         RaisePropertyChanged(nameof(Diagnostics));
+
+        OverallScore = result.Summary.OverallScore;
+        QuickWinCount = result.Summary.QuickWinCount;
+        DominantNamingConvention = result.Summary.ObservedPatterns.DominantNamingConvention.ToString();
+        DominantPkPattern = result.Summary.ObservedPatterns.DominantPkPattern ?? "-";
+        DominantFkPattern = result.Summary.ObservedPatterns.DominantFkPattern ?? "-";
 
         ApplyFilters();
 
@@ -640,6 +704,7 @@ public sealed class SchemaAnalysisPanelViewModel : ViewModelBase
             .Where(i => i.Confidence >= MinConfidenceFilter)
             .Where(i => MatchesTableFilter(i, TableTextFilter))
             .Where(i => !IsBlacklistedTable(i.SchemaName, i.TableName))
+            .Where(i => !_quickWinsOnly || i.Suggestions.Count > 0)
             .ToList();
 
         VisibleIssues.Clear();

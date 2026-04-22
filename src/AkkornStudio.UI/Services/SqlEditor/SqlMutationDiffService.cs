@@ -34,7 +34,15 @@ public sealed class SqlMutationDiffService
         long? estimatedAffectedRows,
         CancellationToken ct = default)
     {
-        if (!guard.SupportsDiff || string.IsNullOrWhiteSpace(guard.CountQuery))
+        if (!guard.SupportsDiff)
+            return SqlMutationDiffPreview.Unavailable(L("sqlEditor.diff.unavailable.noPreview", "No transactional diff preview available for this statement."));
+
+        string upper = statementSql.TrimStart().ToUpperInvariant();
+
+        if (upper.StartsWith("INSERT ", StringComparison.Ordinal))
+            return await BuildInsertPreviewAsync(statementSql, config, ct);
+
+        if (string.IsNullOrWhiteSpace(guard.CountQuery))
             return SqlMutationDiffPreview.Unavailable(L("sqlEditor.diff.unavailable.noPreview", "No transactional diff preview available for this statement."));
 
         ParsedCountQuery? parsed = ParseCountQuery(guard.CountQuery);
@@ -46,7 +54,6 @@ public sealed class SqlMutationDiffService
         if (!affectedRows.HasValue || !totalBefore.HasValue)
             return SqlMutationDiffPreview.Unavailable(L("sqlEditor.diff.unavailable.connection", "Transactional diff preview unavailable due to connection or query limitations."));
 
-        string upper = statementSql.TrimStart().ToUpperInvariant();
         if (upper.StartsWith("DELETE ", StringComparison.Ordinal))
         {
             long totalAfter = Math.Max(0, totalBefore.Value - affectedRows.Value);
@@ -83,6 +90,48 @@ public sealed class SqlMutationDiffService
         return SqlMutationDiffPreview.Unavailable(L("sqlEditor.diff.unavailable.unsupportedStatement", "Transactional diff preview currently supports UPDATE and DELETE only."));
     }
 
+    private async Task<SqlMutationDiffPreview> BuildInsertPreviewAsync(
+        string statementSql,
+        ConnectionConfig? config,
+        CancellationToken ct)
+    {
+        string? targetTable = ParseInsertTargetTable(statementSql);
+        if (string.IsNullOrWhiteSpace(targetTable))
+            return SqlMutationDiffPreview.Unavailable(L("sqlEditor.diff.unavailable.parseError", "Could not parse mutation target for transactional diff preview."));
+
+        long? totalBefore = await ExecuteScalarCountAsync($"SELECT COUNT(*) FROM {targetTable}", config, ct);
+        if (!totalBefore.HasValue)
+            return SqlMutationDiffPreview.Unavailable(L("sqlEditor.diff.unavailable.connection", "Transactional diff preview unavailable due to connection or query limitations."));
+
+        long? insertedRows = TryEstimateInsertedRows(statementSql);
+        if (insertedRows.HasValue)
+        {
+            return new SqlMutationDiffPreview
+            {
+                Available = true,
+                Message = string.Format(
+                    L(
+                        "sqlEditor.diff.insertSummary",
+                        "Transactional diff preview (ROLLBACK guaranteed): table {0}, total rows before {1}, estimated inserted rows {2}, total rows after {3}."),
+                    targetTable,
+                    totalBefore.Value,
+                    insertedRows.Value,
+                    totalBefore.Value + insertedRows.Value),
+            };
+        }
+
+        return new SqlMutationDiffPreview
+        {
+            Available = true,
+            Message = string.Format(
+                L(
+                    "sqlEditor.diff.insertSummaryUnknown",
+                    "Transactional diff preview (ROLLBACK guaranteed): table {0}, total rows before {1}. Inserted row count could not be estimated from this INSERT shape."),
+                targetTable,
+                totalBefore.Value),
+        };
+    }
+
     private async Task<long?> ExecuteScalarCountAsync(string sql, ConnectionConfig? config, CancellationToken ct)
     {
         SqlEditorResultSet result = await _executeAsync(sql, config, 1, ct);
@@ -109,6 +158,29 @@ public sealed class SqlMutationDiffService
     }
 
     private sealed record ParsedCountQuery(string TableName);
+
+    private static string? ParseInsertTargetTable(string statementSql)
+    {
+        Match match = Regex.Match(
+            statementSql,
+            @"^\s*INSERT\s+INTO\s+([^\s(]+)",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        return match.Success ? match.Groups[1].Value.Trim() : null;
+    }
+
+    private static long? TryEstimateInsertedRows(string statementSql)
+    {
+        Match valuesMatch = Regex.Match(
+            statementSql,
+            @"\bVALUES\b(?<values>.+)$",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant);
+        if (!valuesMatch.Success)
+            return null;
+
+        string valuesSegment = valuesMatch.Groups["values"].Value;
+        int tupleCount = Regex.Matches(valuesSegment, @"\(", RegexOptions.CultureInvariant).Count;
+        return tupleCount > 0 ? tupleCount : null;
+    }
 
     private string L(string key, string fallback)
     {

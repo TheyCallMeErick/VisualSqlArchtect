@@ -207,4 +207,24 @@ public class CanvasSerializerSaveLoadEnhancementsTests
         Assert.Equal(PinDataType.Number, table.OutputPins.Single(p => p.Name == "id").EffectiveDataType);
         Assert.Equal(PinDataType.Text, table.OutputPins.Single(p => p.Name == "descricao").EffectiveDataType);
     }
+
+    [Fact]
+    public void SerializeDeserialize_PreservesPreviewParameterInputs()
+    {
+        var source = new CanvasViewModel();
+        source.RememberPreviewParameterInputs(new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Postgres|localhost|5432|sales|named:customer_id"] = "42",
+            ["Postgres|localhost|5432|sales|pos:1:?"] = "active",
+        });
+
+        string json = CanvasSerializer.Serialize(source);
+
+        var loaded = new CanvasViewModel();
+        CanvasLoadResult result = CanvasSerializer.Deserialize(json, loaded);
+
+        Assert.True(result.Success);
+        Assert.Equal("42", loaded.PreviewParameterInputs["Postgres|localhost|5432|sales|named:customer_id"]);
+        Assert.Equal("active", loaded.PreviewParameterInputs["Postgres|localhost|5432|sales|pos:1:?"]);
+    }
 }

@@ -54,7 +54,7 @@
                 Classes="secondary"
                 Content="{Binding [preview.schemaAnalysis.cancel], Source={x:Static loc:LocalizationService.Instance}}"/>
 
-        <Grid Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,10,0,0" ColumnDefinitions="*,*,*,*">
+          <Grid Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,10,0,0" ColumnDefinitions="*,*,*,*,*,*,*">
           <Border Grid.Column="0" Classes="analysis-card" Margin="0,0,6,0">
             <StackPanel>
               <TextBlock Text="{Binding [preview.schemaAnalysis.summary.issues], Source={x:Static loc:LocalizationService.Instance}}"
@@ -83,9 +83,27 @@
               <TextBlock Text="{Binding SchemaAnalysisPanel.FilteredInfoCount}" FontWeight="{StaticResource FontWeightTitle}"/>
             </StackPanel>
           </Border>
+            <Border Grid.Column="4" Classes="analysis-card" Margin="0,0,6,0">
+              <StackPanel>
+                <TextBlock Text="Saúde do Schema" FontSize="{StaticResource FontSizeCaption}" Foreground="{StaticResource TextMutedBrush}"/>
+                <TextBlock Text="{Binding SchemaAnalysisPanel.OverallScore, StringFormat=\{0:F1\}}" FontWeight="{StaticResource FontWeightTitle}"/>
+              </StackPanel>
+            </Border>
+            <Border Grid.Column="5" Classes="analysis-card" Margin="0,0,6,0">
+              <StackPanel>
+                <TextBlock Text="Quick Wins" FontSize="{StaticResource FontSizeCaption}" Foreground="{StaticResource TextMutedBrush}"/>
+                <TextBlock Text="{Binding SchemaAnalysisPanel.QuickWinCount}" FontWeight="{StaticResource FontWeightTitle}"/>
+              </StackPanel>
+            </Border>
+            <Border Grid.Column="6" Classes="analysis-card">
+              <StackPanel>
+                <TextBlock Text="Padrões (Naming)" FontSize="{StaticResource FontSizeCaption}" Foreground="{StaticResource TextMutedBrush}"/>
+                <TextBlock Text="{Binding SchemaAnalysisPanel.DominantNamingConvention}" FontWeight="{StaticResource FontWeightTitle}" TextTrimming="CharacterEllipsis"/>
+              </StackPanel>
+            </Border>
+            </Grid>
         </Grid>
-      </Grid>
-    </Border>
+      </Border>
 
     <Grid Grid.Row="1" ColumnDefinitions="320,*">
       <Border Grid.Column="0" Classes="analysis-panel" Padding="10">
@@ -99,8 +117,12 @@
                 </StackPanel>
               </Expander.Header>
               <StackPanel Margin="0,8,0,0" Spacing="8">
-                <Button Command="{Binding SchemaAnalysisPanel.ClearFiltersCommand}" Classes="secondary"
-                        Content="{Binding [preview.schemaAnalysis.clearFilters], Source={x:Static loc:LocalizationService.Instance}}"/>
+                <Grid ColumnDefinitions="*,Auto">
+                  <Button Grid.Column="0" Command="{Binding SchemaAnalysisPanel.ClearFiltersCommand}" Classes="secondary"
+                          Content="{Binding [preview.schemaAnalysis.clearFilters], Source={x:Static loc:LocalizationService.Instance}}"/>
+                  <ToggleButton Grid.Column="1" Margin="6,0,0,0" Classes="secondary"
+                                Content="Quick Wins Only" IsChecked="{Binding SchemaAnalysisPanel.QuickWinsOnly, Mode=TwoWay}"/>
+                </Grid>
                 <WrapPanel Orientation="Horizontal" ItemHeight="28" ItemWidth="96">
                   <CheckBox Content="{Binding [preview.schemaAnalysis.severity.info], Source={x:Static loc:LocalizationService.Instance}}"
                             IsChecked="{Binding SchemaAnalysisPanel.IncludeInfo, Mode=TwoWay}"/>
@@ -242,7 +264,7 @@
             <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="6" Margin="0,8,0,8">
               <Button Command="{Binding SchemaAnalysisPanel.SelectPreviousIssueCommand}" Classes="secondary" Content="↑"/>
               <Button Command="{Binding SchemaAnalysisPanel.SelectNextIssueCommand}" Classes="secondary" Content="↓"/>
-              <Button Command="{Binding SchemaAnalysisPanel.CopySqlCommand}" ToolTip.Tip="{Binding SchemaAnalysisPanel.ActionBlockedTooltip}" Classes="secondary"
+              <Button Command="{Binding SchemaAnalysisPanel.CopySqlCommand}" Click="CopySqlButton_OnClick" ToolTip.Tip="{Binding SchemaAnalysisPanel.ActionBlockedTooltip}" Classes="secondary"
                       Content="{Binding [preview.schemaAnalysis.copySql], Source={x:Static loc:LocalizationService.Instance}}"/>
               <Button Command="{Binding SchemaAnalysisPanel.ApplyToCanvasCommand}" ToolTip.Tip="{Binding SchemaAnalysisPanel.ActionBlockedTooltip}" Classes="secondary"
                       Content="{Binding [preview.schemaAnalysis.applyToCanvas], Source={x:Static loc:LocalizationService.Instance}}"/>

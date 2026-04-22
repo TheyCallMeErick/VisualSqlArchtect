@@ -50,4 +50,6 @@ internal sealed record QueryCompilationGenerationStageInput(
 
 internal sealed record QueryCompilationGenerationStageResult(
     string Sql,
+    string? ExecutionSqlTemplate,
+    IReadOnlyDictionary<string, object?> Bindings,
     List<string> Errors);

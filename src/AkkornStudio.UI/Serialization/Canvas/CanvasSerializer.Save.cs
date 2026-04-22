@@ -176,6 +176,9 @@ public static partial class CanvasSerializer
                 .Select(c => c!)],
             SelectBindings: [],
             WhereBindings: [],
+            PreviewParameterInputs: vm.PreviewParameterInputs.Count > 0
+                ? new Dictionary<string, string>(vm.PreviewParameterInputs, StringComparer.OrdinalIgnoreCase)
+                : null,
             AppVersion: AppVersion,
             CreatedAt: DateTime.UtcNow.ToString("o"),
             Description: description
@@ -201,6 +204,7 @@ public static partial class CanvasSerializer
                 Connections: [],
                 SelectBindings: [],
                 WhereBindings: [],
+                PreviewParameterInputs: null,
                 AppVersion: AppVersion,
                 CreatedAt: DateTime.UtcNow.ToString("o")
             );
@@ -220,6 +224,9 @@ public static partial class CanvasSerializer
                 .Select(c => c!)],
             SelectBindings: [],
             WhereBindings: [],
+            PreviewParameterInputs: ddlVm.PreviewParameterInputs.Count > 0
+                ? new Dictionary<string, string>(ddlVm.PreviewParameterInputs, StringComparer.OrdinalIgnoreCase)
+                : null,
             AppVersion: AppVersion,
             CreatedAt: DateTime.UtcNow.ToString("o")
         );

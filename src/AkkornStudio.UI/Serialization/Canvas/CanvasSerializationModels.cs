@@ -14,6 +14,7 @@ public record SavedCanvas(
     List<SavedConnection> Connections,
     List<string> SelectBindings,
     List<string> WhereBindings,
+    Dictionary<string, string>? PreviewParameterInputs = null,
     string? AppVersion = null,
     string? CreatedAt = null,
     string? Description = null

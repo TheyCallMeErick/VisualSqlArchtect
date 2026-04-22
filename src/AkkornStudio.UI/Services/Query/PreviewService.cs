@@ -4,6 +4,7 @@ using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using AkkornStudio.Core;
+using AkkornStudio.UI.Controls.Query;
 using AkkornStudio.UI.Controls;
 using AkkornStudio.UI.Services.Localization;
 using AkkornStudio.UI.ViewModels;
@@ -215,9 +216,26 @@ public class PreviewService(Window window, CanvasViewModel vm, ILogger<PreviewSe
         _runCts = new CancellationTokenSource();
         var ct = _runCts.Token;
 
-        string sql = string.IsNullOrWhiteSpace(_vm.LiveSql.RawSql)
-            ? (string.IsNullOrWhiteSpace(_vm.QueryText) ? "SELECT 1 AS test" : _vm.QueryText)
-            : _vm.LiveSql.RawSql;
+        bool useLiveSql = !string.IsNullOrWhiteSpace(_vm.LiveSql.RawSql);
+        string sql = useLiveSql
+            ? _vm.LiveSql.RawSql
+            : (string.IsNullOrWhiteSpace(_vm.QueryText) ? "SELECT 1 AS test" : _vm.QueryText);
+        string executionSql = useLiveSql && !string.IsNullOrWhiteSpace(_vm.LiveSql.ExecutionSqlTemplate)
+            ? _vm.LiveSql.ExecutionSqlTemplate!
+            : sql;
+        IReadOnlyList<QueryParameter>? suggestedParameters = useLiveSql && _vm.LiveSql.ExecutionParameters.Count > 0
+            ? _vm.LiveSql.ExecutionParameters
+            : null;
+        IReadOnlyList<QueryParameterPlaceholder> placeholders = QueryParameterPlaceholderParser.Parse(executionSql);
+        IReadOnlyList<QueryParameter>? parameters = placeholders.Count > 0
+            ? await CollectParametersIfNeededAsync(executionSql, _vm.ActiveConnectionConfig, suggestedParameters)
+            : suggestedParameters;
+        if (parameters is null && placeholders.Count > 0)
+        {
+            _logger.LogInformation("Preview parameter prompt cancelled by user");
+            _vm.DataPreview.ShowCancelled();
+            return;
+        }
 
         _logger.LogDebug("SQL query for preview: {Query}", sql);
 
@@ -239,7 +257,8 @@ public class PreviewService(Window window, CanvasViewModel vm, ILogger<PreviewSe
             // Execute query against the connected database
             var dt = await _queryExecutor.ExecuteQueryAsync(
                 _vm.ActiveConnectionConfig,
-                sql,
+                executionSql,
+                parameters,
                 maxRows: 1000,
                 ct: ct
             );
@@ -288,6 +307,98 @@ public class PreviewService(Window window, CanvasViewModel vm, ILogger<PreviewSe
         {
             _logger.LogInformation("Elapsed ticker stopped due to cancellation");
         }
+    }
+
+    private async Task<IReadOnlyList<QueryParameter>?> CollectParametersIfNeededAsync(
+        string sql,
+        ConnectionConfig? config,
+        IReadOnlyList<QueryParameter>? suggestedParameters = null)
+    {
+        IReadOnlyList<QueryParameterPlaceholder> placeholders = QueryParameterPlaceholderParser.Parse(sql);
+        if (placeholders.Count == 0)
+            return [];
+
+        Dictionary<string, string> initialValues = BuildRememberedValues(placeholders, config);
+        IReadOnlyDictionary<string, QueryParameter> suggestedValues = BuildSuggestedParameters(placeholders, suggestedParameters);
+        var dialog = new QueryParameterPromptWindow(sql, placeholders, initialValues, suggestedValues);
+        await dialog.ShowDialog(_window);
+        if (dialog.Result is not null)
+            RememberParameterValues(dialog.EnteredValues, config);
+        return dialog.Result;
+    }
+
+    private static IReadOnlyDictionary<string, QueryParameter> BuildSuggestedParameters(
+        IReadOnlyList<QueryParameterPlaceholder> placeholders,
+        IReadOnlyList<QueryParameter>? suggestedParameters)
+    {
+        if (suggestedParameters is null || suggestedParameters.Count == 0)
+            return new Dictionary<string, QueryParameter>(StringComparer.OrdinalIgnoreCase);
+
+        Dictionary<string, QueryParameter> named = suggestedParameters
+            .Where(static parameter => !string.IsNullOrWhiteSpace(parameter.Name))
+            .GroupBy(parameter => QueryParameterPlaceholderParser.NormalizeName(parameter.Name!))
+            .ToDictionary(group => group.Key, group => group.Last(), StringComparer.OrdinalIgnoreCase);
+        IReadOnlyList<QueryParameter> positional = suggestedParameters
+            .Where(static parameter => string.IsNullOrWhiteSpace(parameter.Name))
+            .ToArray();
+        Dictionary<string, QueryParameter> result = new(StringComparer.OrdinalIgnoreCase);
+
+        foreach (QueryParameterPlaceholder placeholder in placeholders)
+        {
+            string key = QueryParameterPlaceholderParser.GetStorageKey(placeholder);
+            if (placeholder.Kind == QueryParameterPlaceholderKind.Named)
+            {
+                string normalized = QueryParameterPlaceholderParser.NormalizeName(placeholder.Token);
+                if (named.TryGetValue(normalized, out QueryParameter? parameter))
+                    result[key] = parameter;
+                continue;
+            }
+
+            if (placeholder.Position is int position && position > 0 && position <= positional.Count)
+                result[key] = positional[position - 1];
+        }
+
+        return result;
+    }
+
+    private Dictionary<string, string> BuildRememberedValues(
+        IReadOnlyList<QueryParameterPlaceholder> placeholders,
+        ConnectionConfig? config)
+    {
+        Dictionary<string, string> values = new(StringComparer.OrdinalIgnoreCase);
+
+        foreach (QueryParameterPlaceholder placeholder in placeholders)
+        {
+            string scopedKey = BuildRememberedParameterKey(config, QueryParameterPlaceholderParser.GetStorageKey(placeholder));
+            if (_vm.PreviewParameterInputs.TryGetValue(scopedKey, out string? value))
+                values[QueryParameterPlaceholderParser.GetStorageKey(placeholder)] = value;
+        }
+
+        return values;
+    }
+
+    private void RememberParameterValues(
+        IReadOnlyDictionary<string, string> enteredValues,
+        ConnectionConfig? config)
+    {
+        Dictionary<string, string> scopedValues = new(StringComparer.OrdinalIgnoreCase);
+        foreach ((string key, string value) in enteredValues)
+            scopedValues[BuildRememberedParameterKey(config, key)] = value;
+        _vm.RememberPreviewParameterInputs(scopedValues);
+    }
+
+    private static string BuildRememberedParameterKey(ConnectionConfig? config, string parameterKey)
+    {
+        if (config is null)
+            return parameterKey;
+
+        return string.Join(
+            "|",
+            config.Provider,
+            config.Host ?? string.Empty,
+            config.Port,
+            config.Database ?? string.Empty,
+            parameterKey);
     }
 
     // ── Disposal ──────────────────────────────────────────────────────────────

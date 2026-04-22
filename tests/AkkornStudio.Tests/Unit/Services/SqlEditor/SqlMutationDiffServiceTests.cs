@@ -72,6 +72,75 @@ public sealed class SqlMutationDiffServiceTests
             || preview.Message.Contains("No transactional diff preview", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public async Task BuildPreviewAsync_InsertValues_ReturnsEstimatedInsertSummary()
+    {
+        var sut = new SqlMutationDiffService((sql, _, _, _) =>
+        {
+            Assert.Contains("SELECT COUNT(*) FROM orders", sql, StringComparison.OrdinalIgnoreCase);
+            return Task.FromResult(CreateScalarResult(10));
+        });
+
+        MutationGuardResult guard = new()
+        {
+            IsSafe = true,
+            RequiresConfirmation = false,
+            SupportsDiff = true,
+        };
+
+        SqlMutationDiffPreview preview = await sut.BuildPreviewAsync(
+            "INSERT INTO orders (id, status) VALUES (1, 'new'), (2, 'paid');",
+            guard,
+            BuildConfig(),
+            estimatedAffectedRows: null);
+
+        Assert.True(preview.Available);
+        Assert.Contains("orders", preview.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(
+            preview.Message.Contains("before 10", StringComparison.OrdinalIgnoreCase)
+            || preview.Message.Contains("antes 10", StringComparison.OrdinalIgnoreCase));
+        Assert.True(
+            preview.Message.Contains("inserted rows 2", StringComparison.OrdinalIgnoreCase)
+            || preview.Message.Contains("inserted 2", StringComparison.OrdinalIgnoreCase)
+            || preview.Message.Contains("inseridas 2", StringComparison.OrdinalIgnoreCase));
+        Assert.True(
+            preview.Message.Contains("after 12", StringComparison.OrdinalIgnoreCase)
+            || preview.Message.Contains("depois 12", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task BuildPreviewAsync_InsertSelect_ReturnsUnknownInsertCountSummary()
+    {
+        var sut = new SqlMutationDiffService((sql, _, _, _) =>
+        {
+            Assert.Contains("SELECT COUNT(*) FROM orders", sql, StringComparison.OrdinalIgnoreCase);
+            return Task.FromResult(CreateScalarResult(25));
+        });
+
+        MutationGuardResult guard = new()
+        {
+            IsSafe = true,
+            RequiresConfirmation = false,
+            SupportsDiff = true,
+        };
+
+        SqlMutationDiffPreview preview = await sut.BuildPreviewAsync(
+            "INSERT INTO orders (id, status) SELECT id, status FROM orders_archive;",
+            guard,
+            BuildConfig(),
+            estimatedAffectedRows: null);
+
+        Assert.True(preview.Available);
+        Assert.Contains("orders", preview.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(
+            preview.Message.Contains("before 25", StringComparison.OrdinalIgnoreCase)
+            || preview.Message.Contains("antes 25", StringComparison.OrdinalIgnoreCase));
+        Assert.True(
+            preview.Message.Contains("could not be estimated", StringComparison.OrdinalIgnoreCase)
+            || preview.Message.Contains("nao pode ser estimada", StringComparison.OrdinalIgnoreCase)
+            || preview.Message.Contains("não pôde ser estimada", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static SqlEditorResultSet CreateScalarResult(long value)
     {
         var table = new DataTable();

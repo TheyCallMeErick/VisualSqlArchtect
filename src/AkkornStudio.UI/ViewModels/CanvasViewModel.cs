@@ -108,6 +108,7 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable
     private CanvasWireCurveMode _wireCurveMode = CanvasWireCurveMode.Bezier;
     private DbMetadata? _databaseMetadata;
     private ConnectionConfig? _activeConnectionConfig;
+    private readonly Dictionary<string, string> _previewParameterInputs = new(StringComparer.OrdinalIgnoreCase);
     // Backward-compatibility bridge used by legacy tests that inspect/corrupt
     // sub-editor sessions via reflection on CanvasViewModel.
     private object? _cteEditorSession;
@@ -174,6 +175,8 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable
                 LiveSql.Provider = value?.Provider ?? DatabaseProvider.Postgres;
         }
     }
+
+    public IReadOnlyDictionary<string, string> PreviewParameterInputs => _previewParameterInputs;
 
     public string WindowTitle =>
         (
@@ -1453,6 +1456,22 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable
     {
         QueryText = sql;
         DataPreview.QueryText = sql;
+    }
+
+    public void RememberPreviewParameterInputs(IReadOnlyDictionary<string, string> values)
+    {
+        foreach ((string key, string value) in values)
+            _previewParameterInputs[key] = value;
+    }
+
+    public void ReplacePreviewParameterInputs(IReadOnlyDictionary<string, string>? values)
+    {
+        _previewParameterInputs.Clear();
+        if (values is null)
+            return;
+
+        foreach ((string key, string value) in values)
+            _previewParameterInputs[key] = value;
     }
 
     /// <summary>

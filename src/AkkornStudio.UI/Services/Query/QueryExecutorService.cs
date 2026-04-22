@@ -33,16 +33,29 @@ public sealed partial class QueryExecutorService
     /// <param name="maxRows">Maximum number of rows to return (default 1000)</param>
     /// <param name="ct">Cancellation token</param>
     /// <returns>DataTable containing query results</returns>
+    public Task<DataTable> ExecuteQueryAsync(
+        ConnectionConfig config,
+        string query,
+        int maxRows = 1000,
+        CancellationToken ct = default) =>
+        ExecuteQueryAsync(config, query, parameters: null, maxRows, ct);
+
+    /// <summary>
+    /// Executes a SQL query against the database and returns results, optionally binding
+    /// named or positional parameters when the provider supports them.
+    /// </summary>
     public async Task<DataTable> ExecuteQueryAsync(
         ConnectionConfig config,
         string query,
+        IReadOnlyList<QueryParameter>? parameters,
         int maxRows = 1000,
         CancellationToken ct = default)
     {
         _logger.LogDebug(
-            "ExecuteQueryAsync called with config={Config}, query length={QueryLength}",
+            "ExecuteQueryAsync called with config={Config}, query length={QueryLength}, parameter count={ParameterCount}",
             config,
-            query?.Length
+            query?.Length,
+            parameters?.Count ?? 0
         );
 
         if (config is null)
@@ -61,7 +74,7 @@ public sealed partial class QueryExecutorService
             _logger.LogInformation("Starting query execution on {Provider} ({Host}:{Port}/{Database})",
                 config.Provider, config.Host, config.Port, config.Database);
 
-            ValidatePreviewQuery(query);
+            ValidatePreviewQuery(query, parameters);
 
             // Wrap query with LIMIT/TOP clause for safe preview
             string wrappedQuery = WrapWithPreviewLimit(query, config.Provider, maxRows);
@@ -71,7 +84,7 @@ public sealed partial class QueryExecutorService
             var orchestrator = CreateOrchestrator(config.Provider, config);
             _logger.LogInformation("Created orchestrator for {Provider}", config.Provider);
 
-            var result = await ExecuteQueryInternalAsync(orchestrator, wrappedQuery, ct);
+            var result = await ExecuteQueryInternalAsync(orchestrator, wrappedQuery, parameters, ct);
 
             _logger.LogInformation("Query executed successfully. Rows: {RowCount}", result.Rows.Count);
             return result;
@@ -118,7 +131,7 @@ public sealed partial class QueryExecutorService
         };
     }
 
-    private static void ValidatePreviewQuery(string query)
+    private static void ValidatePreviewQuery(string query, IReadOnlyList<QueryParameter>? parameters = null)
     {
         string trimmed = query.Trim();
 
@@ -153,23 +166,35 @@ public sealed partial class QueryExecutorService
                 nameof(query)
             );
 
-        ValidateParameterBoundaries(trimmed, query);
+        ValidateParameterBoundaries(trimmed, query, parameters);
     }
 
-    private static void ValidateParameterBoundaries(string trimmedQuery, string originalQuery)
+    private static void ValidateParameterBoundaries(
+        string trimmedQuery,
+        string originalQuery,
+        IReadOnlyList<QueryParameter>? parameters)
     {
-        // Preview path executes SQL text directly and does not bind parameters.
-        // Reject placeholders to avoid accidental execution assumptions.
-        if (NamedSqlParameterRegex().IsMatch(trimmedQuery))
-            throw new ArgumentException(
-                L(
-                    "queryExecutor.error.namedParametersNotSupported",
-                    "Preview mode does not support bound parameters in execution SQL. Inline safe literals or run the query outside preview."
-                ),
-                nameof(originalQuery)
-            );
+        IReadOnlyList<QueryParameterPlaceholder> placeholders = QueryParameterPlaceholderParser.Parse(trimmedQuery);
+        IReadOnlyList<QueryParameterPlaceholder> namedPlaceholders = placeholders
+            .Where(static placeholder => placeholder.Kind == QueryParameterPlaceholderKind.Named)
+            .ToArray();
+        IReadOnlyList<QueryParameterPlaceholder> positionalPlaceholders = placeholders
+            .Where(static placeholder => placeholder.Kind == QueryParameterPlaceholderKind.Positional)
+            .ToArray();
+        if (namedPlaceholders.Count == 0 && positionalPlaceholders.Count == 0)
+            return;
 
-        if (PositionalSqlParameterRegex().IsMatch(trimmedQuery))
+        if (parameters is null || parameters.Count == 0)
+        {
+            if (namedPlaceholders.Count > 0)
+                throw new ArgumentException(
+                    L(
+                        "queryExecutor.error.namedParametersNotSupported",
+                        "Preview mode does not support bound parameters in execution SQL. Inline safe literals or run the query outside preview."
+                    ),
+                    nameof(originalQuery)
+                );
+
             throw new ArgumentException(
                 L(
                     "queryExecutor.error.positionalParametersNotSupported",
@@ -177,13 +202,57 @@ public sealed partial class QueryExecutorService
                 ),
                 nameof(originalQuery)
             );
+        }
+
+        IReadOnlyDictionary<string, QueryParameter> namedParameters = parameters
+            .Where(static parameter => !string.IsNullOrWhiteSpace(parameter.Name))
+            .GroupBy(parameter => NormalizeParameterName(parameter.Name!))
+            .ToDictionary(group => group.Key, group => group.Last(), StringComparer.OrdinalIgnoreCase);
+        IReadOnlyList<QueryParameter> positionalParameters = parameters
+            .Where(static parameter => string.IsNullOrWhiteSpace(parameter.Name))
+            .ToArray();
+
+        foreach (QueryParameterPlaceholder placeholder in namedPlaceholders)
+        {
+            if (namedParameters.ContainsKey(NormalizeParameterName(placeholder.Token)))
+                continue;
+
+            throw new ArgumentException(
+                string.Format(
+                    L(
+                        "queryExecutor.error.namedParameterValueMissing",
+                        "Preview mode requires a value for SQL parameter '{0}'."
+                    ),
+                    placeholder.Token
+                ),
+                nameof(originalQuery)
+            );
+        }
+
+        int requiredQuestionMarkCount = positionalPlaceholders.Count(static placeholder =>
+            string.Equals(placeholder.Token, "?", StringComparison.Ordinal));
+        int requiredDollarIndex = positionalPlaceholders
+            .Where(static placeholder => placeholder.Token.StartsWith('$'))
+            .Select(static placeholder => placeholder.Position ?? 0)
+            .DefaultIfEmpty(0)
+            .Max();
+        int requiredPositionalCount = Math.Max(requiredQuestionMarkCount, requiredDollarIndex);
+
+        if (requiredPositionalCount > 0 && positionalParameters.Count < requiredPositionalCount)
+            throw new ArgumentException(
+                string.Format(
+                    L(
+                        "queryExecutor.error.positionalParameterValueMissing",
+                        "Preview mode requires {0} positional parameter value(s) for this SQL statement."
+                    ),
+                    requiredPositionalCount
+                ),
+                nameof(originalQuery)
+            );
     }
 
-    [GeneratedRegex(@"(?<!@)@[A-Za-z_][A-Za-z0-9_]*|(?<!:):[A-Za-z_][A-Za-z0-9_]*", RegexOptions.CultureInvariant)]
-    private static partial Regex NamedSqlParameterRegex();
-
-    [GeneratedRegex(@"\?|\$\d+", RegexOptions.CultureInvariant)]
-    private static partial Regex PositionalSqlParameterRegex();
+    private static string NormalizeParameterName(string parameterName) =>
+        QueryParameterPlaceholderParser.NormalizeName(parameterName);
 
     /// <summary>
     /// Creates the appropriate orchestrator for the given provider.
@@ -233,6 +302,7 @@ public sealed partial class QueryExecutorService
     private async Task<DataTable> ExecuteQueryInternalAsync(
         IDbOrchestrator orchestrator,
         string query,
+        IReadOnlyList<QueryParameter>? parameters,
         CancellationToken ct)
     {
         var dt = new DataTable();
@@ -264,6 +334,7 @@ public sealed partial class QueryExecutorService
                 {
                     command.CommandText = query;
                     command.CommandTimeout = Math.Max(1, CommandTimeoutSeconds);
+                    BindParameters(command, query, parameters);
 
                     _logger.LogDebug("Executing command: {Query}", query);
                     using (var reader = await command.ExecuteReaderAsync(ct))
@@ -283,6 +354,69 @@ public sealed partial class QueryExecutorService
         }
 
         return dt;
+    }
+
+    private static void BindParameters(
+        DbCommand command,
+        string query,
+        IReadOnlyList<QueryParameter>? parameters)
+    {
+        if (parameters is null || parameters.Count == 0)
+            return;
+
+        Dictionary<string, QueryParameter> namedParameters = parameters
+            .Where(static parameter => !string.IsNullOrWhiteSpace(parameter.Name))
+            .GroupBy(parameter => NormalizeParameterName(parameter.Name!))
+            .ToDictionary(group => group.Key, group => group.Last(), StringComparer.OrdinalIgnoreCase);
+        IReadOnlyList<QueryParameter> positionalParameters = parameters
+            .Where(static parameter => string.IsNullOrWhiteSpace(parameter.Name))
+            .ToArray();
+
+        foreach (QueryParameterPlaceholder placeholder in QueryParameterPlaceholderParser.Parse(query)
+                     .Where(static item => item.Kind == QueryParameterPlaceholderKind.Named))
+        {
+            if (!namedParameters.TryGetValue(NormalizeParameterName(placeholder.Token), out QueryParameter? parameter))
+                continue;
+
+            AddParameter(command, placeholder.Token, parameter.Value);
+        }
+
+        int sequentialPositionalIndex = 0;
+        foreach (QueryParameterPlaceholder placeholder in QueryParameterPlaceholderParser.Parse(query)
+                     .Where(static item => item.Kind == QueryParameterPlaceholderKind.Positional))
+        {
+            QueryParameter? parameter = null;
+            string parameterName = placeholder.Token;
+
+            if (string.Equals(placeholder.Token, "?", StringComparison.Ordinal))
+            {
+                if (sequentialPositionalIndex >= positionalParameters.Count)
+                    continue;
+
+                parameter = positionalParameters[sequentialPositionalIndex++];
+                parameterName = $"p{sequentialPositionalIndex}";
+            }
+            else if (placeholder.Token.StartsWith('$')
+                && placeholder.Position is int numericIndex
+                && numericIndex > 0
+                && numericIndex <= positionalParameters.Count)
+            {
+                parameter = positionalParameters[numericIndex - 1];
+            }
+
+            if (parameter is null)
+                continue;
+
+            AddParameter(command, parameterName, parameter.Value);
+        }
+    }
+
+    private static void AddParameter(DbCommand command, string parameterName, object? value)
+    {
+        DbParameter parameter = command.CreateParameter();
+        parameter.ParameterName = parameterName;
+        parameter.Value = value ?? DBNull.Value;
+        command.Parameters.Add(parameter);
     }
 
     private static string L(string key, string fallback)

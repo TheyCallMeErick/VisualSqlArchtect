@@ -122,7 +122,7 @@ public sealed class MutationGuardService
                     L(localization, "sqlEditor.guard.insert.noColumnList.recommendation", "Prefer INSERT INTO table(col1, col2, ...) VALUES (...).")),
             ],
             CountQuery = null,
-            SupportsDiff = false,
+            SupportsDiff = true,
         };
     }
 

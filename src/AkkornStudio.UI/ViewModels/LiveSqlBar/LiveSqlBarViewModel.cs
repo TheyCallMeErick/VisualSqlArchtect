@@ -5,6 +5,7 @@ using AkkornStudio.Nodes;
 using AkkornStudio.QueryEngine;
 using AkkornStudio.Registry;
 using AkkornStudio.UI.Services.LiveSqlBar;
+using AkkornStudio.UI.Services;
 using AkkornStudio.UI.Services.QueryPreview.Models;
 using AkkornStudio.UI.Services.QueryPreview;
 
@@ -32,6 +33,7 @@ public sealed class LiveSqlBarViewModel : ViewModelBase
 
     private string _rawSql = string.Empty;
     private string _displaySql = string.Empty;
+    private string? _executionSqlTemplate;
     private bool _isValid = true;
     private bool _isCompiling;
     private string? _compileError;
@@ -62,6 +64,12 @@ public sealed class LiveSqlBarViewModel : ViewModelBase
     {
         get => _displaySql;
         private set => Set(ref _displaySql, value);
+    }
+
+    public string? ExecutionSqlTemplate
+    {
+        get => _executionSqlTemplate;
+        private set => Set(ref _executionSqlTemplate, value);
     }
 
     public bool IsValid
@@ -102,6 +110,7 @@ public sealed class LiveSqlBarViewModel : ViewModelBase
         };
 
     public bool HasSql => !string.IsNullOrWhiteSpace(RawSql);
+    public IReadOnlyList<QueryParameter> ExecutionParameters { get; private set; } = [];
 
     public bool IsMutatingCommand
     {
@@ -223,22 +232,26 @@ public sealed class LiveSqlBarViewModel : ViewModelBase
             foreach (GuardIssue issue in portabilityIssues)
                 GuardIssues.Add(issue);
 
-            (string sql, List<PreviewDiagnostic> diagnostics) = _graphBuilder.BuildSqlWithDiagnostics();
-            List<string> errors = diagnostics.Select(d => d.Message).ToList();
+            QuerySqlBuildResult build = _graphBuilder.BuildSqlWithDiagnostics();
+            List<string> errors = build.Diagnostics.Select(d => d.Message).ToList();
 
-            RawSql = sql;
-            DisplaySql = FormatSqlText(sql);
+            RawSql = build.PreviewSql;
+            DisplaySql = FormatSqlText(build.PreviewSql);
+            ExecutionSqlTemplate = build.ExecutionSqlTemplate;
+            ExecutionParameters = build.Bindings
+                .Select(binding => new QueryParameter(binding.Key, binding.Value))
+                .ToArray();
             IsValid = errors.Count == 0;
             CompileError = errors.Count > 0 ? errors[0] : null;
 
             // Detect mutating commands â€” block preview execution
-            IsMutatingCommand = QueryValidationService.IsMutating(sql);
+            IsMutatingCommand = QueryValidationService.IsMutating(build.PreviewSql);
             RaisePropertyChanged(nameof(BlockedReason));
 
             // Run guardrails (only when not a mutating command)
             if (!IsMutatingCommand)
             {
-                foreach (GuardIssue issue in QueryGuardrails.Check(sql))
+                foreach (GuardIssue issue in QueryGuardrails.Check(build.PreviewSql))
                     GuardIssues.Add(issue);
             }
             RaisePropertyChanged(nameof(HasGuardWarning));
@@ -246,7 +259,7 @@ public sealed class LiveSqlBarViewModel : ViewModelBase
             foreach (string err in errors)
                 ErrorHints.Add(err);
 
-            foreach (PreviewDiagnostic diagnostic in diagnostics)
+            foreach (PreviewDiagnostic diagnostic in build.Diagnostics)
             {
                 Diagnostics.Add(diagnostic);
                 (string? actionLabel, string? actionHint) = ResolveQuickAction(diagnostic);
@@ -265,6 +278,8 @@ public sealed class LiveSqlBarViewModel : ViewModelBase
         {
             RawSql = string.Empty;
             DisplaySql = string.Empty;
+            ExecutionSqlTemplate = null;
+            ExecutionParameters = [];
             IsValid = false;
             CompileError = ex.Message;
             IsMutatingCommand = false;
@@ -360,6 +375,8 @@ public sealed class LiveSqlBarViewModel : ViewModelBase
         string sql = FormatSqlText(RawSql);
         RawSql = sql;
         DisplaySql = sql;
+        ExecutionSqlTemplate = sql;
+        ExecutionParameters = [];
         SqlSyntaxHighlighter.Tokenize(sql, Tokens);
         RaisePropertyChanged(nameof(HasSql));
     }

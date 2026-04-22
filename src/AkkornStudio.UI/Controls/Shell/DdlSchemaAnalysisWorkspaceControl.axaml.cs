@@ -78,4 +78,22 @@ public partial class DdlSchemaAnalysisWorkspaceControl : UserControl
         if (listBox.SelectedItem is SchemaIssue issue)
             vm.SchemaAnalysisPanel.SelectedIssue = issue;
     }
+
+    private async void CopySqlButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is not LiveDdlBarViewModel vm)
+            return;
+
+        string? sql = vm.SchemaAnalysisPanel.SelectedSqlCandidate?.Sql;
+        if (string.IsNullOrWhiteSpace(sql))
+            return;
+
+        TopLevel? topLevel = TopLevel.GetTopLevel(this);
+        if (topLevel?.Clipboard is null)
+            return;
+
+        await topLevel.Clipboard.SetTextAsync(sql);
+        vm.Canvas.NotifySuccess("SQL candidate copiado para a area de transferencia.");
+        e.Handled = true;
+    }
 }
