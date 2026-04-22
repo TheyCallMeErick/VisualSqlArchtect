@@ -98,13 +98,13 @@ public sealed class QueryGraphBuilder(CanvasViewModel canvas, DatabaseProvider p
     /// </summary>
     public QuerySqlBuildResult BuildSqlWithDiagnostics()
     {
-        (string sql, string? executionSqlTemplate, IReadOnlyDictionary<string, object?> bindings, List<string> legacyMessages) = BuildSqlCore();
+        (string sql, string? executionSqlTemplate, IReadOnlyDictionary<string, object?> bindings, IReadOnlyDictionary<string, QueryExecutionParameterContext> parameterContexts, List<string> legacyMessages) = BuildSqlCore();
         List<PreviewDiagnostic> diagnostics = PreviewDiagnosticMapper.FromLegacyMessages(legacyMessages);
         _diagnosticEnricher.Enrich(_canvas, diagnostics);
-        return new QuerySqlBuildResult(sql, executionSqlTemplate, bindings, diagnostics);
+        return new QuerySqlBuildResult(sql, executionSqlTemplate, bindings, parameterContexts, diagnostics);
     }
 
-    private (string Sql, string? ExecutionSqlTemplate, IReadOnlyDictionary<string, object?> Bindings, List<string> Errors) BuildSqlCore()
+    private (string Sql, string? ExecutionSqlTemplate, IReadOnlyDictionary<string, object?> Bindings, IReadOnlyDictionary<string, QueryExecutionParameterContext> ParameterContexts, List<string> Errors) BuildSqlCore()
     {
         return PipelineRunner.Execute();
     }
@@ -124,4 +124,5 @@ public sealed record QuerySqlBuildResult(
     string PreviewSql,
     string? ExecutionSqlTemplate,
     IReadOnlyDictionary<string, object?> Bindings,
+    IReadOnlyDictionary<string, QueryExecutionParameterContext> ParameterContexts,
     List<PreviewDiagnostic> Diagnostics);

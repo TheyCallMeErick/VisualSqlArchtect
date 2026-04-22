@@ -18,13 +18,13 @@ internal sealed class QueryCompilationPipelineRunner(
     private readonly QueryPreviewSqlPreviewFormatter _previewFormatter = previewFormatter;
     private readonly QueryCompilationGenerationErrorMapper _generationErrorMapper = generationErrorMapper;
 
-    public (string Sql, string? ExecutionSqlTemplate, IReadOnlyDictionary<string, object?> Bindings, List<string> Errors) Execute()
+    public (string Sql, string? ExecutionSqlTemplate, IReadOnlyDictionary<string, object?> Bindings, IReadOnlyDictionary<string, QueryExecutionParameterContext> ParameterContexts, List<string> Errors) Execute()
     {
         QueryCompilationInputStage inputStageRunner = BuildInputStage();
         QueryCompilationPipelineContext context = new(_canvas, _provider);
         QueryCompilationInputStageResult inputStage = inputStageRunner.Execute(context);
         if (inputStage.ShouldShortCircuit)
-            return (inputStage.ShortCircuitSql ?? string.Empty, null, new Dictionary<string, object?>(), inputStage.Errors);
+            return (inputStage.ShortCircuitSql ?? string.Empty, null, new Dictionary<string, object?>(), new Dictionary<string, QueryExecutionParameterContext>(StringComparer.OrdinalIgnoreCase), inputStage.Errors);
 
         QueryCompilationInputSnapshot input = inputStage.Snapshot!;
         List<string> errors = input.Errors;
@@ -64,7 +64,7 @@ internal sealed class QueryCompilationPipelineRunner(
                 setOperation,
                 errors));
 
-        return (generated.Sql, generated.ExecutionSqlTemplate, generated.Bindings, generated.Errors);
+        return (generated.Sql, generated.ExecutionSqlTemplate, generated.Bindings, generated.ParameterContexts, generated.Errors);
     }
 
     private QueryCompilationInputStage BuildInputStage() =>

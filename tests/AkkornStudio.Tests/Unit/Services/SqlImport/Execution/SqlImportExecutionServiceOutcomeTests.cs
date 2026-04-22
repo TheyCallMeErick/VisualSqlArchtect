@@ -217,7 +217,7 @@ public sealed class SqlImportExecutionServiceOutcomeTests
     }
 
     [Fact]
-    public void Execute_WithSimpleCteRewritePath_EmitsFallbackDiagnostic()
+    public void Execute_WithSimpleCteRewritePath_ClassifiesAsEquivalentTotal()
     {
         var service = CreateService();
         var report = new ObservableCollection<ImportReportItem>();
@@ -229,8 +229,55 @@ public sealed class SqlImportExecutionServiceOutcomeTests
         );
 
         Assert.NotNull(result.Outcome);
-        Assert.Contains(
-            result.Outcome!.NonBlockingDiagnostics,
+        Assert.Equal(ImportOutcomeStatus.EquivalentTotal, result.Outcome!.Status);
+        Assert.Equal(ImportEquivalenceClass.EquivalentTotal, result.Outcome.EquivalenceClass);
+        Assert.False(result.Outcome.HasDegradedGraph);
+        Assert.DoesNotContain(
+            result.Outcome.NonBlockingDiagnostics,
+            diagnostic => diagnostic.Code == SqlImportDiagnosticCodes.FallbackRegexUsed
+        );
+    }
+
+    [Fact]
+    public void Execute_WithSimpleCteColumnListRewritePath_ClassifiesAsEquivalentTotal()
+    {
+        var service = CreateService();
+        var report = new ObservableCollection<ImportReportItem>();
+
+        SqlImportExecutionResult result = service.Execute(
+            "WITH recent_orders(id) AS (SELECT id FROM orders) SELECT id FROM recent_orders",
+            report,
+            CancellationToken.None
+        );
+
+        Assert.NotNull(result.Outcome);
+        Assert.Equal(ImportOutcomeStatus.EquivalentTotal, result.Outcome!.Status);
+        Assert.Equal(ImportEquivalenceClass.EquivalentTotal, result.Outcome.EquivalenceClass);
+        Assert.False(result.Outcome.HasDegradedGraph);
+        Assert.DoesNotContain(
+            result.Outcome.NonBlockingDiagnostics,
+            diagnostic => diagnostic.Code == SqlImportDiagnosticCodes.FallbackRegexUsed
+        );
+    }
+
+    [Fact]
+    public void Execute_WithSimpleFromSubqueryRewritePath_ClassifiesAsEquivalentTotal()
+    {
+        var service = CreateService();
+        var report = new ObservableCollection<ImportReportItem>();
+
+        SqlImportExecutionResult result = service.Execute(
+            "SELECT id FROM (SELECT id FROM orders) o",
+            report,
+            CancellationToken.None
+        );
+
+        Assert.NotNull(result.Outcome);
+        Assert.Equal(ImportOutcomeStatus.EquivalentTotal, result.Outcome!.Status);
+        Assert.Equal(ImportEquivalenceClass.EquivalentTotal, result.Outcome.EquivalenceClass);
+        Assert.False(result.Outcome.HasDegradedGraph);
+        Assert.DoesNotContain(
+            result.Outcome.NonBlockingDiagnostics,
             diagnostic => diagnostic.Code == SqlImportDiagnosticCodes.FallbackRegexUsed
         );
     }

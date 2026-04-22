@@ -98,6 +98,20 @@ public sealed class MutationGuardServiceTests
     }
 
     [Fact]
+    public void Analyze_Merge_RequiresConfirmationAndSupportsDiff()
+    {
+        var sut = new MutationGuardService();
+
+        MutationGuardResult result = sut.Analyze("MERGE INTO orders USING orders_stage ON orders.id = orders_stage.id WHEN MATCHED THEN UPDATE SET status = orders_stage.status;");
+
+        Assert.False(result.IsSafe);
+        Assert.True(result.RequiresConfirmation);
+        Assert.True(result.SupportsDiff);
+        Assert.Equal("SELECT COUNT(*) FROM orders", result.CountQuery);
+        Assert.Contains(result.Issues, i => i.Code == "MERGE_MUTATION");
+    }
+
+    [Fact]
     public void Analyze_Select_ReturnsSafe()
     {
         var sut = new MutationGuardService();
@@ -122,18 +136,48 @@ public sealed class MutationGuardServiceTests
     }
 
     [Fact]
-    public void Analyze_LocalizedMessages_UsesLocalizationValues()
+    public void Analyze_Truncate_RequiresConfirmationAndSupportsDiff()
+    {
+        var sut = new MutationGuardService();
+
+        MutationGuardResult result = sut.Analyze("TRUNCATE TABLE orders;");
+
+        Assert.False(result.IsSafe);
+        Assert.True(result.RequiresConfirmation);
+        Assert.True(result.SupportsDiff);
+        Assert.Equal("SELECT COUNT(*) FROM orders", result.CountQuery);
+        Assert.Contains(result.Issues, i => i.Code == "TRUNCATE_MUTATION");
+    }
+
+    [Fact]
+    public void Analyze_TruncateLocalizedMessages_UsesLocalizationValues()
     {
         var sut = new MutationGuardService(new FakeLocalizationService(new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["sqlEditor.guard.ddl.message"] = "DDL localized",
-            ["sqlEditor.guard.ddl.recommendation"] = "Recommendation localized",
+            ["sqlEditor.guard.truncate.message"] = "Truncate localized",
+            ["sqlEditor.guard.truncate.recommendation"] = "Recommendation localized",
         }));
 
         MutationGuardResult result = sut.Analyze("TRUNCATE TABLE orders;");
 
         MutationGuardIssue issue = Assert.Single(result.Issues);
-        Assert.Equal("DDL localized", issue.Message);
+        Assert.Equal("Truncate localized", issue.Message);
+        Assert.Equal("Recommendation localized", issue.Suggestion);
+    }
+
+    [Fact]
+    public void Analyze_MergeLocalizedMessages_UsesLocalizationValues()
+    {
+        var sut = new MutationGuardService(new FakeLocalizationService(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["sqlEditor.guard.merge.message"] = "Merge localized",
+            ["sqlEditor.guard.merge.recommendation"] = "Recommendation localized",
+        }));
+
+        MutationGuardResult result = sut.Analyze("MERGE INTO orders USING orders_stage ON orders.id = orders_stage.id WHEN MATCHED THEN UPDATE SET status = orders_stage.status;");
+
+        MutationGuardIssue issue = Assert.Single(result.Issues);
+        Assert.Equal("Merge localized", issue.Message);
         Assert.Equal("Recommendation localized", issue.Suggestion);
     }
 

@@ -226,9 +226,13 @@ public class PreviewService(Window window, CanvasViewModel vm, ILogger<PreviewSe
         IReadOnlyList<QueryParameter>? suggestedParameters = useLiveSql && _vm.LiveSql.ExecutionParameters.Count > 0
             ? _vm.LiveSql.ExecutionParameters
             : null;
+        IReadOnlyDictionary<string, QueryExecutionParameterContext>? structuralContexts =
+            useLiveSql && _vm.LiveSql.ExecutionParameterContexts.Count > 0
+                ? _vm.LiveSql.ExecutionParameterContexts
+                : null;
         IReadOnlyList<QueryParameterPlaceholder> placeholders = QueryParameterPlaceholderParser.Parse(executionSql);
         IReadOnlyList<QueryParameter>? parameters = placeholders.Count > 0
-            ? await CollectParametersIfNeededAsync(executionSql, _vm.ActiveConnectionConfig, suggestedParameters)
+            ? await CollectParametersIfNeededAsync(executionSql, _vm.ActiveConnectionConfig, suggestedParameters, structuralContexts)
             : suggestedParameters;
         if (parameters is null && placeholders.Count > 0)
         {
@@ -312,7 +316,8 @@ public class PreviewService(Window window, CanvasViewModel vm, ILogger<PreviewSe
     private async Task<IReadOnlyList<QueryParameter>?> CollectParametersIfNeededAsync(
         string sql,
         ConnectionConfig? config,
-        IReadOnlyList<QueryParameter>? suggestedParameters = null)
+        IReadOnlyList<QueryParameter>? suggestedParameters = null,
+        IReadOnlyDictionary<string, QueryExecutionParameterContext>? structuralContexts = null)
     {
         IReadOnlyList<QueryParameterPlaceholder> placeholders = QueryParameterPlaceholderParser.Parse(sql);
         if (placeholders.Count == 0)
@@ -320,7 +325,14 @@ public class PreviewService(Window window, CanvasViewModel vm, ILogger<PreviewSe
 
         Dictionary<string, string> initialValues = BuildRememberedValues(placeholders, config);
         IReadOnlyDictionary<string, QueryParameter> suggestedValues = BuildSuggestedParameters(placeholders, suggestedParameters);
-        var dialog = new QueryParameterPromptWindow(sql, placeholders, initialValues, suggestedValues);
+        var dialog = new QueryParameterPromptWindow(
+            sql,
+            placeholders,
+            initialValues,
+            suggestedValues,
+            structuralContexts,
+            _vm.DatabaseMetadata,
+            config?.Provider ?? DatabaseProvider.Postgres);
         await dialog.ShowDialog(_window);
         if (dialog.Result is not null)
             RememberParameterValues(dialog.EnteredValues, config);

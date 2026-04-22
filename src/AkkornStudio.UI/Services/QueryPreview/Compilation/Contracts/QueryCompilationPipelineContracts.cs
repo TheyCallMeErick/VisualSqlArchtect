@@ -52,4 +52,5 @@ internal sealed record QueryCompilationGenerationStageResult(
     string Sql,
     string? ExecutionSqlTemplate,
     IReadOnlyDictionary<string, object?> Bindings,
+    IReadOnlyDictionary<string, QueryExecutionParameterContext> ParameterContexts,
     List<string> Errors);

@@ -4,6 +4,9 @@ namespace AkkornStudio.UI.Services.SqlImport.Rewriting;
 
 public sealed class SqlImportCteRewriteService
 {
+    private const string SimpleSubqueryForbiddenKeywordsPattern =
+        @"\b(WHERE|GROUP\s+BY|HAVING|ORDER\s+BY|JOIN|UNION|LIMIT|OFFSET|TOP|DISTINCT)\b";
+
     public IEnumerable<string> AnalyzeCteNameIssues(string sql)
     {
         var issues = new List<string>();
@@ -11,7 +14,7 @@ public sealed class SqlImportCteRewriteService
 
         MatchCollection cteMatches = Regex.Matches(
             sql,
-            @"(?:\bWITH\b|,)\s*([^\s,()]+)\s+AS\s*\(",
+            @"(?:\bWITH\b|,)\s*([^\s,()]+)\s*(?:\([^)]*\))?\s+AS\s*\(",
             RegexOptions.IgnoreCase
         );
 
@@ -75,6 +78,32 @@ public sealed class SqlImportCteRewriteService
 
         cteCount = definitions.Count;
         rewrittenSql = rewrittenMain;
+        return true;
+    }
+
+    public bool TryRewriteSimpleFromSubquery(string sql, out string rewrittenSql)
+    {
+        rewrittenSql = sql;
+
+        Match fromSubqueryMatch = Regex.Match(
+            sql,
+            @"\bFROM\s*\(\s*(?<subquery>SELECT.+?)\s*\)\s+(?:AS\s+)?(?<alias>[A-Za-z_][A-Za-z0-9_]*)\b",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline
+        );
+
+        if (!fromSubqueryMatch.Success)
+            return false;
+
+        string subquerySql = fromSubqueryMatch.Groups["subquery"].Value.Trim();
+        string alias = fromSubqueryMatch.Groups["alias"].Value.Trim();
+
+        if (!TryExtractSimplePassThroughSelectSource(subquerySql, out string sourceName))
+            return false;
+
+        rewrittenSql = sql[..fromSubqueryMatch.Index]
+            + $"FROM {sourceName} {alias}"
+            + sql[(fromSubqueryMatch.Index + fromSubqueryMatch.Length)..];
+
         return true;
     }
 
@@ -174,6 +203,26 @@ public sealed class SqlImportCteRewriteService
             while (index < sql.Length && char.IsWhiteSpace(sql[index]))
                 index++;
 
+            if (index < sql.Length && sql[index] == '(')
+            {
+                index++;
+                int columnDepth = 1;
+                while (index < sql.Length && columnDepth > 0)
+                {
+                    if (sql[index] == '(')
+                        columnDepth++;
+                    else if (sql[index] == ')')
+                        columnDepth--;
+                    index++;
+                }
+
+                if (columnDepth != 0)
+                    return false;
+
+                while (index < sql.Length && char.IsWhiteSpace(sql[index]))
+                    index++;
+            }
+
             if (!sql.AsSpan(index).StartsWith("AS", StringComparison.OrdinalIgnoreCase))
                 return false;
             index += 2;
@@ -222,7 +271,7 @@ public sealed class SqlImportCteRewriteService
     {
         sourceName = string.Empty;
 
-        if (Regex.IsMatch(cteBody, @"\b(WHERE|GROUP\s+BY|HAVING|ORDER\s+BY|JOIN|UNION)\b", RegexOptions.IgnoreCase))
+        if (Regex.IsMatch(cteBody, SimpleSubqueryForbiddenKeywordsPattern, RegexOptions.IgnoreCase))
             return false;
 
         Match m = Regex.Match(
@@ -236,6 +285,49 @@ public sealed class SqlImportCteRewriteService
 
         sourceName = m.Groups[1].Value.Trim();
         return !string.IsNullOrWhiteSpace(sourceName);
+    }
+
+    private static bool TryExtractSimplePassThroughSelectSource(string sql, out string sourceName)
+    {
+        sourceName = string.Empty;
+
+        if (Regex.IsMatch(sql, SimpleSubqueryForbiddenKeywordsPattern, RegexOptions.IgnoreCase))
+            return false;
+
+        Match m = Regex.Match(
+            sql,
+            @"^\s*SELECT\s+(?<projection>.+?)\s+FROM\s+(?<source>[A-Za-z_][A-Za-z0-9_\.]*)\s*(?:AS\s+[A-Za-z_][A-Za-z0-9_]*|[A-Za-z_][A-Za-z0-9_]*)?\s*$",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline
+        );
+
+        if (!m.Success)
+            return false;
+
+        if (!IsSimplePassThroughProjection(m.Groups["projection"].Value))
+            return false;
+
+        sourceName = m.Groups["source"].Value.Trim();
+        return !string.IsNullOrWhiteSpace(sourceName);
+    }
+
+    private static bool IsSimplePassThroughProjection(string projection)
+    {
+        foreach (string rawPart in projection.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            string part = rawPart.Trim();
+            if (part == "*")
+                continue;
+
+            if (Regex.IsMatch(part, @"^[A-Za-z_][A-Za-z0-9_]*\.\*$", RegexOptions.IgnoreCase))
+                continue;
+
+            if (Regex.IsMatch(part, @"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?$", RegexOptions.IgnoreCase))
+                continue;
+
+            return false;
+        }
+
+        return true;
     }
 
     private static bool IsIdentifierStart(char c) => char.IsLetter(c) || c == '_';

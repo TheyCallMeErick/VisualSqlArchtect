@@ -39,13 +39,19 @@ public sealed class SqlImportClauseParser(SqlImportCteRewriteService cteRewriteS
                 )
             );
             imported++;
+        }
 
-            report.Add(SqlImportReportFactory.Partial(
-                SqlImportDiagnosticCodes.FallbackRegexUsed,
-                "CTE rewrite fallback",
-                SqlImportDiagnosticMessages.CteRewriteFallbackReportNote
-            ));
-            partial++;
+        if (_cteRewriteService.TryRewriteSimpleFromSubquery(sql, out string rewrittenFromSubquerySql))
+        {
+            sql = rewrittenFromSubquerySql;
+            report.Add(
+                new ImportReportItem(
+                    "FROM sub-query",
+                    ImportItemStatus.Imported,
+                    "Simple FROM sub-query rewritten to supported import shape."
+                )
+            );
+            imported++;
         }
 
         string qualifiedIdentifierPattern = SqlImportIdentifierNormalizer.QualifiedIdentifierPattern;

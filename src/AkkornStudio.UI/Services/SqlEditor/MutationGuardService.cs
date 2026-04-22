@@ -30,6 +30,12 @@ public sealed class MutationGuardService
         if (upper.StartsWith("INSERT ", StringComparison.Ordinal))
             return AnalyzeInsert(statement, upper, _localization);
 
+        if (upper.StartsWith("MERGE ", StringComparison.Ordinal))
+            return AnalyzeMerge(statement, _localization);
+
+        if (upper.StartsWith("TRUNCATE ", StringComparison.Ordinal))
+            return AnalyzeTruncate(statement, _localization);
+
         if (IsDdlMutation(upper))
             return AnalyzeDdl(_localization);
 
@@ -126,6 +132,44 @@ public sealed class MutationGuardService
         };
     }
 
+    private static MutationGuardResult AnalyzeMerge(string statement, ILocalizationService localization)
+    {
+        return new MutationGuardResult
+        {
+            IsSafe = false,
+            RequiresConfirmation = true,
+            Issues =
+            [
+                new MutationGuardIssue(
+                    MutationGuardSeverity.Critical,
+                    "MERGE_MUTATION",
+                    L(localization, "sqlEditor.guard.merge.message", "MERGE can update, insert, or delete rows in the target table."),
+                    L(localization, "sqlEditor.guard.merge.recommendation", "Confirm execution only after reviewing the target, source, and match condition.")),
+            ],
+            CountQuery = BuildMergeCountQuery(statement),
+            SupportsDiff = true,
+        };
+    }
+
+    private static MutationGuardResult AnalyzeTruncate(string statement, ILocalizationService localization)
+    {
+        return new MutationGuardResult
+        {
+            IsSafe = false,
+            RequiresConfirmation = true,
+            Issues =
+            [
+                new MutationGuardIssue(
+                    MutationGuardSeverity.Critical,
+                    "TRUNCATE_MUTATION",
+                    L(localization, "sqlEditor.guard.truncate.message", "TRUNCATE removes all rows from the target table."),
+                    L(localization, "sqlEditor.guard.truncate.recommendation", "Confirm execution only when a full table reset is intended.")),
+            ],
+            CountQuery = BuildTruncateCountQuery(statement),
+            SupportsDiff = true,
+        };
+    }
+
     private static MutationGuardResult AnalyzeDdl(ILocalizationService localization)
     {
         return new MutationGuardResult
@@ -148,7 +192,6 @@ public sealed class MutationGuardService
     private static bool IsDdlMutation(string upper) =>
         upper.StartsWith("ALTER ", StringComparison.Ordinal) ||
         upper.StartsWith("DROP ", StringComparison.Ordinal) ||
-        upper.StartsWith("TRUNCATE ", StringComparison.Ordinal) ||
         upper.StartsWith("CREATE ", StringComparison.Ordinal);
 
     private static string? ExtractWhereClause(string statement, string upper)
@@ -201,6 +244,32 @@ public sealed class MutationGuardService
         }
 
         return null;
+    }
+
+    private static string? BuildTruncateCountQuery(string statement)
+    {
+        Match m = Regex.Match(
+            statement,
+            @"^\s*TRUNCATE\s+(?:TABLE\s+)?([^\s,;]+)",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        if (!m.Success)
+            return null;
+
+        string table = m.Groups[1].Value.Trim();
+        return $"SELECT COUNT(*) FROM {table}";
+    }
+
+    private static string? BuildMergeCountQuery(string statement)
+    {
+        Match m = Regex.Match(
+            statement,
+            @"^\s*MERGE\s+INTO\s+([^\s;]+)",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        if (!m.Success)
+            return null;
+
+        string table = m.Groups[1].Value.Trim();
+        return $"SELECT COUNT(*) FROM {table}";
     }
 
     private static string L(ILocalizationService localization, string key, string fallback)

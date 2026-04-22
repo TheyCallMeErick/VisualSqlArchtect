@@ -42,6 +42,9 @@ public sealed class SqlMutationDiffService
         if (upper.StartsWith("INSERT ", StringComparison.Ordinal))
             return await BuildInsertPreviewAsync(statementSql, config, ct);
 
+        if (upper.StartsWith("MERGE ", StringComparison.Ordinal))
+            return await BuildMergePreviewAsync(statementSql, guard, config, ct);
+
         if (string.IsNullOrWhiteSpace(guard.CountQuery))
             return SqlMutationDiffPreview.Unavailable(L("sqlEditor.diff.unavailable.noPreview", "No transactional diff preview available for this statement."));
 
@@ -68,6 +71,22 @@ public sealed class SqlMutationDiffService
                     totalBefore.Value,
                     affectedRows.Value,
                     totalAfter),
+            };
+        }
+
+        if (upper.StartsWith("TRUNCATE ", StringComparison.Ordinal))
+        {
+            return new SqlMutationDiffPreview
+            {
+                Available = true,
+                Message = string.Format(
+                    L(
+                        "sqlEditor.diff.truncateSummary",
+                        "Transactional diff preview (ROLLBACK guaranteed): table {0}, total rows before {1}, rows removed {2}, total rows after {3}."),
+                    parsed.TableName,
+                    totalBefore.Value,
+                    totalBefore.Value,
+                    0),
             };
         }
 
@@ -104,6 +123,9 @@ public sealed class SqlMutationDiffService
             return SqlMutationDiffPreview.Unavailable(L("sqlEditor.diff.unavailable.connection", "Transactional diff preview unavailable due to connection or query limitations."));
 
         long? insertedRows = TryEstimateInsertedRows(statementSql);
+        if (!insertedRows.HasValue)
+            insertedRows = await TryEstimateInsertSelectRowsAsync(statementSql, config, ct);
+
         if (insertedRows.HasValue)
         {
             return new SqlMutationDiffPreview
@@ -129,6 +151,54 @@ public sealed class SqlMutationDiffService
                     "Transactional diff preview (ROLLBACK guaranteed): table {0}, total rows before {1}. Inserted row count could not be estimated from this INSERT shape."),
                 targetTable,
                 totalBefore.Value),
+        };
+    }
+
+    private async Task<SqlMutationDiffPreview> BuildMergePreviewAsync(
+        string statementSql,
+        MutationGuardResult guard,
+        ConnectionConfig? config,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(guard.CountQuery))
+            return SqlMutationDiffPreview.Unavailable(L("sqlEditor.diff.unavailable.noPreview", "No transactional diff preview available for this statement."));
+
+        ParsedCountQuery? parsed = ParseCountQuery(guard.CountQuery);
+        if (parsed is null)
+            return SqlMutationDiffPreview.Unavailable(L("sqlEditor.diff.unavailable.parseError", "Could not parse mutation target for transactional diff preview."));
+
+        long? totalBefore = await ExecuteScalarCountAsync(guard.CountQuery, config, ct);
+        if (!totalBefore.HasValue)
+            return SqlMutationDiffPreview.Unavailable(L("sqlEditor.diff.unavailable.connection", "Transactional diff preview unavailable due to connection or query limitations."));
+
+        string mergeBranches = DescribeMergeBranches(statementSql);
+        long? sourceRows = await TryEstimateMergeSourceRowsAsync(statementSql, config, ct);
+        if (sourceRows.HasValue)
+        {
+            return new SqlMutationDiffPreview
+            {
+                Available = true,
+                Message = string.Format(
+                    L(
+                        "sqlEditor.diff.mergeSummary",
+                        "Transactional diff preview (ROLLBACK guaranteed): MERGE target {0}, total rows before {1}, source candidate rows {2}. Detected branches: {3}."),
+                    parsed.TableName,
+                    totalBefore.Value,
+                    sourceRows.Value,
+                    mergeBranches),
+            };
+        }
+
+        return new SqlMutationDiffPreview
+        {
+            Available = true,
+            Message = string.Format(
+                L(
+                    "sqlEditor.diff.mergeSummaryUnknown",
+                    "Transactional diff preview (ROLLBACK guaranteed): MERGE target {0}, total rows before {1}. Source candidate row count could not be estimated from this MERGE shape. Detected branches: {2}."),
+                parsed.TableName,
+                totalBefore.Value,
+                mergeBranches),
         };
     }
 
@@ -170,6 +240,14 @@ public sealed class SqlMutationDiffService
 
     private static long? TryEstimateInsertedRows(string statementSql)
     {
+        if (Regex.IsMatch(
+                statementSql,
+                @"^\s*INSERT\s+INTO\s+[^\s(]+(?:\s*\([^)]*\))?\s+DEFAULT\s+VALUES\b",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+        {
+            return 1;
+        }
+
         Match valuesMatch = Regex.Match(
             statementSql,
             @"\bVALUES\b(?<values>.+)$",
@@ -180,6 +258,96 @@ public sealed class SqlMutationDiffService
         string valuesSegment = valuesMatch.Groups["values"].Value;
         int tupleCount = Regex.Matches(valuesSegment, @"\(", RegexOptions.CultureInvariant).Count;
         return tupleCount > 0 ? tupleCount : null;
+    }
+
+    private async Task<long?> TryEstimateInsertSelectRowsAsync(
+        string statementSql,
+        ConnectionConfig? config,
+        CancellationToken ct)
+    {
+        string? selectSource = TryExtractInsertSelectSource(statementSql);
+        if (string.IsNullOrWhiteSpace(selectSource))
+            return null;
+
+        return await ExecuteScalarCountAsync(
+            $"SELECT COUNT(*) FROM ({selectSource}) AS akkorn_insert_src",
+            config,
+            ct);
+    }
+
+    private static string? TryExtractInsertSelectSource(string statementSql)
+    {
+        Match match = Regex.Match(
+            statementSql,
+            @"^\s*INSERT\s+INTO\s+[^\s(]+(?:\s*\([^)]*\))?\s+(?<source>SELECT\b.+?)(?:\s+RETURNING\b.+)?\s*;?\s*$",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant);
+        return match.Success ? match.Groups["source"].Value.Trim() : null;
+    }
+
+    private async Task<long?> TryEstimateMergeSourceRowsAsync(
+        string statementSql,
+        ConnectionConfig? config,
+        CancellationToken ct)
+    {
+        string? source = TryExtractMergeSource(statementSql);
+        if (string.IsNullOrWhiteSpace(source))
+            return null;
+
+        if (source.StartsWith("(", StringComparison.Ordinal) && source.EndsWith(")", StringComparison.Ordinal))
+        {
+            string inner = source[1..^1].Trim();
+            if (!inner.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            return await ExecuteScalarCountAsync(
+                $"SELECT COUNT(*) FROM ({inner}) AS akkorn_merge_src",
+                config,
+                ct);
+        }
+
+        string sourceTable = ExtractLeadingTableToken(source);
+        if (string.IsNullOrWhiteSpace(sourceTable))
+            return null;
+
+        return await ExecuteScalarCountAsync($"SELECT COUNT(*) FROM {sourceTable}", config, ct);
+    }
+
+    private static string? TryExtractMergeSource(string statementSql)
+    {
+        Match match = Regex.Match(
+            statementSql,
+            @"\bUSING\s+(?<source>\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\)|[^\s;]+(?:\s+[A-Za-z_][A-Za-z0-9_]*)?)\s+ON\b",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant);
+        return match.Success ? match.Groups["source"].Value.Trim() : null;
+    }
+
+    private static string ExtractLeadingTableToken(string source)
+    {
+        Match match = Regex.Match(
+            source,
+            @"^[^\s;]+",
+            RegexOptions.CultureInvariant);
+        return match.Success ? match.Value.Trim() : string.Empty;
+    }
+
+    private static string DescribeMergeBranches(string statementSql)
+    {
+        List<string> branches = [];
+        string normalized = statementSql.ToUpperInvariant();
+
+        if (Regex.IsMatch(normalized, @"\bWHEN\s+MATCHED\b", RegexOptions.CultureInvariant))
+            branches.Add("MATCHED");
+        if (Regex.IsMatch(normalized, @"\bWHEN\s+NOT\s+MATCHED\s+BY\s+SOURCE\b", RegexOptions.CultureInvariant))
+            branches.Add("NOT MATCHED BY SOURCE");
+        if (Regex.IsMatch(normalized, @"\bWHEN\s+NOT\s+MATCHED\b", RegexOptions.CultureInvariant)
+            && !branches.Contains("NOT MATCHED BY SOURCE", StringComparer.Ordinal))
+        {
+            branches.Add("NOT MATCHED");
+        }
+
+        return branches.Count == 0
+            ? "unknown"
+            : string.Join(", ", branches);
     }
 
     private string L(string key, string fallback)

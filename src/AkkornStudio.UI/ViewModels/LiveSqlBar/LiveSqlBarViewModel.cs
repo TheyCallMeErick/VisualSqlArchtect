@@ -111,6 +111,8 @@ public sealed class LiveSqlBarViewModel : ViewModelBase
 
     public bool HasSql => !string.IsNullOrWhiteSpace(RawSql);
     public IReadOnlyList<QueryParameter> ExecutionParameters { get; private set; } = [];
+    public IReadOnlyDictionary<string, QueryExecutionParameterContext> ExecutionParameterContexts { get; private set; }
+        = new Dictionary<string, QueryExecutionParameterContext>(StringComparer.OrdinalIgnoreCase);
 
     public bool IsMutatingCommand
     {
@@ -241,6 +243,7 @@ public sealed class LiveSqlBarViewModel : ViewModelBase
             ExecutionParameters = build.Bindings
                 .Select(binding => new QueryParameter(binding.Key, binding.Value))
                 .ToArray();
+            ExecutionParameterContexts = build.ParameterContexts;
             IsValid = errors.Count == 0;
             CompileError = errors.Count > 0 ? errors[0] : null;
 
@@ -280,6 +283,7 @@ public sealed class LiveSqlBarViewModel : ViewModelBase
             DisplaySql = string.Empty;
             ExecutionSqlTemplate = null;
             ExecutionParameters = [];
+            ExecutionParameterContexts = new Dictionary<string, QueryExecutionParameterContext>(StringComparer.OrdinalIgnoreCase);
             IsValid = false;
             CompileError = ex.Message;
             IsMutatingCommand = false;
@@ -377,6 +381,7 @@ public sealed class LiveSqlBarViewModel : ViewModelBase
         DisplaySql = sql;
         ExecutionSqlTemplate = sql;
         ExecutionParameters = [];
+        ExecutionParameterContexts = new Dictionary<string, QueryExecutionParameterContext>(StringComparer.OrdinalIgnoreCase);
         SqlSyntaxHighlighter.Tokenize(sql, Tokens);
         RaisePropertyChanged(nameof(HasSql));
     }

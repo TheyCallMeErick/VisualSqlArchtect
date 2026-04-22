@@ -87,6 +87,51 @@ public class SqlImportApplyStepsTests
     }
 
     [Fact]
+    public void HavingClauseApplier_WithCountDistinctComparison_AddsDistinctCountNode()
+    {
+        var setup = CreateCoreContext();
+        var query = CreateQuery(havingClause: "COUNT(DISTINCT id) > 1", groupBy: "id");
+        var context = new SqlImportApplyContext(query, setup.CoreContext, setup.Report, CancellationToken.None);
+
+        var step = new SqlImportHavingClauseApplier(setup.Canvas);
+
+        SqlImportApplyResult result = step.Apply(context);
+
+        Assert.Equal(1, result.Imported);
+        NodeViewModel countNode = Assert.Single(setup.Canvas.Nodes.Where(n => n.Type == NodeType.CountDistinct));
+        Assert.Equal("true", countNode.Parameters["distinct"]);
+        Assert.Contains(setup.Canvas.Nodes, n => n.Type == NodeType.GreaterThan);
+        Assert.Contains(setup.Canvas.Connections, c =>
+            c.ToPin?.Owner == countNode
+            && c.ToPin.Name.Equals("value", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void HavingClauseApplier_WithStringAggComparison_AddsStringAggNode()
+    {
+        var setup = CreateCoreContext();
+        var query = CreateQuery(havingClause: "STRING_AGG(DISTINCT id, ',' ORDER BY id DESC) = '1,2'", groupBy: "id");
+        var context = new SqlImportApplyContext(query, setup.CoreContext, setup.Report, CancellationToken.None);
+
+        var step = new SqlImportHavingClauseApplier(setup.Canvas);
+
+        SqlImportApplyResult result = step.Apply(context);
+
+        Assert.Equal(1, result.Imported);
+        NodeViewModel stringAggNode = Assert.Single(setup.Canvas.Nodes.Where(n => n.Type == NodeType.StringAgg));
+        Assert.Equal("true", stringAggNode.Parameters["distinct"]);
+        Assert.Equal(",", stringAggNode.Parameters["separator"]);
+        Assert.Equal("true", stringAggNode.Parameters["order_1_desc"]);
+        Assert.Contains(setup.Canvas.Nodes, n => n.Type == NodeType.Equals);
+        Assert.Contains(setup.Canvas.Connections, c =>
+            c.ToPin?.Owner == stringAggNode
+            && c.ToPin.Name.Equals("value", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(setup.Canvas.Connections, c =>
+            c.ToPin?.Owner == stringAggNode
+            && c.ToPin.Name.Equals("order_by", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void ResultModifiersApplier_WithLimitAndDistinct_ImportsBothModifiers()
     {
         var setup = CreateCoreContext();

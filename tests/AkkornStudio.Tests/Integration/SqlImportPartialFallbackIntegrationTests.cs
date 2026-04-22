@@ -25,6 +25,9 @@ public class SqlImportPartialFallbackIntegrationTests
             r.Status == ImportItemStatus.Imported
             && r.Label.Contains("CTE", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(canvas.SqlImporter.Report, r =>
+            r.Status == ImportItemStatus.Partial
+            && string.Equals(r.DiagnosticCode, SqlImportDiagnosticCodes.FallbackRegexUsed, StringComparison.Ordinal));
+        Assert.DoesNotContain(canvas.SqlImporter.Report, r =>
             r.Status == ImportItemStatus.Skipped
             && r.Label.Contains("CTE / sub-query", StringComparison.OrdinalIgnoreCase));
     }
@@ -172,6 +175,9 @@ public class SqlImportPartialFallbackIntegrationTests
             item.Status == ImportItemStatus.Imported
             && item.Label.Contains("CTE", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(canvas.SqlImporter.Report, item =>
+            item.Status == ImportItemStatus.Partial
+            && string.Equals(item.DiagnosticCode, SqlImportDiagnosticCodes.FallbackRegexUsed, StringComparison.Ordinal));
+        Assert.DoesNotContain(canvas.SqlImporter.Report, item =>
             item.Label.Contains("CTE / sub-query", StringComparison.OrdinalIgnoreCase)
             && item.Status == ImportItemStatus.Skipped);
     }
@@ -193,6 +199,59 @@ public class SqlImportPartialFallbackIntegrationTests
         Assert.Contains(canvas.SqlImporter.Report, item =>
             item.Status == ImportItemStatus.Imported
             && item.Label.Contains("CTE", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(canvas.SqlImporter.Report, item =>
+            item.Status == ImportItemStatus.Partial
+            && string.Equals(item.DiagnosticCode, SqlImportDiagnosticCodes.FallbackRegexUsed, StringComparison.Ordinal));
+        Assert.DoesNotContain(canvas.SqlImporter.Report, item =>
+            item.Label.Contains("CTE / sub-query", StringComparison.OrdinalIgnoreCase)
+            && item.Status == ImportItemStatus.Skipped);
+    }
+
+    [Fact]
+    public async Task ImportAsync_WithSimpleCteColumnList_ImportsSuccessfullyWithoutFallback()
+    {
+        var canvas = new CanvasViewModel();
+
+        canvas.SqlImporter.ImportStartDelayMs = 0;
+        canvas.SqlImporter.ImportTimeout = TimeSpan.FromSeconds(5);
+        canvas.SqlImporter.SqlInput =
+            "WITH cte_orders(id) AS (SELECT id FROM public.orders) SELECT id FROM cte_orders";
+
+        await canvas.SqlImporter.ImportAsync();
+        SqlImportWiringAssertions.AssertGraphWiringIfGraphExists(canvas);
+
+        Assert.True(canvas.SqlImporter.HasReport);
+        Assert.Contains(canvas.SqlImporter.Report, item =>
+            item.Status == ImportItemStatus.Imported
+            && item.Label.Contains("CTE", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(canvas.SqlImporter.Report, item =>
+            item.Status == ImportItemStatus.Partial
+            && string.Equals(item.DiagnosticCode, SqlImportDiagnosticCodes.FallbackRegexUsed, StringComparison.Ordinal));
+        Assert.DoesNotContain(canvas.SqlImporter.Report, item =>
+            item.Label.Contains("CTE / sub-query", StringComparison.OrdinalIgnoreCase)
+            && item.Status == ImportItemStatus.Skipped);
+    }
+
+    [Fact]
+    public async Task ImportAsync_WithSimpleFromSubquery_ImportsSuccessfullyWithoutFallback()
+    {
+        var canvas = new CanvasViewModel();
+
+        canvas.SqlImporter.ImportStartDelayMs = 0;
+        canvas.SqlImporter.ImportTimeout = TimeSpan.FromSeconds(5);
+        canvas.SqlImporter.SqlInput =
+            "SELECT id FROM (SELECT id FROM public.orders) o";
+
+        await canvas.SqlImporter.ImportAsync();
+        SqlImportWiringAssertions.AssertGraphWiringIfGraphExists(canvas);
+
+        Assert.True(canvas.SqlImporter.HasReport);
+        Assert.Contains(canvas.SqlImporter.Report, item =>
+            item.Status == ImportItemStatus.Imported
+            && item.Label.Contains("FROM sub-query", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(canvas.SqlImporter.Report, item =>
+            item.Status == ImportItemStatus.Partial
+            && string.Equals(item.DiagnosticCode, SqlImportDiagnosticCodes.FallbackRegexUsed, StringComparison.Ordinal));
         Assert.DoesNotContain(canvas.SqlImporter.Report, item =>
             item.Label.Contains("CTE / sub-query", StringComparison.OrdinalIgnoreCase)
             && item.Status == ImportItemStatus.Skipped);
