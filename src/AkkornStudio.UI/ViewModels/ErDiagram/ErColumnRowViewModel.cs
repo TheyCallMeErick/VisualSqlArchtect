@@ -7,6 +7,8 @@ namespace AkkornStudio.UI.ViewModels.ErDiagram;
 /// </summary>
 public sealed class ErColumnRowViewModel : ViewModelBase
 {
+    private bool _isRelationEndpointHighlighted;
+
     public ErColumnRowViewModel(
         string columnName,
         string dataType,
@@ -42,4 +44,10 @@ public sealed class ErColumnRowViewModel : ViewModelBase
     public string Badge => IsPrimaryKey ? "PK" : IsForeignKey ? "FK" : string.Empty;
 
     public bool HasBadge => !string.IsNullOrWhiteSpace(Badge);
+
+    public bool IsRelationEndpointHighlighted
+    {
+        get => _isRelationEndpointHighlighted;
+        set => Set(ref _isRelationEndpointHighlighted, value);
+    }
 }

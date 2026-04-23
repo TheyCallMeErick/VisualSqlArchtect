@@ -3,7 +3,9 @@ using System.Linq;
 using System.Reflection;
 using System.Text.Json;
 using AkkornStudio.Core;
+using AkkornStudio.CanvasKit;
 using AkkornStudio.Metadata;
+using AkkornStudio.Nodes;
 using Avalonia;
 using AkkornStudio.UI.Services.ConnectionManager.Models;
 using AkkornStudio.UI.Services.ConnectionManager;
@@ -26,6 +28,8 @@ namespace AkkornStudio.UI.ViewModels;
 /// </summary>
 public sealed class ShellViewModel : ViewModelBase
 {
+    private const string AutoProjectionMarkerParameter = "__akkorn_auto_projection";
+
     public enum AppMode
     {
         Query,
@@ -394,11 +398,13 @@ public sealed class ShellViewModel : ViewModelBase
     {
         if (ActiveQueryCanvasDocument is not null)
         {
+            BindPropertyPanelActions(ActiveQueryCanvasDocument);
             SyncCanvasConnectionContext(ActiveQueryCanvasDocument, ResolveKnownDdlCanvas());
             return ActiveQueryCanvasDocument;
         }
 
         if (Canvas is null)
+        {
             Canvas = new CanvasViewModel(
                 nodeManager: null,
                 pinManager: null,
@@ -407,6 +413,8 @@ public sealed class ShellViewModel : ViewModelBase
                 domainStrategy: new QueryDomainStrategy(isDdlModeActiveResolver, importDdlTableAction),
                 toastCenter: Toasts,
                 connectionManagerFactory: _connectionManagerViewModelFactory);
+            BindPropertyPanelActions(Canvas);
+        }
 
         SyncCanvasConnectionContext(Canvas, ResolveKnownDdlCanvas());
 
@@ -417,11 +425,13 @@ public sealed class ShellViewModel : ViewModelBase
     {
         if (ActiveDdlCanvasDocument is not null)
         {
+            BindPropertyPanelActions(ActiveDdlCanvasDocument);
             SyncCanvasConnectionContext(ActiveDdlCanvasDocument, ResolveKnownQueryCanvas());
             return ActiveDdlCanvasDocument;
         }
 
         if (DdlCanvas is null)
+        {
             DdlCanvas = new CanvasViewModel(
                 nodeManager: null,
                 pinManager: null,
@@ -430,6 +440,8 @@ public sealed class ShellViewModel : ViewModelBase
                 domainStrategy: new DdlDomainStrategy(),
                 toastCenter: Toasts,
                 connectionManagerFactory: _connectionManagerViewModelFactory);
+            BindPropertyPanelActions(DdlCanvas);
+        }
 
         SyncCanvasConnectionContext(DdlCanvas, ResolveKnownQueryCanvas());
 
@@ -449,10 +461,16 @@ public sealed class ShellViewModel : ViewModelBase
     public void ActivateDocument(WorkspaceDocumentType documentType)
     {
         if (ActiveWorkspaceDocumentType == documentType)
+        {
+            if (documentType == WorkspaceDocumentType.ErDiagram)
+                RefreshErDiagramDocument();
             return;
+        }
 
         OpenWorkspaceDocument? target = _workspaceRouter.OpenDocuments
             .LastOrDefault(document => document.Descriptor.DocumentType == documentType);
+        if (documentType == WorkspaceDocumentType.ErDiagram && target?.DocumentViewModel is ErCanvasViewModel erCanvas)
+            erCanvas.BindSourceMetadata(ResolveSharedMetadata());
         bool changed = target is not null && _workspaceRouter.TryActivate(target.Descriptor.DocumentId);
         if (!changed)
         {
@@ -485,6 +503,31 @@ public sealed class ShellViewModel : ViewModelBase
             WorkspaceDocumentType.ErDiagram => OpenNewErDiagramDocument(),
             _ => OpenNewQueryDocument(),
         };
+    }
+
+    public bool TryOpenSelectedQueryJoinInErDiagram()
+    {
+        CanvasViewModel? queryCanvas = ActiveQueryCanvasDocument ?? Canvas;
+        if (queryCanvas is null)
+            return false;
+
+        NodeViewModel? selectedJoin = queryCanvas.Nodes.FirstOrDefault(node => node.IsSelected && node.IsJoin);
+        if (selectedJoin is null)
+            return false;
+
+        if (!TryResolveJoinSelection(queryCanvas, selectedJoin, out ResolvedErRelation? relation))
+            return false;
+
+        ActivateDocument(WorkspaceDocumentType.ErDiagram);
+        ErCanvasViewModel? erCanvas = ActiveErDiagramDocument;
+        if (erCanvas is null)
+            return false;
+
+        return erCanvas.TryFocusRelation(
+            relation.ChildEntityId,
+            relation.ParentEntityId,
+            relation.ChildColumns,
+            relation.ParentColumns);
     }
 
     public bool TryActivateWorkspaceDocument(Guid documentId)
@@ -857,6 +900,9 @@ public sealed class ShellViewModel : ViewModelBase
         if (!changed)
             return;
 
+        if (documentType == WorkspaceDocumentType.ErDiagram)
+            RefreshErDiagramDocument();
+
         SyncStateFromActiveDocument();
         RaiseActiveDocumentPropertiesChanged();
         SyncExtractedPanels();
@@ -979,6 +1025,7 @@ public sealed class ShellViewModel : ViewModelBase
             domainStrategy: new QueryDomainStrategy(),
             toastCenter: Toasts,
             connectionManagerFactory: _connectionManagerViewModelFactory);
+        BindPropertyPanelActions(canvas);
         Guid documentId = Guid.NewGuid();
         RegisterOrUpdateDocument(documentId, WorkspaceDocumentType.QueryCanvas, title, canvas, activate: true);
         _canvas ??= canvas;
@@ -1001,6 +1048,7 @@ public sealed class ShellViewModel : ViewModelBase
             domainStrategy: new DdlDomainStrategy(),
             toastCenter: Toasts,
             connectionManagerFactory: _connectionManagerViewModelFactory);
+        BindPropertyPanelActions(ddlCanvas);
         Guid documentId = Guid.NewGuid();
         RegisterOrUpdateDocument(documentId, WorkspaceDocumentType.DdlCanvas, title, ddlCanvas, activate: true);
         _ddlCanvas ??= ddlCanvas;
@@ -1080,6 +1128,7 @@ public sealed class ShellViewModel : ViewModelBase
             domainStrategy: isDdl ? new DdlDomainStrategy() : new QueryDomainStrategy(),
             toastCenter: Toasts,
             connectionManagerFactory: _connectionManagerViewModelFactory);
+        BindPropertyPanelActions(canvas);
 
         if (savedDocument.CanvasPayload is SavedCanvas payload)
         {
@@ -1105,15 +1154,756 @@ public sealed class ShellViewModel : ViewModelBase
     private ErCanvasViewModel BuildErDiagramDocument()
     {
         DbMetadata? metadata = ResolveSharedMetadata();
-        if (metadata is null)
+        var erCanvas = new ErCanvasViewModel();
+        erCanvas.BindQueryNavigation(OpenErRelationInQuery);
+        erCanvas.BindSourceMetadata(metadata);
+        return erCanvas;
+    }
+
+    private void RefreshErDiagramDocument()
+    {
+        ErCanvasViewModel? erCanvas = ActiveErDiagramDocument
+            ?? _workspaceRouter.OpenDocuments
+                .LastOrDefault(document => document.Descriptor.DocumentType == WorkspaceDocumentType.ErDiagram)
+                ?.DocumentViewModel as ErCanvasViewModel;
+        erCanvas?.BindQueryNavigation(OpenErRelationInQuery);
+        erCanvas?.BindSourceMetadata(ResolveSharedMetadata());
+    }
+
+    private void OpenErRelationInQuery(ErRelationEdgeViewModel edge)
+    {
+        ArgumentNullException.ThrowIfNull(edge);
+
+        ActivateDocument(WorkspaceDocumentType.QueryCanvas);
+        CanvasViewModel queryCanvas = ActiveQueryCanvasDocument ?? EnsureCanvas();
+        queryCanvas.SetDatabaseContext(ResolveSharedMetadata(), ResolveSharedActiveConnectionConfig());
+
+        NodeViewModel? childTable = FindOrInsertTableSourceNode(queryCanvas, edge.ChildEntityId, new Point(80, 80));
+        NodeViewModel? parentTable = FindOrInsertTableSourceNode(queryCanvas, edge.ParentEntityId, new Point(80, 320));
+        if (childTable is null || parentTable is null)
         {
-            var empty = new ErCanvasViewModel();
-            empty.AddTechnicalWarning("W-ER-NO-METADATA");
-            return empty;
+            queryCanvas.NotifyWarning(
+                "Não foi possível abrir o relacionamento no Query Canvas.",
+                $"{edge.ChildEntityId} -> {edge.ParentEntityId}");
+            return;
         }
 
-        return ErCanvasBuilder.Build(metadata);
+        if (HasEquivalentJoin(queryCanvas, childTable, parentTable, edge))
+        {
+            queryCanvas.NotifyWarning(
+                "Esse relacionamento já está representado no Query Canvas.",
+                edge.JoinPredicateSql);
+            return;
+        }
+
+        NodeViewModel joinNode = queryCanvas.SpawnNode(
+            NodeDefinitionRegistry.Get(NodeType.Join),
+            new Point(Math.Max(childTable.Position.X, parentTable.Position.X) + 360, (childTable.Position.Y + parentTable.Position.Y) / 2d));
+        joinNode.Parameters["join_type"] = "INNER";
+        joinNode.Parameters["right_source"] = GetTableIdentifier(parentTable);
+        joinNode.RaiseParameterChanged("join_type");
+        joinNode.RaiseParameterChanged("right_source");
+
+        if (!TryConnectJoinInputs(queryCanvas, joinNode, childTable, parentTable, edge))
+        {
+            queryCanvas.NotifyWarning(
+                "Não foi possível resolver as colunas da relação no Query Canvas.",
+                edge.JoinPredicateSql);
+            return;
+        }
+
+        if (edge.ColumnPairCount <= 1)
+        {
+            joinNode.Parameters["left_expr"] = $"{GetTableIdentifier(childTable)}.{edge.ChildColumn}";
+            joinNode.Parameters["right_expr"] = $"{GetTableIdentifier(parentTable)}.{edge.ParentColumn}";
+            joinNode.Parameters["operator"] = "=";
+            joinNode.RaiseParameterChanged("left_expr");
+            joinNode.RaiseParameterChanged("right_expr");
+            joinNode.RaiseParameterChanged("operator");
+        }
+        else
+        {
+            BuildCompositeJoinCondition(queryCanvas, joinNode, childTable, parentTable, edge);
+        }
+
+        EnsureSuggestedProjectionForRelation(queryCanvas, childTable, parentTable, edge);
+
+        queryCanvas.FocusNodeById(joinNode.Id);
+        queryCanvas.NotifySuccess(
+            edge.ColumnPairCount <= 1
+                ? "Relacionamento enviado para o Query Canvas."
+                : "Relacionamento composto enviado para o Query Canvas.",
+            edge.JoinPredicateSql);
     }
+
+    private static NodeViewModel? FindOrInsertTableSourceNode(CanvasViewModel canvas, string entityId, Point fallbackPosition)
+    {
+        NodeViewModel? existing = FindTableSourceNode(canvas, entityId);
+        if (existing is not null)
+            return existing;
+
+        if (!canvas.TryInsertSchemaTableNode(entityId, fallbackPosition))
+            return null;
+
+        return FindTableSourceNode(canvas, entityId);
+    }
+
+    private static NodeViewModel? FindTableSourceNode(CanvasViewModel canvas, string entityId)
+    {
+        string normalizedEntityId = NormalizeEntityId(entityId);
+        string shortName = normalizedEntityId.Split('.').Last();
+
+        return canvas.Nodes.FirstOrDefault(node =>
+            node.IsTableSource
+            && (string.Equals(node.Subtitle, normalizedEntityId, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(node.Title, shortName, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(node.Alias, shortName, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static bool TryConnectJoinInputs(
+        CanvasViewModel canvas,
+        NodeViewModel joinNode,
+        NodeViewModel childTable,
+        NodeViewModel parentTable,
+        ErRelationEdgeViewModel edge)
+    {
+        PinViewModel? joinLeft = joinNode.InputPins.FirstOrDefault(pin => pin.Name == "left");
+        PinViewModel? joinRight = joinNode.InputPins.FirstOrDefault(pin => pin.Name == "right");
+        PinViewModel? childPin = childTable.OutputPins.FirstOrDefault(pin =>
+            string.Equals(pin.Name, edge.ChildColumn, StringComparison.OrdinalIgnoreCase));
+        PinViewModel? parentPin = parentTable.OutputPins.FirstOrDefault(pin =>
+            string.Equals(pin.Name, edge.ParentColumn, StringComparison.OrdinalIgnoreCase));
+
+        if (joinLeft is null || joinRight is null || childPin is null || parentPin is null)
+            return false;
+
+        canvas.ConnectPins(childPin, joinLeft);
+        canvas.ConnectPins(parentPin, joinRight);
+        return true;
+    }
+
+    private static void BuildCompositeJoinCondition(
+        CanvasViewModel canvas,
+        NodeViewModel joinNode,
+        NodeViewModel childTable,
+        NodeViewModel parentTable,
+        ErRelationEdgeViewModel edge)
+    {
+        List<NodeViewModel> comparisonNodes = [];
+        double conditionX = joinNode.Position.X - 220;
+        double conditionY = joinNode.Position.Y - ((edge.ColumnPairCount - 1) * 70d / 2d);
+
+        for (int i = 0; i < edge.ColumnPairCount; i++)
+        {
+            string childColumn = edge.ChildColumns[i];
+            string parentColumn = edge.ParentColumns[i];
+            PinViewModel? childPin = childTable.OutputPins.FirstOrDefault(pin =>
+                string.Equals(pin.Name, childColumn, StringComparison.OrdinalIgnoreCase));
+            PinViewModel? parentPin = parentTable.OutputPins.FirstOrDefault(pin =>
+                string.Equals(pin.Name, parentColumn, StringComparison.OrdinalIgnoreCase));
+            if (childPin is null || parentPin is null)
+                continue;
+
+            NodeViewModel equalsNode = canvas.SpawnNode(
+                NodeDefinitionRegistry.Get(NodeType.Equals),
+                new Point(conditionX, conditionY + (i * 70d)));
+            PinViewModel? equalsLeft = equalsNode.InputPins.FirstOrDefault(pin => pin.Name == "left");
+            PinViewModel? equalsRight = equalsNode.InputPins.FirstOrDefault(pin => pin.Name == "right");
+            if (equalsLeft is null || equalsRight is null)
+                continue;
+
+            canvas.ConnectPins(childPin, equalsLeft);
+            canvas.ConnectPins(parentPin, equalsRight);
+            comparisonNodes.Add(equalsNode);
+        }
+
+        if (comparisonNodes.Count == 0)
+            return;
+
+        PinViewModel? joinCondition = joinNode.InputPins.FirstOrDefault(pin => pin.Name == "condition");
+        if (joinCondition is null)
+            return;
+
+        if (comparisonNodes.Count == 1)
+        {
+            PinViewModel? resultPin = comparisonNodes[0].OutputPins.FirstOrDefault(pin => pin.Name == "result");
+            if (resultPin is not null)
+                canvas.ConnectPins(resultPin, joinCondition);
+            return;
+        }
+
+        NodeViewModel andNode = canvas.SpawnNode(
+            NodeDefinitionRegistry.Get(NodeType.And),
+            new Point(conditionX + 180, joinNode.Position.Y));
+        PinViewModel? andConditions = andNode.InputPins.FirstOrDefault(pin => pin.Name == "conditions");
+        PinViewModel? andResult = andNode.OutputPins.FirstOrDefault(pin => pin.Name == "result");
+        if (andConditions is null || andResult is null)
+            return;
+
+        foreach (NodeViewModel comparisonNode in comparisonNodes)
+        {
+            PinViewModel? resultPin = comparisonNode.OutputPins.FirstOrDefault(pin => pin.Name == "result");
+            if (resultPin is not null)
+                canvas.ConnectPins(resultPin, andConditions);
+        }
+
+        canvas.ConnectPins(andResult, joinCondition);
+    }
+
+    private static void EnsureSuggestedProjectionForRelation(
+        CanvasViewModel canvas,
+        NodeViewModel childTable,
+        NodeViewModel parentTable,
+        ErRelationEdgeViewModel edge)
+    {
+        if (HasExplicitProjection(canvas))
+            return;
+
+        NodeViewModel resultOutput = EnsureResultOutputNode(canvas);
+        NodeViewModel columnSetBuilder = EnsureProjectionColumnSetBuilder(canvas, resultOutput);
+        MarkAutoProjection(resultOutput);
+        PinViewModel? columnsInput = columnSetBuilder.InputPins.FirstOrDefault(pin =>
+            string.Equals(pin.Name, "columns", StringComparison.OrdinalIgnoreCase));
+        if (columnsInput is null)
+            return;
+
+        foreach ((NodeViewModel tableNode, string columnName) in EnumerateSuggestedProjectionColumns(canvas, childTable, parentTable, edge))
+        {
+            PinViewModel? columnPin = tableNode.OutputPins.FirstOrDefault(pin =>
+                string.Equals(pin.Name, columnName, StringComparison.OrdinalIgnoreCase));
+            if (columnPin is null || HasConnection(canvas, columnPin, columnsInput))
+                continue;
+
+            canvas.ConnectPins(columnPin, columnsInput);
+        }
+    }
+
+    private static void MarkAutoProjection(NodeViewModel resultOutput)
+    {
+        resultOutput.Parameters[AutoProjectionMarkerParameter] = "true";
+        resultOutput.RaiseParameterChanged(AutoProjectionMarkerParameter);
+    }
+
+    private static bool HasExplicitProjection(CanvasViewModel canvas) =>
+        canvas.Connections.Any(connection =>
+            connection.ToPin?.Owner.Type == NodeType.ResultOutput
+            && (string.Equals(connection.ToPin.Name, "columns", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(connection.ToPin.Name, "column", StringComparison.OrdinalIgnoreCase)));
+
+    private static NodeViewModel EnsureResultOutputNode(CanvasViewModel canvas)
+    {
+        NodeViewModel? existing = canvas.Nodes.FirstOrDefault(node => node.Type == NodeType.ResultOutput);
+        if (existing is not null)
+            return existing;
+
+        double x = canvas.Nodes.Count == 0 ? 960d : canvas.Nodes.Max(node => node.Position.X) + 420d;
+        double y = canvas.Nodes.Count == 0 ? 160d : canvas.Nodes.Average(node => node.Position.Y);
+        return canvas.SpawnNode(NodeDefinitionRegistry.Get(NodeType.ResultOutput), new Point(x, y));
+    }
+
+    private static NodeViewModel EnsureProjectionColumnSetBuilder(CanvasViewModel canvas, NodeViewModel resultOutput)
+    {
+        ConnectionViewModel? existingConnection = canvas.Connections.FirstOrDefault(connection =>
+            connection.ToPin is not null
+            && ReferenceEquals(connection.ToPin.Owner, resultOutput)
+            && string.Equals(connection.ToPin.Name, "columns", StringComparison.OrdinalIgnoreCase)
+            && connection.FromPin.Owner.Type == NodeType.ColumnSetBuilder);
+        if (existingConnection is not null)
+            return existingConnection.FromPin.Owner;
+
+        NodeViewModel builder = canvas.SpawnNode(
+            NodeDefinitionRegistry.Get(NodeType.ColumnSetBuilder),
+            new Point(resultOutput.Position.X - 260d, resultOutput.Position.Y));
+        PinViewModel? builderResult = builder.OutputPins.FirstOrDefault(pin =>
+            string.Equals(pin.Name, "result", StringComparison.OrdinalIgnoreCase));
+        PinViewModel? resultColumns = resultOutput.InputPins.FirstOrDefault(pin =>
+            string.Equals(pin.Name, "columns", StringComparison.OrdinalIgnoreCase));
+        if (builderResult is not null && resultColumns is not null && !HasConnection(canvas, builderResult, resultColumns))
+            canvas.ConnectPins(builderResult, resultColumns);
+
+        return builder;
+    }
+
+    private static IEnumerable<(NodeViewModel TableNode, string ColumnName)> EnumerateSuggestedProjectionColumns(
+        CanvasViewModel canvas,
+        NodeViewModel childTable,
+        NodeViewModel parentTable,
+        ErRelationEdgeViewModel edge)
+    {
+        TableMetadata? childMetadata = canvas.DatabaseMetadata?.FindTable(GetTableIdentifier(childTable));
+        TableMetadata? parentMetadata = canvas.DatabaseMetadata?.FindTable(GetTableIdentifier(parentTable));
+        var emitted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (ColumnMetadata column in childMetadata?.PrimaryKeyColumns ?? [])
+        {
+            if (emitted.Add($"{GetTableIdentifier(childTable)}.{column.Name}"))
+                yield return (childTable, column.Name);
+        }
+
+        foreach (string childColumn in edge.ChildColumns)
+        {
+            if (emitted.Add($"{GetTableIdentifier(childTable)}.{childColumn}"))
+                yield return (childTable, childColumn);
+        }
+
+        foreach (string parentColumn in edge.ParentColumns)
+        {
+            if (emitted.Add($"{GetTableIdentifier(parentTable)}.{parentColumn}"))
+                yield return (parentTable, parentColumn);
+        }
+
+        ColumnMetadata? descriptiveParentColumn = PickDescriptiveColumn(parentMetadata, edge.ParentColumns);
+        if (descriptiveParentColumn is not null
+            && emitted.Add($"{GetTableIdentifier(parentTable)}.{descriptiveParentColumn.Name}"))
+        {
+            yield return (parentTable, descriptiveParentColumn.Name);
+        }
+    }
+
+    private static ColumnMetadata? PickDescriptiveColumn(
+        TableMetadata? table,
+        IReadOnlyList<string> excludedColumns)
+    {
+        if (table is null)
+            return null;
+
+        var excluded = new HashSet<string>(excludedColumns, StringComparer.OrdinalIgnoreCase);
+        return table.Columns
+            .Where(column =>
+                !column.IsPrimaryKey
+                && !column.IsForeignKey
+                && !excluded.Contains(column.Name))
+            .OrderByDescending(ScoreDescriptiveColumn)
+            .ThenBy(column => column.OrdinalPosition)
+            .FirstOrDefault(column => ScoreDescriptiveColumn(column) > 0);
+    }
+
+    private static int ScoreDescriptiveColumn(ColumnMetadata column)
+    {
+        string normalizedName = column.Name.Trim();
+        string lowerName = normalizedName.ToLowerInvariant();
+        int score = 0;
+
+        if (IsTechnicalColumnName(lowerName))
+            score -= 100;
+
+        if (column.SemanticType == ColumnSemanticType.Text)
+            score += 30;
+        else if (column.SemanticType == ColumnSemanticType.Guid)
+            score -= 20;
+        else if (column.SemanticType == ColumnSemanticType.DateTime)
+            score -= 25;
+        else if (column.SemanticType == ColumnSemanticType.Boolean)
+            score -= 10;
+
+        if (lowerName is "name" or "full_name" or "display_name")
+            score += 120;
+        else if (lowerName is "title" or "label")
+            score += 110;
+        else if (lowerName is "description" or "summary")
+            score += 90;
+        else if (lowerName is "code" or "email" or "username")
+            score += 80;
+        else if (lowerName.EndsWith("_name", StringComparison.OrdinalIgnoreCase)
+            || lowerName.EndsWith("_title", StringComparison.OrdinalIgnoreCase)
+            || lowerName.EndsWith("_label", StringComparison.OrdinalIgnoreCase))
+            score += 70;
+        else if (lowerName.Contains("description", StringComparison.OrdinalIgnoreCase)
+            || lowerName.Contains("summary", StringComparison.OrdinalIgnoreCase))
+            score += 60;
+        else if (lowerName.Contains("name", StringComparison.OrdinalIgnoreCase)
+            || lowerName.Contains("title", StringComparison.OrdinalIgnoreCase)
+            || lowerName.Contains("code", StringComparison.OrdinalIgnoreCase)
+            || lowerName.Contains("email", StringComparison.OrdinalIgnoreCase))
+            score += 45;
+
+        return score;
+    }
+
+    private static bool IsTechnicalColumnName(string lowerName) =>
+        lowerName is "created_at"
+            or "updated_at"
+            or "modified_at"
+            or "deleted_at"
+            or "timestamp"
+            or "rowversion"
+            or "version"
+            or "is_deleted"
+            or "deleted"
+            or "is_active"
+            or "active"
+            or "enabled"
+            or "is_enabled"
+            or "sort_order"
+            or "ordinal"
+            or "sequence"
+            or "position"
+            or "created_by"
+            or "updated_by"
+        || lowerName.EndsWith("_at", StringComparison.OrdinalIgnoreCase)
+        || lowerName.EndsWith("_ts", StringComparison.OrdinalIgnoreCase)
+        || lowerName.EndsWith("_flag", StringComparison.OrdinalIgnoreCase)
+        || lowerName.EndsWith("_version", StringComparison.OrdinalIgnoreCase);
+
+    private static bool HasConnection(CanvasViewModel canvas, PinViewModel fromPin, PinViewModel toPin) =>
+        canvas.Connections.Any(connection =>
+            ReferenceEquals(connection.FromPin, fromPin)
+            && ReferenceEquals(connection.ToPin, toPin));
+
+    private static bool IsAutoProjectionResultOutput(NodeViewModel? node) =>
+        node?.Type == NodeType.ResultOutput
+        && string.Equals(
+            node.Parameters.GetValueOrDefault(AutoProjectionMarkerParameter),
+            "true",
+            StringComparison.OrdinalIgnoreCase);
+
+    private static NodeViewModel? FindProjectionColumnSetBuilder(CanvasViewModel canvas, NodeViewModel resultOutput)
+    {
+        ConnectionViewModel? connection = canvas.Connections.FirstOrDefault(candidate =>
+            candidate.ToPin is not null
+            && ReferenceEquals(candidate.ToPin.Owner, resultOutput)
+            && string.Equals(candidate.ToPin.Name, "columns", StringComparison.OrdinalIgnoreCase)
+            && candidate.FromPin.Owner.Type == NodeType.ColumnSetBuilder);
+        return connection?.FromPin.Owner;
+    }
+
+    private static int RefineAutoProjection(CanvasViewModel canvas, NodeViewModel resultOutput)
+    {
+        if (!IsAutoProjectionResultOutput(resultOutput))
+            return 0;
+
+        NodeViewModel columnSetBuilder = FindProjectionColumnSetBuilder(canvas, resultOutput)
+            ?? EnsureProjectionColumnSetBuilder(canvas, resultOutput);
+        PinViewModel? columnsInput = columnSetBuilder.InputPins.FirstOrDefault(pin =>
+            string.Equals(pin.Name, "columns", StringComparison.OrdinalIgnoreCase));
+        if (columnsInput is null)
+            return 0;
+
+        int added = 0;
+        foreach (NodeViewModel tableNode in canvas.Nodes
+                     .Where(node => node.IsTableSource)
+                     .OrderBy(node => node.Position.X)
+                     .ThenBy(node => node.Position.Y))
+        {
+            if (HasProjectedWildcardForTable(canvas, columnSetBuilder, tableNode))
+                continue;
+
+            TableMetadata? tableMetadata = canvas.DatabaseMetadata?.FindTable(GetTableIdentifier(tableNode));
+            HashSet<string> projectedColumns = GetProjectedColumnsForTable(canvas, columnSetBuilder, tableNode);
+            ColumnMetadata? descriptiveColumn = PickDescriptiveColumn(tableMetadata, projectedColumns.ToArray());
+            if (descriptiveColumn is null)
+                continue;
+
+            PinViewModel? columnPin = tableNode.OutputPins.FirstOrDefault(pin =>
+                string.Equals(pin.Name, descriptiveColumn.Name, StringComparison.OrdinalIgnoreCase));
+            if (columnPin is null || HasConnection(canvas, columnPin, columnsInput))
+                continue;
+
+            canvas.ConnectPins(columnPin, columnsInput);
+            added++;
+        }
+
+        return added;
+    }
+
+    private static HashSet<string> GetProjectedColumnsForTable(
+        CanvasViewModel canvas,
+        NodeViewModel columnSetBuilder,
+        NodeViewModel tableNode)
+    {
+        var projected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (ConnectionViewModel connection in canvas.Connections.Where(connection =>
+                     connection.ToPin is not null
+                     && ReferenceEquals(connection.ToPin.Owner, columnSetBuilder)
+                     && string.Equals(connection.ToPin.Name, "columns", StringComparison.OrdinalIgnoreCase)
+                     && ReferenceEquals(connection.FromPin.Owner, tableNode)))
+        {
+            projected.Add(connection.FromPin.Name);
+        }
+
+        return projected;
+    }
+
+    private static bool HasProjectedWildcardForTable(
+        CanvasViewModel canvas,
+        NodeViewModel columnSetBuilder,
+        NodeViewModel tableNode) =>
+        canvas.Connections.Any(connection =>
+            connection.ToPin is not null
+            && ReferenceEquals(connection.ToPin.Owner, columnSetBuilder)
+            && string.Equals(connection.ToPin.Name, "columns", StringComparison.OrdinalIgnoreCase)
+            && ReferenceEquals(connection.FromPin.Owner, tableNode)
+            && string.Equals(connection.FromPin.Name, "*", StringComparison.OrdinalIgnoreCase));
+
+    private static bool HasEquivalentJoin(
+        CanvasViewModel canvas,
+        NodeViewModel childTable,
+        NodeViewModel parentTable,
+        ErRelationEdgeViewModel edge)
+    {
+        string expectedRightSource = GetTableIdentifier(parentTable);
+        string simpleLeftExpr = $"{GetTableIdentifier(childTable)}.{edge.ChildColumn}";
+        string simpleRightExpr = $"{GetTableIdentifier(parentTable)}.{edge.ParentColumn}";
+
+        return canvas.Nodes.Any(node =>
+            node.IsJoin
+            && string.Equals(node.Parameters.GetValueOrDefault("right_source"), expectedRightSource, StringComparison.OrdinalIgnoreCase)
+            && ((edge.ColumnPairCount <= 1
+                    && string.Equals(node.Parameters.GetValueOrDefault("left_expr"), simpleLeftExpr, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(node.Parameters.GetValueOrDefault("right_expr"), simpleRightExpr, StringComparison.OrdinalIgnoreCase))
+                || (edge.ColumnPairCount > 1
+                    && HasJoinInputsFrom(node, canvas, childTable, parentTable))));
+    }
+
+    private static bool HasJoinInputsFrom(
+        NodeViewModel joinNode,
+        CanvasViewModel canvas,
+        NodeViewModel childTable,
+        NodeViewModel parentTable)
+    {
+        ConnectionViewModel? leftConnection = canvas.Connections.FirstOrDefault(connection =>
+            ReferenceEquals(connection.ToPin?.Owner, joinNode)
+            && string.Equals(connection.ToPin?.Name, "left", StringComparison.OrdinalIgnoreCase));
+        ConnectionViewModel? rightConnection = canvas.Connections.FirstOrDefault(connection =>
+            ReferenceEquals(connection.ToPin?.Owner, joinNode)
+            && string.Equals(connection.ToPin?.Name, "right", StringComparison.OrdinalIgnoreCase));
+
+        return ReferenceEquals(leftConnection?.FromPin.Owner, childTable)
+            && ReferenceEquals(rightConnection?.FromPin.Owner, parentTable);
+    }
+
+    private static string GetTableIdentifier(NodeViewModel node) =>
+        string.IsNullOrWhiteSpace(node.Subtitle) ? node.Title : node.Subtitle;
+
+    private static string NormalizeEntityId(string entityId)
+    {
+        string trimmed = entityId.Trim();
+        if (trimmed.Length == 0 || trimmed.Contains('.'))
+            return trimmed;
+
+        return $"public.{trimmed}";
+    }
+
+    private void BindPropertyPanelActions(CanvasViewModel? canvas)
+    {
+        if (canvas?.PropertyPanel is null)
+            return;
+
+        canvas.PropertyPanel.BindOpenSelectedJoinInErDiagram(OpenSelectedQueryJoinInErDiagramFromPanel);
+        canvas.PropertyPanel.BindRefineAutoProjection(() => RefineAutoProjectionFromPanel(canvas));
+    }
+
+    private void OpenSelectedQueryJoinInErDiagramFromPanel()
+    {
+        if (TryOpenSelectedQueryJoinInErDiagram())
+            return;
+
+        Toasts.ShowWarning(
+            "Selecione um JOIN valido no Query Canvas para abrir a relacao correspondente no ER.");
+    }
+
+    public bool TryRefineSelectedQueryAutoProjection()
+    {
+        CanvasViewModel? canvas = ActiveQueryCanvasDocument;
+        NodeViewModel? selectedNode = canvas?.PropertyPanel.SelectedNode;
+        if (canvas is null || selectedNode is null || !IsAutoProjectionResultOutput(selectedNode))
+            return false;
+
+        int added = RefineAutoProjection(canvas, selectedNode);
+        if (added > 0)
+        {
+            canvas.PropertyPanel.ShowNode(selectedNode);
+            canvas.NotifySuccess(
+                "Sugestao de colunas refinada.",
+                $"{added} coluna(s) descritiva(s) adicionada(s) ao output.");
+            return true;
+        }
+
+        canvas.NotifyWarning(
+            "Nao ha novas colunas descritivas para adicionar.",
+            "A projection atual ja contem as melhores sugestoes disponiveis.");
+        return true;
+    }
+
+    private void RefineAutoProjectionFromPanel(CanvasViewModel canvas)
+    {
+        NodeViewModel? selectedNode = canvas.PropertyPanel.SelectedNode;
+        if (!IsAutoProjectionResultOutput(selectedNode))
+        {
+            Toasts.ShowWarning(
+                "Selecione um ResultOutput autogerado para refinar a sugestao de colunas.");
+            return;
+        }
+
+        _ = TryRefineSelectedQueryAutoProjection();
+    }
+
+    private static bool TryResolveJoinSelection(
+        CanvasViewModel canvas,
+        NodeViewModel joinNode,
+        out ResolvedErRelation? relation)
+    {
+        relation = null;
+
+        if (!TryResolveJoinInputConnection(canvas, joinNode, "left", out ConnectionViewModel? leftConnection)
+            || !TryResolveJoinInputConnection(canvas, joinNode, "right", out ConnectionViewModel? rightConnection))
+        {
+            return false;
+        }
+
+        NodeViewModel childTable = leftConnection.FromPin.Owner;
+        NodeViewModel parentTable = rightConnection.FromPin.Owner;
+        if (!childTable.IsTableSource || !parentTable.IsTableSource)
+            return false;
+
+        var childColumns = new List<string>();
+        var parentColumns = new List<string>();
+
+        if (TryResolveJoinConditionPairs(canvas, joinNode, childTable, parentTable, childColumns, parentColumns))
+        {
+            relation = new ResolvedErRelation(
+                GetTableIdentifier(childTable),
+                GetTableIdentifier(parentTable),
+                childColumns,
+                parentColumns);
+            return true;
+        }
+
+        childColumns.Add(leftConnection.FromPin.Name);
+        parentColumns.Add(rightConnection.FromPin.Name);
+        relation = new ResolvedErRelation(
+            GetTableIdentifier(childTable),
+            GetTableIdentifier(parentTable),
+            childColumns,
+            parentColumns);
+        return true;
+    }
+
+    private static bool TryResolveJoinConditionPairs(
+        CanvasViewModel canvas,
+        NodeViewModel joinNode,
+        NodeViewModel childTable,
+        NodeViewModel parentTable,
+        List<string> childColumns,
+        List<string> parentColumns)
+    {
+        if (!TryResolveJoinInputConnection(canvas, joinNode, "condition", out ConnectionViewModel? conditionConnection))
+        {
+            return TryResolveJoinConditionPairsFromParameters(joinNode, childTable, parentTable, childColumns, parentColumns);
+        }
+
+        NodeViewModel conditionNode = conditionConnection.FromPin.Owner;
+        if (conditionNode.Type == NodeType.Equals)
+            return TryCollectEqualsPair(canvas, conditionNode, childTable, parentTable, childColumns, parentColumns);
+
+        if (conditionNode.Type != NodeType.And)
+            return false;
+
+        IReadOnlyList<ConnectionViewModel> comparisons = canvas.Connections
+            .Where(connection =>
+                ReferenceEquals(connection.ToPin?.Owner, conditionNode)
+                && string.Equals(connection.ToPin?.Name, "conditions", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        bool addedAny = false;
+        foreach (ConnectionViewModel comparison in comparisons)
+        {
+            if (comparison.FromPin.Owner.Type != NodeType.Equals)
+                continue;
+
+            addedAny |= TryCollectEqualsPair(canvas, comparison.FromPin.Owner, childTable, parentTable, childColumns, parentColumns);
+        }
+
+        return addedAny;
+    }
+
+    private static bool TryResolveJoinConditionPairsFromParameters(
+        NodeViewModel joinNode,
+        NodeViewModel childTable,
+        NodeViewModel parentTable,
+        List<string> childColumns,
+        List<string> parentColumns)
+    {
+        string? leftExpr = joinNode.Parameters.GetValueOrDefault("left_expr");
+        string? rightExpr = joinNode.Parameters.GetValueOrDefault("right_expr");
+
+        string? leftSource;
+        string? rightSource;
+        string leftColumn;
+        string rightColumn;
+
+        if (!CanvasAutoJoinSemantics.TryParseQualifiedColumn(leftExpr ?? string.Empty, out leftSource, out leftColumn))
+        {
+            return false;
+        }
+
+        if (!CanvasAutoJoinSemantics.TryParseQualifiedColumn(rightExpr ?? string.Empty, out rightSource, out rightColumn))
+        {
+            return false;
+        }
+
+        if (!MatchesSource(childTable, leftSource) || !MatchesSource(parentTable, rightSource))
+            return false;
+
+        childColumns.Add(leftColumn);
+        parentColumns.Add(rightColumn);
+        return true;
+    }
+
+    private static bool TryCollectEqualsPair(
+        CanvasViewModel canvas,
+        NodeViewModel equalsNode,
+        NodeViewModel childTable,
+        NodeViewModel parentTable,
+        List<string> childColumns,
+        List<string> parentColumns)
+    {
+        if (!TryResolveJoinInputConnection(canvas, equalsNode, "left", out ConnectionViewModel? leftConnection)
+            || !TryResolveJoinInputConnection(canvas, equalsNode, "right", out ConnectionViewModel? rightConnection))
+        {
+            return false;
+        }
+
+        if (ReferenceEquals(leftConnection.FromPin.Owner, childTable)
+            && ReferenceEquals(rightConnection.FromPin.Owner, parentTable))
+        {
+            childColumns.Add(leftConnection.FromPin.Name);
+            parentColumns.Add(rightConnection.FromPin.Name);
+            return true;
+        }
+
+        if (ReferenceEquals(leftConnection.FromPin.Owner, parentTable)
+            && ReferenceEquals(rightConnection.FromPin.Owner, childTable))
+        {
+            childColumns.Add(rightConnection.FromPin.Name);
+            parentColumns.Add(leftConnection.FromPin.Name);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryResolveJoinInputConnection(
+        CanvasViewModel canvas,
+        NodeViewModel node,
+        string inputPinName,
+        out ConnectionViewModel? connection)
+    {
+        connection = canvas.Connections.FirstOrDefault(candidate =>
+            ReferenceEquals(candidate.ToPin?.Owner, node)
+            && string.Equals(candidate.ToPin?.Name, inputPinName, StringComparison.OrdinalIgnoreCase));
+        return connection is not null;
+    }
+
+    private static bool MatchesSource(NodeViewModel node, string? sourceRef) =>
+        !string.IsNullOrWhiteSpace(sourceRef)
+        && CanvasAutoJoinSemantics.MatchesSource(node.Subtitle, node.Title, node.Alias, sourceRef);
+
+    private sealed record ResolvedErRelation(
+        string ChildEntityId,
+        string ParentEntityId,
+        IReadOnlyList<string> ChildColumns,
+        IReadOnlyList<string> ParentColumns);
 
     private string Localize(string key, string fallback)
     {

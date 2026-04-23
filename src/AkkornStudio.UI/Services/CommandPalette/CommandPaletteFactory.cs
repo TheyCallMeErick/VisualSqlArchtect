@@ -6,6 +6,7 @@ using AkkornStudio.UI.Controls;
 using AkkornStudio.UI.Controls.Shell;
 using AkkornStudio.UI.Services.Input.ShortcutRegistry;
 using AkkornStudio.UI.Services.Localization;
+using AkkornStudio.UI.Services.Workspace.Models;
 using AkkornStudio.UI.Services.Workspace.Preview;
 using AkkornStudio.UI.ViewModels;
 using AkkornStudio.UI.ViewModels.Shortcuts;
@@ -198,6 +199,31 @@ public class CommandPaletteFactory(
                 Execute = () => CurrentCanvas.Benchmark.Open(),
             },
             // ── Connection ────────────────────────────────────────────────────
+            new()
+            {
+                Name = "Refresh ER Diagram",
+                Description = "Rebuild the ER document from the active metadata snapshot",
+                Shortcut = "",
+                Icon = MaterialIconKind.Reload,
+                Tags = "er diagram entity relationship refresh metadata schema rebuild",
+                Execute = () => CurrentShell.ActivateDocument(WorkspaceDocumentType.ErDiagram),
+            },
+            new()
+            {
+                Name = "Open Selected Join in ER Diagram",
+                Description = "Jump from the selected Query join node to the matching ER relationship",
+                Shortcut = "",
+                Icon = MaterialIconKind.RelationManyToMany,
+                Tags = "er diagram open selected join relationship query canvas focus",
+                Execute = () =>
+                {
+                    if (!CurrentShell.TryOpenSelectedQueryJoinInErDiagram())
+                    {
+                        CurrentShell.Toasts.ShowWarning(
+                            "Selecione um node JOIN valido no Query Canvas para abrir a relacao correspondente no ER.");
+                    }
+                },
+            },
             new()
             {
                 Name = LN("Manage Connections"),

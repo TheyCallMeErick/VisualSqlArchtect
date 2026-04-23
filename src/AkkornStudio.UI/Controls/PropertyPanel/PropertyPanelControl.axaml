@@ -185,6 +185,32 @@
                       Classes="secondary"
                       HorizontalAlignment="Left"
                       FontSize="{StaticResource FontSizeCaption}"/>
+              <Button Margin="0,6,0,0"
+                      IsVisible="{Binding IsSelectedNodeJoinType}"
+                      IsEnabled="{Binding CanOpenSelectedJoinInErDiagram}"
+                      Command="{Binding OpenSelectedJoinInErDiagramCommand}"
+                      Content="Abrir relacao no ER"
+                      Classes="secondary"
+                      HorizontalAlignment="Left"
+                      FontSize="{StaticResource FontSizeCaption}"/>
+              <Border Margin="0,6,0,0"
+                      Padding="8,6"
+                      Background="{StaticResource Bg2Brush}"
+                      CornerRadius="6"
+                      IsVisible="{Binding IsSelectedNodeAutoProjectionResultOutput}">
+                <TextBlock Text="Projection sugerida automaticamente a partir do ER"
+                           FontSize="{StaticResource FontSizeCaption}"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           TextWrapping="Wrap"/>
+              </Border>
+              <Button Margin="0,6,0,0"
+                      IsVisible="{Binding IsSelectedNodeAutoProjectionResultOutput}"
+                      IsEnabled="{Binding CanRefineAutoProjection}"
+                      Command="{Binding RefineAutoProjectionCommand}"
+                      Content="Refinar sugestao de colunas"
+                      Classes="secondary"
+                      HorizontalAlignment="Left"
+                      FontSize="{StaticResource FontSizeCaption}"/>
             </StackPanel>
           </Grid>
         </Border>

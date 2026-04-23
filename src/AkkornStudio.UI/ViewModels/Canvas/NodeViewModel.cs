@@ -22,6 +22,7 @@ namespace AkkornStudio.UI.ViewModels;
 /// </summary>
 public sealed class NodeViewModel : ViewModelBase, ICanvasTableNode, ICanvasLayerNode
 {
+    private const string AutoProjectionMarkerParameter = "__akkorn_auto_projection";
     private static readonly IReadOnlyList<string> JoinTypeOptionValues = [
         "INNER",
         "LEFT",
@@ -124,6 +125,14 @@ public sealed class NodeViewModel : ViewModelBase, ICanvasTableNode, ICanvasLaye
 
     /// <summary>True if this node is the final result output.</summary>
     public bool IsResultOutput => Type == NodeType.ResultOutput;
+
+    /// <summary>True when this ResultOutput was auto-generated from the ER flow.</summary>
+    public bool IsAutoProjectionResultOutput =>
+        IsResultOutput
+        && string.Equals(
+            Parameters.GetValueOrDefault(AutoProjectionMarkerParameter),
+            "true",
+            StringComparison.OrdinalIgnoreCase);
 
     /// <summary>True if this node is a ColumnList (multiple column selector).</summary>
     public bool IsColumnList => Type == NodeType.ColumnList;
@@ -1405,6 +1414,9 @@ public sealed class NodeViewModel : ViewModelBase, ICanvasTableNode, ICanvasLaye
     public void RaiseParameterChanged(string p)
     {
         RaisePropertyChanged($"Param_{p}");
+
+        if (IsResultOutput && string.Equals(p, AutoProjectionMarkerParameter, StringComparison.OrdinalIgnoreCase))
+            RaisePropertyChanged(nameof(IsAutoProjectionResultOutput));
 
         if (string.Equals(p, "ViewName", StringComparison.OrdinalIgnoreCase))
             RaisePropertyChanged(nameof(CanOpenViewSubcanvas));

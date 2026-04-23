@@ -39,7 +39,10 @@ public sealed class PropertyPanelViewModel : ViewModelBase
     private readonly Func<DbMetadata?> _metadataResolver;
     private readonly Action<NodeViewModel, IReadOnlyList<(string Name, string? Value)>>? _parametersCommitted;
     private readonly Func<NodeViewModel, bool>? _setPrimaryFromSource;
+    private Action? _openSelectedJoinInErDiagram;
+    private Action? _refineAutoProjection;
     private readonly Dictionary<ParameterRowViewModel, PropertyChangedEventHandler> _parameterRowPropertyHandlers = [];
+    private const string AutoProjectionMarkerParameter = "__akkorn_auto_projection";
     private static readonly HashSet<string> SupportedConventions =
     [
         "snake_case",
@@ -76,11 +79,19 @@ public sealed class PropertyPanelViewModel : ViewModelBase
         SetAsPrimaryFromSourceCommand = new RelayCommand(
             SetAsPrimaryFromSource,
             () => CanSetAsPrimaryFromSource);
+        OpenSelectedJoinInErDiagramCommand = new RelayCommand(
+            OpenSelectedJoinInErDiagram,
+            () => CanOpenSelectedJoinInErDiagram);
+        RefineAutoProjectionCommand = new RelayCommand(
+            RefineAutoProjection,
+            () => CanRefineAutoProjection);
     }
 
     public RelayCommand SelectPropertiesTabCommand { get; }
     public RelayCommand SelectProjectSettingsTabCommand { get; }
     public RelayCommand SetAsPrimaryFromSourceCommand { get; }
+    public RelayCommand OpenSelectedJoinInErDiagramCommand { get; }
+    public RelayCommand RefineAutoProjectionCommand { get; }
 
     // ── Sub-collections ───────────────────────────────────────────────────────
     public ObservableCollection<ParameterRowViewModel> Parameters { get; } = [];
@@ -313,16 +324,43 @@ public sealed class PropertyPanelViewModel : ViewModelBase
 
     public bool IsSelectedNodeSourceType => SelectedNode is not null && IsSourceAliasNode(SelectedNode.Type);
 
+    public bool IsSelectedNodeJoinType => SelectedNode?.IsJoin == true;
+
     public bool CanSetAsPrimaryFromSource =>
         IsSelectedNodeSourceType
         && !IsSelectedNodePrimaryFromSource
         && _setPrimaryFromSource is not null;
+
+    public bool CanOpenSelectedJoinInErDiagram =>
+        IsSelectedNodeJoinType && _openSelectedJoinInErDiagram is not null;
+
+    public bool IsSelectedNodeAutoProjectionResultOutput =>
+        SelectedNode?.Type == NodeType.ResultOutput
+        && string.Equals(
+            SelectedNode.Parameters.GetValueOrDefault(AutoProjectionMarkerParameter),
+            "true",
+            StringComparison.OrdinalIgnoreCase);
+
+    public bool CanRefineAutoProjection =>
+        IsSelectedNodeAutoProjectionResultOutput && _refineAutoProjection is not null;
 
     public Avalonia.Media.LinearGradientBrush? HeaderGradient => SelectedNode?.HeaderGradient;
 
     public string CategoryIcon => SelectedNode?.CategoryIcon ?? string.Empty;
     public MaterialIconKind CategoryIconKind =>
         SelectedNode?.CategoryIconKind ?? MaterialIconKind.Help;
+
+    public void BindOpenSelectedJoinInErDiagram(Action? openSelectedJoinInErDiagram)
+    {
+        _openSelectedJoinInErDiagram = openSelectedJoinInErDiagram;
+        OpenSelectedJoinInErDiagramCommand.NotifyCanExecuteChanged();
+    }
+
+    public void BindRefineAutoProjection(Action? refineAutoProjection)
+    {
+        _refineAutoProjection = refineAutoProjection;
+        RefineAutoProjectionCommand.NotifyCanExecuteChanged();
+    }
 
     // ── Selection management ──────────────────────────────────────────────────
 
@@ -351,7 +389,11 @@ public sealed class PropertyPanelViewModel : ViewModelBase
         RaisePropertyChanged(nameof(ShowAliasEditor));
         RaisePropertyChanged(nameof(IsSelectedNodePrimaryFromSource));
         RaisePropertyChanged(nameof(IsSelectedNodeSourceType));
+        RaisePropertyChanged(nameof(IsSelectedNodeJoinType));
         RaisePropertyChanged(nameof(CanSetAsPrimaryFromSource));
+        RaisePropertyChanged(nameof(CanOpenSelectedJoinInErDiagram));
+        RaisePropertyChanged(nameof(IsSelectedNodeAutoProjectionResultOutput));
+        RaisePropertyChanged(nameof(CanRefineAutoProjection));
         RaisePropertyChanged(nameof(HeaderGradient));
         RaisePropertyChanged(nameof(CategoryIcon));
         RaisePropertyChanged(nameof(CategoryIconKind));
@@ -361,6 +403,8 @@ public sealed class PropertyPanelViewModel : ViewModelBase
         RaisePropertyChanged(nameof(SelectedWireLabel));
         RaisePropertyChanged(nameof(ShowSelectNodeHint));
         SetAsPrimaryFromSourceCommand.NotifyCanExecuteChanged();
+        OpenSelectedJoinInErDiagramCommand.NotifyCanExecuteChanged();
+        RefineAutoProjectionCommand.NotifyCanExecuteChanged();
     }
 
     public void ShowMultiSelection(IReadOnlyList<NodeViewModel> nodes)
@@ -390,13 +434,19 @@ public sealed class PropertyPanelViewModel : ViewModelBase
         RaisePropertyChanged(nameof(ShowAliasEditor));
         RaisePropertyChanged(nameof(IsSelectedNodePrimaryFromSource));
         RaisePropertyChanged(nameof(IsSelectedNodeSourceType));
+        RaisePropertyChanged(nameof(IsSelectedNodeJoinType));
         RaisePropertyChanged(nameof(CanSetAsPrimaryFromSource));
+        RaisePropertyChanged(nameof(CanOpenSelectedJoinInErDiagram));
+        RaisePropertyChanged(nameof(IsSelectedNodeAutoProjectionResultOutput));
+        RaisePropertyChanged(nameof(CanRefineAutoProjection));
         RaisePropertyChanged(nameof(ShowPropertiesTab));
         RaisePropertyChanged(nameof(ShowProjectSettingsTab));
         RaisePropertyChanged(nameof(HasSelectedWire));
         RaisePropertyChanged(nameof(SelectedWireLabel));
         RaisePropertyChanged(nameof(ShowSelectNodeHint));
         SetAsPrimaryFromSourceCommand.NotifyCanExecuteChanged();
+        OpenSelectedJoinInErDiagramCommand.NotifyCanExecuteChanged();
+        RefineAutoProjectionCommand.NotifyCanExecuteChanged();
     }
 
     public void Clear()
@@ -423,13 +473,19 @@ public sealed class PropertyPanelViewModel : ViewModelBase
         RaisePropertyChanged(nameof(ShowAliasEditor));
         RaisePropertyChanged(nameof(IsSelectedNodePrimaryFromSource));
         RaisePropertyChanged(nameof(IsSelectedNodeSourceType));
+        RaisePropertyChanged(nameof(IsSelectedNodeJoinType));
         RaisePropertyChanged(nameof(CanSetAsPrimaryFromSource));
+        RaisePropertyChanged(nameof(CanOpenSelectedJoinInErDiagram));
+        RaisePropertyChanged(nameof(IsSelectedNodeAutoProjectionResultOutput));
+        RaisePropertyChanged(nameof(CanRefineAutoProjection));
         RaisePropertyChanged(nameof(ShowPropertiesTab));
         RaisePropertyChanged(nameof(ShowProjectSettingsTab));
         RaisePropertyChanged(nameof(HasSelectedWire));
         RaisePropertyChanged(nameof(SelectedWireLabel));
         RaisePropertyChanged(nameof(ShowSelectNodeHint));
         SetAsPrimaryFromSourceCommand.NotifyCanExecuteChanged();
+        OpenSelectedJoinInErDiagramCommand.NotifyCanExecuteChanged();
+        RefineAutoProjectionCommand.NotifyCanExecuteChanged();
     }
 
     public void ShowWire(ConnectionViewModel wire)
@@ -451,6 +507,8 @@ public sealed class PropertyPanelViewModel : ViewModelBase
         RaisePropertyChanged(nameof(IsSelectedNodePrimaryFromSource));
         RaisePropertyChanged(nameof(IsSelectedNodeSourceType));
         RaisePropertyChanged(nameof(CanSetAsPrimaryFromSource));
+        RaisePropertyChanged(nameof(IsSelectedNodeAutoProjectionResultOutput));
+        RaisePropertyChanged(nameof(CanRefineAutoProjection));
         RaisePropertyChanged(nameof(ShowSelectNodeHint));
 
         _selectedWire = wire;
@@ -460,6 +518,7 @@ public sealed class PropertyPanelViewModel : ViewModelBase
         RaisePropertyChanged(nameof(SelectedWireLabel));
         RaisePropertyChanged(nameof(ShowSelectNodeHint));
         SetAsPrimaryFromSourceCommand.NotifyCanExecuteChanged();
+        RefineAutoProjectionCommand.NotifyCanExecuteChanged();
     }
 
     public void ClearSelectedWire()
@@ -903,6 +962,22 @@ public sealed class PropertyPanelViewModel : ViewModelBase
 
         if (committedChanges.Count > 0)
             _parametersCommitted?.Invoke(SelectedNode, committedChanges);
+    }
+
+    private void OpenSelectedJoinInErDiagram()
+    {
+        if (!CanOpenSelectedJoinInErDiagram)
+            return;
+
+        _openSelectedJoinInErDiagram?.Invoke();
+    }
+
+    private void RefineAutoProjection()
+    {
+        if (!CanRefineAutoProjection)
+            return;
+
+        _refineAutoProjection?.Invoke();
     }
 
     // ── SQL Trace extraction ──────────────────────────────────────────────────

@@ -62,6 +62,15 @@ public sealed class ErEntityNodeViewModel : ViewModelBase
 
     public ObservableCollection<ErColumnRowViewModel> Columns { get; }
 
+    public int ColumnCount => Columns.Count;
+
+    public int PrimaryKeyCount => Columns.Count(column => column.IsPrimaryKey);
+
+    public int ForeignKeyCount => Columns.Count(column => column.IsForeignKey);
+
+    public string SelectionSummary =>
+        $"{ColumnCount} coluna(s) · {PrimaryKeyCount} PK · {ForeignKeyCount} FK";
+
     public double X
     {
         get => _x;
@@ -78,6 +87,12 @@ public sealed class ErEntityNodeViewModel : ViewModelBase
     {
         get => _isSelected;
         set => Set(ref _isSelected, value);
+    }
+
+    public void HighlightColumns(IReadOnlySet<string> columnNames)
+    {
+        foreach (ErColumnRowViewModel column in Columns)
+            column.IsRelationEndpointHighlighted = columnNames.Contains(column.ColumnName);
     }
 
     public void Rename(string newSchema, string newName)

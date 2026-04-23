@@ -64,6 +64,54 @@ public sealed partial class NodeControl : UserControl
                     _ = canvasVm.EnterSubqueryEditorAsync(node);
             };
 
+        Button? openJoinErDiagram = this.FindControl<Button>("OpenJoinErDiagramBtn");
+        if (openJoinErDiagram is not null)
+            openJoinErDiagram.Click += (_, e) =>
+            {
+                e.Handled = true;
+                if (DataContext is not NodeViewModel node || !node.IsJoin)
+                    return;
+
+                CanvasViewModel? canvasVm = FindCanvasVm();
+                ShellViewModel? shellVm = FindShellVm();
+                if (canvasVm is null || shellVm is null)
+                    return;
+
+                canvasVm.DeselectAll();
+                canvasVm.SelectNode(node);
+                canvasVm.PropertyPanel.ShowNode(node);
+
+                if (shellVm.TryOpenSelectedQueryJoinInErDiagram())
+                    return;
+
+                shellVm.Toasts.ShowWarning(
+                    "Nao foi possivel localizar uma relacao ER correspondente para o JOIN selecionado.");
+            };
+
+        Button? refineAutoProjection = this.FindControl<Button>("RefineAutoProjectionBtn");
+        if (refineAutoProjection is not null)
+            refineAutoProjection.Click += (_, e) =>
+            {
+                e.Handled = true;
+                if (DataContext is not NodeViewModel node || !node.IsAutoProjectionResultOutput)
+                    return;
+
+                CanvasViewModel? canvasVm = FindCanvasVm();
+                ShellViewModel? shellVm = FindShellVm();
+                if (canvasVm is null || shellVm is null)
+                    return;
+
+                canvasVm.DeselectAll();
+                canvasVm.SelectNode(node);
+                canvasVm.PropertyPanel.ShowNode(node);
+
+                if (shellVm.TryRefineSelectedQueryAutoProjection())
+                    return;
+
+                shellVm.Toasts.ShowWarning(
+                    "Nao foi possivel refinar a projection automatica deste ResultOutput.");
+            };
+
         HookWindowSlotButton("AddPartitionBtn", vm => vm.AddWindowPartitionSlot());
         HookWindowSlotButton("RemovePartitionBtn", vm => vm.RemoveWindowPartitionSlot());
         HookWindowSlotButton("AddOrderBtn", vm => vm.AddWindowOrderSlot());
@@ -230,6 +278,19 @@ public sealed partial class NodeControl : UserControl
                 return vm;
             p = p.GetLogicalParent();
         }
+        return null;
+    }
+
+    private ShellViewModel? FindShellVm()
+    {
+        ILogical? p = this.GetLogicalParent();
+        while (p is not null)
+        {
+            if (p is Control { DataContext: ShellViewModel vm })
+                return vm;
+            p = p.GetLogicalParent();
+        }
+
         return null;
     }
 }

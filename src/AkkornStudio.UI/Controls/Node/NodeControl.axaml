@@ -478,6 +478,15 @@
                          FontWeight="{StaticResource FontWeightTitle}"
                          HorizontalAlignment="Center"/>
             </Border>
+            <Button Classes="preview-toggle"
+                    Name="OpenJoinErDiagramBtn"
+                    ToolTip.Tip="Abrir relacao no ER"
+                    AutomationProperties.Name="Abrir relacao no ER">
+              <mi:MaterialIcon Kind="RelationManyToMany"
+                               Width="12"
+                               Height="12"
+                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+            </Button>
           </StackPanel>
         </Border>
 
@@ -847,6 +856,31 @@
               CornerRadius="{StaticResource RadiusLGBottom}"
               Padding="10,6,7,6">
         <StackPanel Spacing="4">
+          <Border Background="{StaticResource Bg0Brush}"
+                  BorderBrush="{StaticResource BorderBrush}"
+                  BorderThickness="1"
+                  CornerRadius="{StaticResource PinRadius}"
+                  Padding="8,6"
+                  Margin="0,0,0,4"
+                  IsVisible="{Binding IsAutoProjectionResultOutput}">
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+              <TextBlock Text="ER projection"
+                         FontSize="{StaticResource FontSizeCaption}"
+                         FontWeight="{StaticResource FontWeightTitle}"
+                         Foreground="{StaticResource AccentPrimaryHoverBrush}"
+                         VerticalAlignment="Center"/>
+              <Button Classes="preview-toggle"
+                      Name="RefineAutoProjectionBtn"
+                      ToolTip.Tip="Refinar sugestao de colunas"
+                      AutomationProperties.Name="Refinar sugestao de colunas">
+                <mi:MaterialIcon Kind="TuneVariant"
+                                 Width="12"
+                                 Height="12"
+                                 Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+              </Button>
+            </StackPanel>
+          </Border>
+
           <!-- INPUT PINS for ResultOutput (where, columns inputs shown here) -->
           <ItemsControl ItemsSource="{Binding InputPins}">
             <ItemsControl.ItemTemplate>
