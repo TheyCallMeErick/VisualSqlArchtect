@@ -68,8 +68,8 @@ public sealed class StartMenuViewModel : ViewModelBase
         RecentProjects = [];
         SavedConnections = [];
 
-        TemplateCatalog = QueryTemplateLibrary.All
-            .Select(t => new StartTemplateItem(t.Name, t.Category, t.Description))
+        TemplateCatalog = QueryTemplateCatalog.LoadAll()
+            .Select(t => new StartTemplateItem(t.Name, t.Category, t.Description, t.Id))
             .ToObservableCollection();
 
         foreach (StartTemplateItem template in TemplateCatalog)

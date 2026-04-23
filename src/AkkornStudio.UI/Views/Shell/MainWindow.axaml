@@ -5,6 +5,7 @@
   xmlns:start="using:AkkornStudio.UI.Controls.Start"
         xmlns:shell="using:AkkornStudio.UI.Controls.Shell"
         xmlns:sqled="using:AkkornStudio.UI.Controls.SqlEditor"
+        xmlns:er="using:AkkornStudio.UI.Controls.ErDiagram"
   xmlns:loc="using:AkkornStudio.UI.Services.Localization"
         xmlns:mi="using:Material.Icons.Avalonia"
         x:Class="AkkornStudio.UI.MainWindow"
@@ -354,6 +355,11 @@
                       Content="{Binding [mode.sql], Source={x:Static loc:LocalizationService.Instance}}"
                       Click="SqlEditorModeBtn_Click"
                       ToolTip.Tip="{Binding [tooltip.switchToSqlMode], Source={x:Static loc:LocalizationService.Instance}}"/>
+              <Button Classes="mode-switch-btn"
+                      Name="ErDiagramModeBtn"
+                      Content="ER"
+                      Click="ErDiagramModeBtn_Click"
+                      ToolTip.Tip="Abrir diagrama ER do schema ativo"/>
             </StackPanel>
           </Border>
 
@@ -534,6 +540,11 @@
                               Margin="8"
                               DataContext="{ReflectionBinding DataContext.ActiveSqlEditorDocument, ElementName=RootWindow}"
                               IsVisible="{ReflectionBinding DataContext.ActivePageContract.ShowsSqlEditorPage, ElementName=RootWindow}"/>
+
+      <er:ErCanvasControl Grid.Column="2"
+                          Margin="8"
+                          DataContext="{ReflectionBinding DataContext.ActiveErDiagramDocument, ElementName=RootWindow}"
+                          IsVisible="{ReflectionBinding DataContext.IsErDiagramDocumentPageActive, ElementName=RootWindow}"/>
 
       <!-- ╠═ LEFT: Mode-aware Sidebar (floating in Query, docked in SQL) ═════╣ -->
       <Border x:Name="LeftSidebarHost"

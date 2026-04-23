@@ -451,9 +451,7 @@ public partial class MainWindow : Window
 
     private void OnStartOpenTemplateRequested(StartTemplateItem item)
     {
-        QueryTemplate? template = QueryTemplateLibrary.All.FirstOrDefault(t =>
-            string.Equals(t.Name, item.Name, StringComparison.OrdinalIgnoreCase)
-        );
+        QueryTemplate? template = QueryTemplateCatalog.Find(item.TemplateId ?? item.Name);
         if (template is null)
             return;
 

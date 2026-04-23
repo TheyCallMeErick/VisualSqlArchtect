@@ -9,6 +9,7 @@ public class WorkspaceDocumentPageContractRegistryTests
     [InlineData(WorkspaceDocumentType.QueryCanvas, true, false, false, true, false, false, true)]
     [InlineData(WorkspaceDocumentType.DdlCanvas, false, true, false, true, false, false, true)]
     [InlineData(WorkspaceDocumentType.SqlEditor, false, false, true, false, true, false, false)]
+    [InlineData(WorkspaceDocumentType.ErDiagram, false, false, false, false, false, false, false)]
     public void Resolve_ReturnsExpectedContractByDocumentType(
         WorkspaceDocumentType documentType,
         bool showsQueryCanvasPage,

@@ -71,6 +71,24 @@ public class ShellWorkspaceDocumentRoutingTests
     }
 
     [Fact]
+    public void SetActiveDocumentType_ErDiagram_CreatesSingleErDiagramDocumentLazily()
+    {
+        var shell = new ShellViewModel(connectionManagerViewModelFactory: global::AkkornStudio.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
+        shell.EnterCanvas();
+
+        shell.ActivateDocument(WorkspaceDocumentType.ErDiagram);
+        shell.ActivateDocument(WorkspaceDocumentType.ErDiagram);
+
+        int erDocumentCount = shell.OpenWorkspaceDocuments.Count(document =>
+            document.Descriptor.DocumentType == WorkspaceDocumentType.ErDiagram);
+
+        Assert.Equal(1, erDocumentCount);
+        Assert.Equal(2, shell.OpenWorkspaceDocuments.Count);
+        Assert.True(shell.IsErDiagramDocumentPageActive);
+        Assert.NotNull(shell.ActiveErDiagramDocument);
+    }
+
+    [Fact]
     public void OpenNewDocument_WhenTypeAlreadyExists_ActivatesExistingInsteadOfCreatingDuplicate()
     {
         var shell = new ShellViewModel(connectionManagerViewModelFactory: global::AkkornStudio.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());

@@ -31,6 +31,15 @@ public sealed class WorkspaceDocumentPageContractRegistry : IWorkspaceDocumentPa
         ShowsQueryTabs: false,
         CanCollapseSidebars: false);
 
+    private static readonly WorkspaceDocumentPageContract ErDiagramContract = new(
+        ShowsQueryCanvasPage: false,
+        ShowsDdlCanvasPage: false,
+        ShowsSqlEditorPage: false,
+        ShowsDiagramSidebar: false,
+        ShowsSqlEditorSidebar: false,
+        ShowsQueryTabs: false,
+        CanCollapseSidebars: false);
+
     public WorkspaceDocumentPageContract Resolve(WorkspaceDocumentType documentType)
     {
         return documentType switch
@@ -38,6 +47,7 @@ public sealed class WorkspaceDocumentPageContractRegistry : IWorkspaceDocumentPa
             WorkspaceDocumentType.QueryCanvas => QueryContract,
             WorkspaceDocumentType.DdlCanvas => DdlContract,
             WorkspaceDocumentType.SqlEditor => SqlEditorContract,
+            WorkspaceDocumentType.ErDiagram => ErDiagramContract,
             _ => QueryContract,
         };
     }

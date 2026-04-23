@@ -5,4 +5,5 @@ public enum WorkspaceDocumentType
     QueryCanvas,
     DdlCanvas,
     SqlEditor,
+    ErDiagram,
 }

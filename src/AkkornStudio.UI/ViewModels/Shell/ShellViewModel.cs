@@ -17,6 +17,7 @@ using AkkornStudio.UI.Services.Workspace.Preview;
 using AkkornStudio.UI.Serialization;
 using AkkornStudio.UI.ViewModels;
 using AkkornStudio.UI.ViewModels.Canvas.Strategies;
+using AkkornStudio.UI.ViewModels.ErDiagram;
 
 namespace AkkornStudio.UI.ViewModels;
 
@@ -30,6 +31,7 @@ public sealed class ShellViewModel : ViewModelBase
         Query,
         Ddl,
         SqlEditor,
+        ErDiagram,
     }
 
     public enum ESettingsSection
@@ -57,6 +59,7 @@ public sealed class ShellViewModel : ViewModelBase
     private bool _isViewSubcanvasActive;
     private CanvasViewModel? _canvas;
     private CanvasViewModel? _ddlCanvas;
+    private ErCanvasViewModel? _erCanvas;
     private CanvasContext _activeCanvasContext = CanvasContext.Query;
     private ConnectionManagerViewModel? _observedQueryConnectionManager;
     private ConnectionManagerViewModel? _observedDdlConnectionManager;
@@ -72,6 +75,7 @@ public sealed class ShellViewModel : ViewModelBase
     private PropertyChangedEventHandler? _outputPreviewPropertyChanged;
     private Guid? _queryDocumentId;
     private Guid? _ddlDocumentId;
+    private Guid? _erDiagramDocumentId;
 
     public ShellViewModel(
         CanvasViewModel? canvas = null,
@@ -108,6 +112,7 @@ public sealed class ShellViewModel : ViewModelBase
         QueryModeCommand = new RelayCommand(() => ActivateDocument(WorkspaceDocumentType.QueryCanvas));
         DdlModeCommand = new RelayCommand(() => ActivateDocument(WorkspaceDocumentType.DdlCanvas));
         SqlEditorModeCommand = new RelayCommand(() => ActivateDocument(WorkspaceDocumentType.SqlEditor));
+        ErDiagramModeCommand = new RelayCommand(() => ActivateDocument(WorkspaceDocumentType.ErDiagram));
         ShowDdlCanvasWorkspaceTabCommand = new RelayCommand(() => SetActiveDdlWorkspaceTab(DdlWorkspaceTab.Canvas));
         ShowDdlSchemaAnalysisWorkspaceTabCommand = new RelayCommand(() => SetActiveDdlWorkspaceTab(DdlWorkspaceTab.SchemaAnalysis));
         RefreshConnectionManagerObservers();
@@ -183,6 +188,8 @@ public sealed class ShellViewModel : ViewModelBase
 
     public bool IsDiagramDocumentPageActive => IsQueryDocumentPageActive || IsDdlDocumentPageActive;
 
+    public bool IsErDiagramDocumentPageActive => ActiveWorkspaceDocumentType == WorkspaceDocumentType.ErDiagram;
+
     public LeftSidebarViewModel LeftSidebar { get; }
 
     public RightSidebarViewModel RightSidebar { get; }
@@ -197,6 +204,8 @@ public sealed class ShellViewModel : ViewModelBase
     public RelayCommand DdlModeCommand { get; }
 
     public RelayCommand SqlEditorModeCommand { get; }
+
+    public RelayCommand ErDiagramModeCommand { get; }
 
     public RelayCommand ShowDdlCanvasWorkspaceTabCommand { get; }
 
@@ -223,6 +232,7 @@ public sealed class ShellViewModel : ViewModelBase
     {
         WorkspaceDocumentType.DdlCanvas => AppMode.Ddl,
         WorkspaceDocumentType.SqlEditor => AppMode.SqlEditor,
+        WorkspaceDocumentType.ErDiagram => AppMode.ErDiagram,
         _ => AppMode.Query,
     };
 
@@ -231,6 +241,8 @@ public sealed class ShellViewModel : ViewModelBase
     public bool IsDdlModeActive => ActiveWorkspaceDocumentType == WorkspaceDocumentType.DdlCanvas;
 
     public bool IsSqlEditorModeActive => ActiveWorkspaceDocumentType == WorkspaceDocumentType.SqlEditor;
+
+    public bool IsErDiagramModeActive => ActiveWorkspaceDocumentType == WorkspaceDocumentType.ErDiagram;
 
     public bool IsDiagramModeActive => IsDiagramDocumentPageActive;
 
@@ -296,6 +308,11 @@ public sealed class ShellViewModel : ViewModelBase
     public SqlEditorViewModel? ActiveSqlEditorDocument =>
         ActiveWorkspaceDocumentType == WorkspaceDocumentType.SqlEditor
             ? ActiveWorkspaceDocument?.DocumentViewModel as SqlEditorViewModel
+            : null;
+
+    public ErCanvasViewModel? ActiveErDiagramDocument =>
+        ActiveWorkspaceDocumentType == WorkspaceDocumentType.ErDiagram
+            ? ActiveWorkspaceDocument?.DocumentViewModel as ErCanvasViewModel
             : null;
 
     public CanvasViewModel? DdlCanvas
@@ -465,6 +482,7 @@ public sealed class ShellViewModel : ViewModelBase
         {
             WorkspaceDocumentType.DdlCanvas => OpenNewDdlDocument(),
             WorkspaceDocumentType.SqlEditor => OpenNewSqlEditorDocument(),
+            WorkspaceDocumentType.ErDiagram => OpenNewErDiagramDocument(),
             _ => OpenNewQueryDocument(),
         };
     }
@@ -515,6 +533,7 @@ public sealed class ShellViewModel : ViewModelBase
                 WorkspaceDocumentType.QueryCanvas => BuildCanvasDocument(savedDocument, isDdl: false),
                 WorkspaceDocumentType.DdlCanvas => BuildCanvasDocument(savedDocument, isDdl: true),
                 WorkspaceDocumentType.SqlEditor => BuildSqlEditorDocument(),
+                WorkspaceDocumentType.ErDiagram => BuildErDiagramDocument(),
                 _ => BuildCanvasDocument(savedDocument, isDdl: false),
             };
 
@@ -546,6 +565,9 @@ public sealed class ShellViewModel : ViewModelBase
         _ddlDocumentId = _workspaceRouter.OpenDocuments
             .FirstOrDefault(document => document.Descriptor.DocumentType == WorkspaceDocumentType.DdlCanvas)
             ?.Descriptor.DocumentId;
+        _erDiagramDocumentId = _workspaceRouter.OpenDocuments
+            .FirstOrDefault(document => document.Descriptor.DocumentType == WorkspaceDocumentType.ErDiagram)
+            ?.Descriptor.DocumentId;
 
         Canvas = _workspaceRouter.OpenDocuments
             .FirstOrDefault(document => document.Descriptor.DocumentType == WorkspaceDocumentType.QueryCanvas)
@@ -553,6 +575,9 @@ public sealed class ShellViewModel : ViewModelBase
         DdlCanvas = _workspaceRouter.OpenDocuments
             .FirstOrDefault(document => document.Descriptor.DocumentType == WorkspaceDocumentType.DdlCanvas)
             ?.DocumentViewModel as CanvasViewModel;
+        _erCanvas = _workspaceRouter.OpenDocuments
+            .FirstOrDefault(document => document.Descriptor.DocumentType == WorkspaceDocumentType.ErDiagram)
+            ?.DocumentViewModel as ErCanvasViewModel;
 
         SyncStateFromActiveDocument();
         RaiseActiveDocumentPropertiesChanged();
@@ -825,6 +850,7 @@ public sealed class ShellViewModel : ViewModelBase
             WorkspaceDocumentType.QueryCanvas => _queryDocumentId.HasValue && _workspaceRouter.TryActivate(_queryDocumentId.Value),
             WorkspaceDocumentType.DdlCanvas => _ddlDocumentId.HasValue && _workspaceRouter.TryActivate(_ddlDocumentId.Value),
             WorkspaceDocumentType.SqlEditor => TryActivateLastDocumentByType(WorkspaceDocumentType.SqlEditor),
+            WorkspaceDocumentType.ErDiagram => TryActivateLastDocumentByType(WorkspaceDocumentType.ErDiagram),
             _ => false,
         };
 
@@ -851,7 +877,7 @@ public sealed class ShellViewModel : ViewModelBase
         RaisePropertyChanged(nameof(ActiveCanvas));
         RaisePropertyChanged(nameof(ActiveDiagramSidebar));
         RaisePropertyChanged(nameof(ActiveDiagramPropertyPanel));
-        if (ActiveWorkspaceDocumentType == WorkspaceDocumentType.SqlEditor)
+        if (ActiveWorkspaceDocumentType is WorkspaceDocumentType.SqlEditor or WorkspaceDocumentType.ErDiagram)
             HideDiagramOnlyOverlays();
         UpdateActiveCanvasContext();
     }
@@ -869,12 +895,15 @@ public sealed class ShellViewModel : ViewModelBase
         RaisePropertyChanged(nameof(ActiveQueryCanvasDocument));
         RaisePropertyChanged(nameof(ActiveDdlCanvasDocument));
         RaisePropertyChanged(nameof(ActiveSqlEditorDocument));
+        RaisePropertyChanged(nameof(ActiveErDiagramDocument));
         RaisePropertyChanged(nameof(IsQueryDocumentPageActive));
         RaisePropertyChanged(nameof(IsDdlDocumentPageActive));
         RaisePropertyChanged(nameof(IsSqlEditorDocumentPageActive));
+        RaisePropertyChanged(nameof(IsErDiagramDocumentPageActive));
         RaisePropertyChanged(nameof(IsQueryModeActive));
         RaisePropertyChanged(nameof(IsDdlModeActive));
         RaisePropertyChanged(nameof(IsSqlEditorModeActive));
+        RaisePropertyChanged(nameof(IsErDiagramModeActive));
         RaisePropertyChanged(nameof(IsDiagramDocumentPageActive));
         RaisePropertyChanged(nameof(IsDiagramModeActive));
         RaisePropertyChanged(nameof(IsDiagramOverlayLayerVisible));
@@ -1002,6 +1031,21 @@ public sealed class ShellViewModel : ViewModelBase
         return documentId;
     }
 
+    private Guid OpenNewErDiagramDocument()
+    {
+        int nextOrdinal = _workspaceRouter.OpenDocuments.Count(document =>
+            document.Descriptor.DocumentType == WorkspaceDocumentType.ErDiagram) + 1;
+        string title = nextOrdinal == 1 ? "ER Diagram" : $"ER Diagram {nextOrdinal}";
+        ErCanvasViewModel erCanvas = BuildErDiagramDocument();
+        Guid documentId = Guid.NewGuid();
+        RegisterOrUpdateDocument(documentId, WorkspaceDocumentType.ErDiagram, title, erCanvas, activate: true);
+        _erCanvas ??= erCanvas;
+        SyncStateFromActiveDocument();
+        RaiseActiveDocumentPropertiesChanged();
+        SyncExtractedPanels();
+        return documentId;
+    }
+
     private void RegisterOrUpdateDocument(
         Guid documentId,
         WorkspaceDocumentType documentType,
@@ -1056,6 +1100,19 @@ public sealed class ShellViewModel : ViewModelBase
             MetadataResolver = ResolveSharedMetadata,
             SharedConnectionManagerResolver = ResolveSharedConnectionManager,
         });
+    }
+
+    private ErCanvasViewModel BuildErDiagramDocument()
+    {
+        DbMetadata? metadata = ResolveSharedMetadata();
+        if (metadata is null)
+        {
+            var empty = new ErCanvasViewModel();
+            empty.AddTechnicalWarning("W-ER-NO-METADATA");
+            return empty;
+        }
+
+        return ErCanvasBuilder.Build(metadata);
     }
 
     private string Localize(string key, string fallback)

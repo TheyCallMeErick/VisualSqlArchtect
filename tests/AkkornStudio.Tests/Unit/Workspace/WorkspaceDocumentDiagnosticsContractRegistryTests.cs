@@ -9,6 +9,7 @@ public class WorkspaceDocumentDiagnosticsContractRegistryTests
     [InlineData(WorkspaceDocumentType.QueryCanvas, true)]
     [InlineData(WorkspaceDocumentType.DdlCanvas, true)]
     [InlineData(WorkspaceDocumentType.SqlEditor, false)]
+    [InlineData(WorkspaceDocumentType.ErDiagram, false)]
     public void Resolve_ReturnsExpectedDiagnosticsAvailabilityForDocumentType(
         WorkspaceDocumentType documentType,
         bool hasLocalDiagnostics)

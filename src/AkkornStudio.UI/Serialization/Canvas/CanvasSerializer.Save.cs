@@ -44,6 +44,7 @@ public static partial class CanvasSerializer
         {
             WorkspaceDocumentType.DdlCanvas => ddlDocumentId,
             WorkspaceDocumentType.SqlEditor => sqlEditorDocumentId,
+            WorkspaceDocumentType.ErDiagram => queryDocumentId,
             _ => queryDocumentId,
         };
 

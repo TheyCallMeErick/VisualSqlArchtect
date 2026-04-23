@@ -10,7 +10,9 @@ public sealed record QueryTemplate(
     string Description,
     string Category,
     string Tags,
-    Action<CanvasViewModel> Build
+    Action<CanvasViewModel> Build,
+    bool IsUserCreated = false,
+    string? Id = null
 );
 
 // ── Template library ──────────────────────────────────────────────────────────

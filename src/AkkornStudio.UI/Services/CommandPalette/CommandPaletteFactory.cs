@@ -109,6 +109,29 @@ public class CommandPaletteFactory(
             // ── Snippets ──────────────────────────────────────────────────────
             new()
             {
+                Name = LN("Save Canvas as Template"),
+                Description = LD("Persist the current canvas as a reusable query template available from Start and Command Palette"),
+                Shortcut = "",
+                Icon = MaterialIconKind.ContentSaveCogOutline,
+                Tags = LTg("template save current canvas user custom reusable starter"),
+                Execute = () =>
+                {
+                    if (CurrentCanvas.Nodes.Count == 0)
+                    {
+                        CurrentShell.Toasts.ShowWarning(
+                            L("toast.templateSaveEmptyCanvas", "Adicione ao menos um node antes de salvar um template."));
+                        return;
+                    }
+
+                    string name = CreateUserTemplateName(CurrentCanvas);
+                    UserQueryTemplate template = QueryTemplateCatalog.SaveFromCanvas(CurrentCanvas, name);
+                    CurrentShell.Toasts.ShowSuccess(
+                        L("toast.templateSaved", "Template salvo."),
+                        template.Name);
+                },
+            },
+            new()
+            {
                 Name = LN("Save Selection as Snippet"),
                 Description = LD("Save the selected nodes as a reusable snippet — insert it later via the node search menu (⇧A)"),
                 Shortcut = "",
@@ -614,7 +637,7 @@ public class CommandPaletteFactory(
 
     private List<PaletteCommandItem> CreateTemplateCommands() =>
         [
-            .. QueryTemplateLibrary.All.Select(t => new PaletteCommandItem
+            .. QueryTemplateCatalog.LoadAll().Select(t => new PaletteCommandItem
             {
                 Name = string.Format(L("commandPalette.templatePrefix", "Template: {0}"), t.Name),
                 Description = t.Description,
@@ -627,6 +650,12 @@ public class CommandPaletteFactory(
                 },
             }),
         ];
+
+    private static string CreateUserTemplateName(CanvasViewModel canvas)
+    {
+        string prefix = canvas.Nodes.FirstOrDefault()?.Title ?? "Canvas";
+        return $"{prefix} template {DateTime.Now:yyyyMMdd-HHmmss}";
+    }
 
     private void OpenSearch()
     {

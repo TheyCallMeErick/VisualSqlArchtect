@@ -30,6 +30,7 @@ public partial class MainWindow
                 or nameof(ShellViewModel.IsQueryDocumentPageActive)
                 or nameof(ShellViewModel.IsDdlDocumentPageActive)
                 or nameof(ShellViewModel.IsSqlEditorDocumentPageActive)
+                or nameof(ShellViewModel.IsErDiagramDocumentPageActive)
                 or nameof(ShellViewModel.ActiveCanvasContext))
             {
                 SyncModeToggleState();
@@ -47,6 +48,7 @@ public partial class MainWindow
         Button? queryModeBtn = this.FindControl<Button>("QueryModeBtn");
         Button? ddlModeBtn = this.FindControl<Button>("DdlModeBtn");
         Button? sqlEditorModeBtn = this.FindControl<Button>("SqlEditorModeBtn");
+        Button? erDiagramModeBtn = this.FindControl<Button>("ErDiagramModeBtn");
 
         if (queryModeBtn is not null)
         {
@@ -64,6 +66,12 @@ public partial class MainWindow
         {
             sqlEditorModeBtn.IsEnabled = true;
             sqlEditorModeBtn.Classes.Set("active", CurrentShell.IsSqlEditorDocumentPageActive);
+        }
+
+        if (erDiagramModeBtn is not null)
+        {
+            erDiagramModeBtn.IsEnabled = true;
+            erDiagramModeBtn.Classes.Set("active", CurrentShell.IsErDiagramDocumentPageActive);
         }
 
         SyncSidebarChromeForActivePage();
@@ -216,6 +224,13 @@ public partial class MainWindow
     private void SqlEditorModeBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         CurrentShell.ActivateDocument(WorkspaceDocumentType.SqlEditor);
+        SyncModeToggleState();
+        e.Handled = true;
+    }
+
+    private void ErDiagramModeBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        CurrentShell.ActivateDocument(WorkspaceDocumentType.ErDiagram);
         SyncModeToggleState();
         e.Handled = true;
     }
