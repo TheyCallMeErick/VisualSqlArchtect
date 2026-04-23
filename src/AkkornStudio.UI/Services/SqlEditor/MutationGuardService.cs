@@ -21,6 +21,9 @@ public sealed class MutationGuardService
         string statement = sql.Trim();
         string upper = statement.ToUpperInvariant();
 
+        if (TrySplitLeadingWithMutation(statement, out string ctePrefix, out string mutationSql))
+            return PrefixCountQuery(Analyze(mutationSql), ctePrefix);
+
         if (upper.StartsWith("DELETE ", StringComparison.Ordinal))
             return AnalyzeDelete(statement, upper, _localization);
 
@@ -40,6 +43,21 @@ public sealed class MutationGuardService
             return AnalyzeDdl(_localization);
 
         return MutationGuardResult.Safe();
+    }
+
+    private static MutationGuardResult PrefixCountQuery(MutationGuardResult result, string ctePrefix)
+    {
+        if (string.IsNullOrWhiteSpace(result.CountQuery))
+            return result;
+
+        return new MutationGuardResult
+        {
+            IsSafe = result.IsSafe,
+            RequiresConfirmation = result.RequiresConfirmation,
+            Issues = result.Issues,
+            CountQuery = $"{ctePrefix} {result.CountQuery}",
+            SupportsDiff = result.SupportsDiff,
+        };
     }
 
     private static MutationGuardResult AnalyzeDelete(string statement, string upper, ILocalizationService localization)
@@ -213,6 +231,22 @@ public sealed class MutationGuardService
     {
         if (upper.StartsWith("DELETE ", StringComparison.Ordinal))
         {
+            Match usingMatch = Regex.Match(
+                statement,
+                @"^\s*DELETE\s+FROM\s+(?<target>[^\s;]+)(?:\s+(?:AS\s+)?(?<alias>[A-Za-z_][A-Za-z0-9_]*))?\s+USING\s+(?<using>.+?)(?:\s+WHERE\s+(?<where>.+?))?\s*;?\s*$",
+                RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant);
+            if (usingMatch.Success)
+            {
+                string target = usingMatch.Groups["target"].Value.Trim();
+                string alias = usingMatch.Groups["alias"].Success ? usingMatch.Groups["alias"].Value.Trim() : string.Empty;
+                string usingClause = usingMatch.Groups["using"].Value.Trim().TrimEnd(';');
+                string usingWhere = usingMatch.Groups["where"].Value.Trim().TrimEnd(';');
+                string targetClause = string.IsNullOrWhiteSpace(alias) ? target : $"{target} {alias}";
+                return string.IsNullOrWhiteSpace(usingWhere)
+                    ? $"SELECT COUNT(*) FROM {targetClause}, {usingClause}"
+                    : $"SELECT COUNT(*) FROM {targetClause}, {usingClause} WHERE {usingWhere}";
+            }
+
             Match m = Regex.Match(
                 statement,
                 @"^\s*DELETE\s+FROM\s+([^\s;]+)\s*(?:WHERE\s+(.+?))?\s*;?\s*$",
@@ -229,6 +263,22 @@ public sealed class MutationGuardService
 
         if (upper.StartsWith("UPDATE ", StringComparison.Ordinal))
         {
+            Match fromMatch = Regex.Match(
+                statement,
+                @"^\s*UPDATE\s+(?<target>[^\s;]+)(?:\s+(?:AS\s+)?(?<alias>[A-Za-z_][A-Za-z0-9_]*))?\s+SET\s+.+?\s+FROM\s+(?<from>.+?)(?:\s+WHERE\s+(?<where>.+?))?\s*;?\s*$",
+                RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant);
+            if (fromMatch.Success)
+            {
+                string target = fromMatch.Groups["target"].Value.Trim();
+                string alias = fromMatch.Groups["alias"].Success ? fromMatch.Groups["alias"].Value.Trim() : string.Empty;
+                string fromClause = fromMatch.Groups["from"].Value.Trim().TrimEnd(';');
+                string fromWhere = fromMatch.Groups["where"].Value.Trim().TrimEnd(';');
+                string targetClause = string.IsNullOrWhiteSpace(alias) ? target : $"{target} {alias}";
+                return string.IsNullOrWhiteSpace(fromWhere)
+                    ? $"SELECT COUNT(*) FROM {targetClause}, {fromClause}"
+                    : $"SELECT COUNT(*) FROM {targetClause}, {fromClause} WHERE {fromWhere}";
+            }
+
             Match m = Regex.Match(
                 statement,
                 @"^\s*UPDATE\s+([^\s;]+)\s+SET\s+.+?(?:\s+WHERE\s+(.+?))?\s*;?\s*$",
@@ -271,6 +321,126 @@ public sealed class MutationGuardService
         string table = m.Groups[1].Value.Trim();
         return $"SELECT COUNT(*) FROM {table}";
     }
+
+    private static bool TrySplitLeadingWithMutation(string statement, out string ctePrefix, out string mutationSql)
+    {
+        ctePrefix = string.Empty;
+        mutationSql = statement;
+
+        int index = 0;
+        while (index < statement.Length && char.IsWhiteSpace(statement[index]))
+            index++;
+
+        if (!statement.AsSpan(index).StartsWith("WITH", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        index += 4;
+        bool consumedDefinition = false;
+        while (index < statement.Length)
+        {
+            while (index < statement.Length && (char.IsWhiteSpace(statement[index]) || statement[index] == ','))
+                index++;
+
+            if (index >= statement.Length || !IsIdentifierStart(statement[index]))
+                return false;
+
+            index++;
+            while (index < statement.Length && IsIdentifierPart(statement[index]))
+                index++;
+
+            while (index < statement.Length && char.IsWhiteSpace(statement[index]))
+                index++;
+
+            if (index < statement.Length && statement[index] == '(')
+            {
+                if (!TrySkipBalancedParentheses(statement, ref index))
+                    return false;
+
+                while (index < statement.Length && char.IsWhiteSpace(statement[index]))
+                    index++;
+            }
+
+            if (!statement.AsSpan(index).StartsWith("AS", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            index += 2;
+            while (index < statement.Length && char.IsWhiteSpace(statement[index]))
+                index++;
+
+            if (index >= statement.Length || statement[index] != '(')
+                return false;
+
+            if (!TrySkipBalancedParentheses(statement, ref index))
+                return false;
+
+            consumedDefinition = true;
+            while (index < statement.Length && char.IsWhiteSpace(statement[index]))
+                index++;
+
+            if (index < statement.Length && statement[index] == ',')
+            {
+                index++;
+                continue;
+            }
+
+            break;
+        }
+
+        if (!consumedDefinition || index >= statement.Length)
+            return false;
+
+        string remainder = statement[index..].TrimStart();
+        string upperRemainder = remainder.ToUpperInvariant();
+        if (!upperRemainder.StartsWith("UPDATE ", StringComparison.Ordinal)
+            && !upperRemainder.StartsWith("DELETE ", StringComparison.Ordinal)
+            && !upperRemainder.StartsWith("INSERT ", StringComparison.Ordinal)
+            && !upperRemainder.StartsWith("MERGE ", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        ctePrefix = statement[..index].Trim();
+        mutationSql = remainder;
+        return true;
+    }
+
+    private static bool TrySkipBalancedParentheses(string value, ref int index)
+    {
+        if (index >= value.Length || value[index] != '(')
+            return false;
+
+        int depth = 0;
+        bool inSingleQuote = false;
+        while (index < value.Length)
+        {
+            char current = value[index];
+            if (current == '\'' && (index == 0 || value[index - 1] != '\\'))
+                inSingleQuote = !inSingleQuote;
+
+            if (!inSingleQuote)
+            {
+                if (current == '(')
+                    depth++;
+                else if (current == ')')
+                {
+                    depth--;
+                    if (depth == 0)
+                    {
+                        index++;
+                        return true;
+                    }
+                }
+            }
+
+            index++;
+        }
+
+        return false;
+    }
+
+    private static bool IsIdentifierStart(char c) => char.IsLetter(c) || c == '_';
+
+    private static bool IsIdentifierPart(char c) => char.IsLetterOrDigit(c) || c == '_';
 
     private static string L(ILocalizationService localization, string key, string fallback)
     {

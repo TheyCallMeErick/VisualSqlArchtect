@@ -198,7 +198,11 @@ internal sealed class SqlImportWhereClauseApplier(CanvasViewModel canvas) : ISql
 
             string correlatedFields = SqlImportCteRewriteService.DescribeCorrelatedOuterReferences(subquerySql, query.OuterAliases);
             if (!string.IsNullOrWhiteSpace(correlatedFields))
+            {
+                existsNode.Parameters["correlated_outer_refs"] = correlatedFields;
+                existsNode.Parameters["correlation_kind"] = negate ? "anti-semi" : "semi";
                 imported++;
+            }
 
             imported++;
             node = existsNode;

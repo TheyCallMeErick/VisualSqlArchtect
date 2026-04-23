@@ -633,7 +633,8 @@ public sealed class SqlImportAstToIrMapperTests
             GroupBy: groupBy,
             HavingClause: havingClause,
             Limit: limit,
-            OuterAliases: []
+            OuterAliases: [],
+            SetOperations: []
         );
     }
 }

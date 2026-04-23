@@ -74,6 +74,58 @@ public sealed class MutationGuardServiceTests
     }
 
     [Fact]
+    public void Analyze_UpdateFrom_BuildsJoinedCountQuery()
+    {
+        var sut = new MutationGuardService();
+
+        MutationGuardResult result = sut.Analyze("UPDATE orders o SET status = c.status FROM customers c WHERE o.customer_id = c.id AND c.active = true;");
+
+        Assert.True(result.IsSafe);
+        Assert.False(result.RequiresConfirmation);
+        Assert.True(result.SupportsDiff);
+        Assert.Equal("SELECT COUNT(*) FROM orders o, customers c WHERE o.customer_id = c.id AND c.active = true", result.CountQuery);
+    }
+
+    [Fact]
+    public void Analyze_DeleteUsing_BuildsJoinedCountQuery()
+    {
+        var sut = new MutationGuardService();
+
+        MutationGuardResult result = sut.Analyze("DELETE FROM orders o USING customers c WHERE o.customer_id = c.id AND c.blocked = true;");
+
+        Assert.True(result.IsSafe);
+        Assert.False(result.RequiresConfirmation);
+        Assert.True(result.SupportsDiff);
+        Assert.Equal("SELECT COUNT(*) FROM orders o, customers c WHERE o.customer_id = c.id AND c.blocked = true", result.CountQuery);
+    }
+
+    [Fact]
+    public void Analyze_WithUpdateFrom_PrefixesCountQueryWithCte()
+    {
+        var sut = new MutationGuardService();
+
+        MutationGuardResult result = sut.Analyze("WITH affected AS (SELECT id FROM customers WHERE active = true) UPDATE orders o SET status = 'active' FROM affected a WHERE o.customer_id = a.id;");
+
+        Assert.True(result.IsSafe);
+        Assert.False(result.RequiresConfirmation);
+        Assert.True(result.SupportsDiff);
+        Assert.Equal("WITH affected AS (SELECT id FROM customers WHERE active = true) SELECT COUNT(*) FROM orders o, affected a WHERE o.customer_id = a.id", result.CountQuery);
+    }
+
+    [Fact]
+    public void Analyze_WithDeleteUsing_PrefixesCountQueryWithCte()
+    {
+        var sut = new MutationGuardService();
+
+        MutationGuardResult result = sut.Analyze("WITH blocked AS (SELECT id FROM customers WHERE blocked = true) DELETE FROM orders o USING blocked b WHERE o.customer_id = b.id;");
+
+        Assert.True(result.IsSafe);
+        Assert.False(result.RequiresConfirmation);
+        Assert.True(result.SupportsDiff);
+        Assert.Equal("WITH blocked AS (SELECT id FROM customers WHERE blocked = true) SELECT COUNT(*) FROM orders o, blocked b WHERE o.customer_id = b.id", result.CountQuery);
+    }
+
+    [Fact]
     public void Analyze_InsertWithoutColumnList_ReturnsInfoOnly()
     {
         var sut = new MutationGuardService();

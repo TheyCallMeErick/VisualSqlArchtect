@@ -67,26 +67,22 @@ internal sealed class QueryParameterPromptWindow : Window
 
         foreach (QueryParameterPlaceholder placeholder in _placeholders)
         {
-            string placeholderKey = QueryParameterPlaceholderParser.GetStorageKey(placeholder);
-            _suggestedParameters.TryGetValue(placeholderKey, out QueryParameter? suggestedParameter);
-            _structuralContexts.TryGetValue(placeholderKey, out QueryExecutionParameterContext? structuralContext);
-            QueryParameterHint hint = QueryParameterHintResolver.Resolve(
+            QueryParameterPromptField field = QueryParameterPromptModel.BuildField(
                 _sql,
                 placeholder,
-                suggestedParameter,
-                structuralContext,
+                _initialValues,
+                _suggestedParameters,
+                _structuralContexts,
                 _metadata,
                 _provider);
+            _structuralContexts.TryGetValue(field.StorageKey, out QueryExecutionParameterContext? structuralContext);
             string label = placeholder.Kind == QueryParameterPlaceholderKind.Named
                 ? placeholder.Token
                 : placeholder.Token == "?"
                     ? $"? #{placeholder.Position}"
                     : placeholder.Token;
 
-            string initialText = _initialValues.TryGetValue(placeholderKey, out string? remembered)
-                ? remembered
-                : FormatSuggestedValue(suggestedParameter);
-            ParameterInputAdapter input = CreateInputAdapter(hint, initialText);
+            ParameterInputAdapter input = CreateInputAdapter(field.Hint, field.InitialText, field.InputKind);
             _inputs[placeholder] = input;
             StackPanel headerPanel = new()
             {
@@ -115,18 +111,18 @@ internal sealed class QueryParameterPromptWindow : Window
                     headerPanel,
                     new TextBlock
                     {
-                        Text = $"{hint.TypeLabel} · {hint.Description}",
+                        Text = $"{field.Hint.TypeLabel} · {field.Hint.Description}",
                         FontSize = 11,
                         Foreground = new SolidColorBrush(Color.Parse(UiColorConstants.C_9CA3AF)),
                     },
                 },
             };
 
-            if (!string.IsNullOrWhiteSpace(hint.ContextLabel))
+            if (!string.IsNullOrWhiteSpace(field.Hint.ContextLabel))
             {
                 fieldPanel.Children.Add(new TextBlock
                 {
-                    Text = hint.ContextLabel,
+                    Text = field.Hint.ContextLabel,
                     FontSize = 11,
                     Foreground = new SolidColorBrush(Color.Parse(UiColorConstants.C_60A5FA)),
                 });
@@ -209,72 +205,34 @@ internal sealed class QueryParameterPromptWindow : Window
 
     private IReadOnlyList<QueryParameter> BuildResult()
     {
-        List<QueryParameter> parameters = [];
-
-        foreach (QueryParameterPlaceholder placeholder in _placeholders)
-        {
-            string raw = _inputs.TryGetValue(placeholder, out ParameterInputAdapter? input)
-                ? input.GetRawValue()
-                : string.Empty;
-            object? parsed = ParseInputValue(raw);
-
-            parameters.Add(placeholder.Kind == QueryParameterPlaceholderKind.Named
-                ? new QueryParameter(placeholder.Token, parsed)
-                : new QueryParameter(null, parsed));
-        }
-
-        return parameters;
+        return QueryParameterPromptModel.BuildResult(
+            _placeholders,
+            BuildRawValuesByPlaceholder(),
+            cancelled: false)!;
     }
 
     private IReadOnlyDictionary<string, string> BuildEnteredValues()
     {
         Dictionary<string, string> values = new(StringComparer.OrdinalIgnoreCase);
 
-        foreach (QueryParameterPlaceholder placeholder in _placeholders)
-        {
-            string raw = _inputs.TryGetValue(placeholder, out ParameterInputAdapter? input)
-                ? input.GetRawValue()
-                : string.Empty;
-            values[QueryParameterPlaceholderParser.GetStorageKey(placeholder)] = raw;
-        }
+        foreach (KeyValuePair<QueryParameterPlaceholder, string> item in BuildRawValuesByPlaceholder())
+            values[QueryParameterPlaceholderParser.GetStorageKey(item.Key)] = item.Value;
 
         return values;
     }
 
-    private static object? ParseInputValue(string raw)
+    private IReadOnlyDictionary<QueryParameterPlaceholder, string> BuildRawValuesByPlaceholder()
     {
-        if (string.IsNullOrWhiteSpace(raw))
-            return string.Empty;
+        Dictionary<QueryParameterPlaceholder, string> values = [];
 
-        if (string.Equals(raw, "null", StringComparison.OrdinalIgnoreCase))
-            return null;
-        if (bool.TryParse(raw, out bool boolValue))
-            return boolValue;
-        if (int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int intValue))
-            return intValue;
-        if (long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out long longValue))
-            return longValue;
-        if (decimal.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal decimalValue))
-            return decimalValue;
-        if (DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out DateTime dateTime))
-            return dateTime;
-
-        return raw;
-    }
-
-    private static string FormatSuggestedValue(QueryParameter? suggestedParameter)
-    {
-        if (suggestedParameter?.Value is null)
-            return string.Empty;
-
-        return suggestedParameter.Value switch
+        foreach (QueryParameterPlaceholder placeholder in _placeholders)
         {
-            DateTime dateTime => dateTime.ToString("O", CultureInfo.InvariantCulture),
-            DateTimeOffset dateTimeOffset => dateTimeOffset.ToString("O", CultureInfo.InvariantCulture),
-            bool boolValue => boolValue ? "true" : "false",
-            IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
-            _ => suggestedParameter.Value.ToString() ?? string.Empty,
-        };
+            values[placeholder] = _inputs.TryGetValue(placeholder, out ParameterInputAdapter? input)
+                ? input.GetRawValue()
+                : string.Empty;
+        }
+
+        return values;
     }
 
     private static Control PlaceAtRow(Control control, int row)
@@ -298,16 +256,21 @@ internal sealed class QueryParameterPromptWindow : Window
         return string.Equals(value, key, StringComparison.Ordinal) ? fallback : value;
     }
 
-    private static ParameterInputAdapter CreateInputAdapter(QueryParameterHint hint, string initialText)
+    private static ParameterInputAdapter CreateInputAdapter(
+        QueryParameterHint hint,
+        string initialText,
+        QueryParameterPromptInputKind inputKind)
     {
-        return hint.TypeLabel switch
+        ParameterInputAdapter inner = inputKind switch
         {
-            "boolean" => new BooleanInputAdapter(initialText),
-            "integer" => new NumericInputAdapter(initialText, allowDecimal: false, hint.ExampleValue),
-            "decimal" => new NumericInputAdapter(initialText, allowDecimal: true, hint.ExampleValue),
-            "date/time" => new DateTimeInputAdapter(initialText, hint.ExampleValue),
+            QueryParameterPromptInputKind.Boolean => new BooleanInputAdapter(initialText),
+            QueryParameterPromptInputKind.Integer => new NumericInputAdapter(initialText, allowDecimal: false, hint.ExampleValue),
+            QueryParameterPromptInputKind.Decimal => new NumericInputAdapter(initialText, allowDecimal: true, hint.ExampleValue),
+            QueryParameterPromptInputKind.DateTime => new DateTimeInputAdapter(initialText, hint.ExampleValue),
             _ => new TextInputAdapter(initialText, hint.ExampleValue),
         };
+
+        return new NullableInputAdapter(inner, initialText);
     }
 
     private static Control? BuildExpressionKindBadge(QueryExecutionParameterContext? structuralContext)
@@ -370,6 +333,40 @@ internal sealed class QueryParameterPromptWindow : Window
     {
         public abstract Control Control { get; }
         public abstract string GetRawValue();
+    }
+
+    private sealed class NullableInputAdapter : ParameterInputAdapter
+    {
+        private readonly ParameterInputAdapter _inner;
+        private readonly CheckBox _nullCheckBox;
+        private readonly StackPanel _panel;
+
+        public NullableInputAdapter(ParameterInputAdapter inner, string initialText)
+        {
+            _inner = inner;
+            _nullCheckBox = new CheckBox
+            {
+                Content = L("queryParameters.dialog.useNull", "Use NULL"),
+                IsChecked = string.Equals(initialText, "NULL", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(initialText, "null", StringComparison.OrdinalIgnoreCase),
+                Foreground = new SolidColorBrush(Color.Parse(UiColorConstants.C_D1D5DB)),
+            };
+            _panel = new StackPanel
+            {
+                Spacing = 6,
+                Children =
+                {
+                    _inner.Control,
+                    _nullCheckBox,
+                },
+            };
+        }
+
+        public override Control Control => _panel;
+
+        public override string GetRawValue() => _nullCheckBox.IsChecked == true
+            ? "NULL"
+            : _inner.GetRawValue();
     }
 
     private sealed class TextInputAdapter : ParameterInputAdapter

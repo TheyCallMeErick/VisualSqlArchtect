@@ -1,5 +1,6 @@
 using System.Data;
 using System.Data.Common;
+using System.Collections;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -74,17 +75,20 @@ public sealed partial class QueryExecutorService
             _logger.LogInformation("Starting query execution on {Provider} ({Host}:{Port}/{Database})",
                 config.Provider, config.Host, config.Port, config.Database);
 
-            ValidatePreviewQuery(query, parameters);
+            (string executionQuery, IReadOnlyList<QueryParameter>? executionParameters) =
+                ExpandNamedListParameters(query, parameters);
+
+            ValidatePreviewQuery(executionQuery, executionParameters);
 
             // Wrap query with LIMIT/TOP clause for safe preview
-            string wrappedQuery = WrapWithPreviewLimit(query, config.Provider, maxRows);
+            string wrappedQuery = WrapWithPreviewLimit(executionQuery, config.Provider, maxRows);
             _logger.LogDebug("Wrapped query: {Query}", wrappedQuery);
 
             // Create orchestrator for the database provider
             var orchestrator = CreateOrchestrator(config.Provider, config);
             _logger.LogInformation("Created orchestrator for {Provider}", config.Provider);
 
-            var result = await ExecuteQueryInternalAsync(orchestrator, wrappedQuery, parameters, ct);
+            var result = await ExecuteQueryInternalAsync(orchestrator, wrappedQuery, executionParameters, ct);
 
             _logger.LogInformation("Query executed successfully. Rows: {RowCount}", result.Rows.Count);
             return result;
@@ -254,6 +258,123 @@ public sealed partial class QueryExecutorService
     private static string NormalizeParameterName(string parameterName) =>
         QueryParameterPlaceholderParser.NormalizeName(parameterName);
 
+    private static (string Query, IReadOnlyList<QueryParameter>? Parameters) ExpandNamedListParameters(
+        string query,
+        IReadOnlyList<QueryParameter>? parameters)
+    {
+        if (parameters is null || parameters.Count == 0)
+            return (query, parameters);
+
+        IReadOnlyList<QueryParameterPlaceholder> namedPlaceholders = QueryParameterPlaceholderParser.Parse(query)
+            .Where(static placeholder => placeholder.Kind == QueryParameterPlaceholderKind.Named)
+            .ToArray();
+        if (namedPlaceholders.Count == 0)
+            return (query, parameters);
+
+        Dictionary<string, ListExpansion> expansions = [];
+        foreach (QueryParameter parameter in parameters)
+        {
+            if (string.IsNullOrWhiteSpace(parameter.Name)
+                || !TryGetListParameterValues(parameter.Value, out IReadOnlyList<object?> values))
+                continue;
+
+            if (values.Count == 0)
+                throw new ArgumentException(
+                    string.Format(
+                        L(
+                            "queryExecutor.error.listParameterEmpty",
+                            "Preview parameter '{0}' cannot be an empty list."
+                        ),
+                        parameter.Name
+                    ),
+                    nameof(parameters)
+                );
+
+            expansions[NormalizeParameterName(parameter.Name)] = new ListExpansion(values);
+        }
+
+        if (expansions.Count == 0)
+            return (query, parameters);
+
+        string expandedQuery = query;
+        List<QueryParameter> expandedParameters = [];
+        HashSet<string> expandedNames = new(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> generatedNames = new(StringComparer.OrdinalIgnoreCase);
+
+        foreach (QueryParameterPlaceholder placeholder in namedPlaceholders)
+        {
+            string normalizedName = NormalizeParameterName(placeholder.Token);
+            if (!expansions.TryGetValue(normalizedName, out ListExpansion? expansion))
+                continue;
+
+            bool firstExpansionForName = expandedNames.Add(normalizedName);
+
+            string tokenPrefix = placeholder.Token[0].ToString();
+            string tokenName = NormalizeParameterName(placeholder.Token);
+            string[] generatedTokens = expansion.Values
+                .Select((_, index) => $"{tokenPrefix}{tokenName}_{index}")
+                .ToArray();
+
+            expandedQuery = ReplaceParameterToken(expandedQuery, placeholder.Token, string.Join(", ", generatedTokens));
+
+            if (!firstExpansionForName)
+                continue;
+
+            for (int index = 0; index < expansion.Values.Count; index++)
+            {
+                string generatedToken = generatedTokens[index];
+                if (generatedNames.Add(NormalizeParameterName(generatedToken)))
+                    expandedParameters.Add(new QueryParameter(generatedToken, expansion.Values[index]));
+            }
+        }
+
+        foreach (QueryParameter parameter in parameters)
+        {
+            if (string.IsNullOrWhiteSpace(parameter.Name))
+            {
+                expandedParameters.Add(parameter);
+                continue;
+            }
+
+            string normalizedName = NormalizeParameterName(parameter.Name);
+            if (!expandedNames.Contains(normalizedName))
+                expandedParameters.Add(parameter);
+        }
+
+        return (expandedQuery, expandedParameters);
+    }
+
+    private static string ReplaceParameterToken(string query, string token, string replacement) =>
+        Regex.Replace(
+            query,
+            $@"(?<![A-Za-z0-9_]){Regex.Escape(token)}(?![A-Za-z0-9_])",
+            replacement,
+            RegexOptions.CultureInvariant);
+
+    private static bool TryGetListParameterValues(
+        object? value,
+        out IReadOnlyList<object?> values)
+    {
+        if (value is null or string or byte[])
+        {
+            values = [];
+            return false;
+        }
+
+        if (value is not IEnumerable enumerable)
+        {
+            values = [];
+            return false;
+        }
+
+        List<object?> items = [];
+        foreach (object? item in enumerable)
+            items.Add(item);
+
+        values = items;
+        return true;
+    }
+
     /// <summary>
     /// Creates the appropriate orchestrator for the given provider.
     /// </summary>
@@ -418,6 +539,8 @@ public sealed partial class QueryExecutorService
         parameter.Value = value ?? DBNull.Value;
         command.Parameters.Add(parameter);
     }
+
+    private sealed record ListExpansion(IReadOnlyList<object?> Values);
 
     private static string L(string key, string fallback)
     {
