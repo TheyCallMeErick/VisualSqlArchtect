@@ -37,15 +37,15 @@ public sealed partial class InfiniteCanvas : Panel
         ClipToBoundsProperty.OverrideDefaultValue<InfiniteCanvas>(true);
     }
 
-    private readonly CanvasViewportSurface _surface = new();
-    private readonly CanvasControl _sceneRoot = new() { Background = Brushes.Transparent };
-    private readonly CanvasControl _overlayRoot = new() { Background = Brushes.Transparent, IsHitTestVisible = false };
+    private readonly InfiniteCanvasCoreControl _core = new();
     private readonly BezierWireLayer _wires = new();
     private readonly CanvasViewportController _viewportController = new();
+    private readonly CanvasViewportSelectionAdornerController _selectionAdornerController = new();
+    private readonly CanvasViewportSelectionNavigationController _selectionNavigationController = new();
     private readonly CanvasViewportGesturePolicy _gesturePolicy = CanvasViewportGesturePolicy.InfiniteCanvasDefault;
-    private DotGridBackground _grid => _surface.GridBackground;
-    private CanvasControl _scene => _sceneRoot;
-    private CanvasControl _overlay => _overlayRoot;
+    private DotGridBackground _grid => _core.GridBackground;
+    private CanvasControl _scene => _core.SceneCanvas;
+    private CanvasControl _overlay => _core.OverlayCanvas;
 
     private PinDragInteraction? _pinDrag;
     private double _zoom = 1.0;
@@ -105,9 +105,7 @@ public sealed partial class InfiniteCanvas : Panel
         // Transparent background makes the entire panel surface hit-testable,
         // so middle-mouse panning and rubber-band work even on empty canvas areas.
         Background = Brushes.Transparent;
-        _surface.SceneContent = _sceneRoot;
-        _surface.OverlayContent = _overlayRoot;
-        Children.Add(_surface);
+        Children.Add(_core);
         _scene.Children.Add(_wires);
         _overlay.Children.Add(_guides);
         PointerWheelChanged += OnWheel;
@@ -183,14 +181,14 @@ public sealed partial class InfiniteCanvas : Panel
 
     protected override Size MeasureOverride(Size s)
     {
-        _surface.Measure(s);
+        _core.Measure(s);
         Log($"    MeasureOverride: Size={s}, PanOffset={_panOffset}");
         return s;
     }
 
     protected override Size ArrangeOverride(Size s)
     {
-        _surface.Arrange(new Rect(s));
+        _core.Arrange(new Rect(s));
 
         foreach (NodeControl nc in _scene.Children.OfType<NodeControl>())
             if (nc.DataContext is NodeViewModel vm)
@@ -229,10 +227,10 @@ public sealed partial class InfiniteCanvas : Panel
         if (ViewModel is null)
         {
             Log($"    ViewModel is null, exiting rebuild");
-            _surface.Viewport = null;
+            _core.Viewport = null;
             return;
         }
-        _surface.Viewport = ViewModel;
+        _core.Viewport = ViewModel;
         _pinDrag = new PinDragInteraction(ViewModel, _scene);
         ViewModel.Nodes.CollectionChanged += (_, e) =>
         {
@@ -494,7 +492,7 @@ public sealed partial class InfiniteCanvas : Panel
         // Apply immediately (not only on next layout pass) to avoid transient
         // or missed viewport states during fast wheel interactions.
         InvalidateArrange();
-        _surface.SyncViewport();
+        _core.SyncViewport();
         _wires.InvalidateVisual();
     }
 

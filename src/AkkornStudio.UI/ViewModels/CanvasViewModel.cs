@@ -30,8 +30,10 @@ namespace AkkornStudio.UI.ViewModels;
 ///   - <see cref="NodeLayoutManager"/>  â€” zoom, pan, snap, auto-layout
 ///   - <see cref="ValidationManager"/>  â€” graph validation and orphan detection
 /// </summary>
-public sealed class CanvasViewModel : ViewModelBase, IDisposable, ICanvasViewportState
+public sealed class CanvasViewModel : ViewModelBase, IDisposable, ICanvasViewportState, ICanvasViewportSelectionState
 {
+    private const double SelectionFrameDefaultNodeHeight = 130d;
+
     public ObservableCollection<NodeViewModel> Nodes { get; } = [];
     public ObservableCollection<ConnectionViewModel> Connections { get; } = [];
 
@@ -1195,6 +1197,36 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable, ICanvasViewpor
     {
         _selectionManager.DeselectAll();
         ClearConnectionSelection();
+    }
+
+    public void ClearSelection() => DeselectAll();
+
+    public bool TrySelectInRegion(Rect region)
+    {
+        ClearConnectionSelection();
+        bool anySelected = CanvasSelectionViewportMath.TrySelectNodesInRegion(
+            Nodes,
+            region,
+            SelectionFrameDefaultNodeHeight);
+
+        List<NodeViewModel> selected = [.. Nodes.Where(node => node.IsSelected)];
+        if (selected.Count == 1)
+            PropertyPanel.ShowNode(selected[0]);
+        else if (selected.Count > 1)
+            PropertyPanel.ShowMultiSelection(selected);
+        else
+            PropertyPanel.Clear();
+
+        return anySelected;
+    }
+
+    public bool TryGetSelectionFrame(double padding, out Rect frame)
+    {
+        return CanvasSelectionViewportMath.TryGetSelectionFrame(
+            Nodes.Where(node => node.IsSelected),
+            SelectionFrameDefaultNodeHeight,
+            padding,
+            out frame);
     }
 
     public void SelectNode(NodeViewModel node, bool add = false) =>

@@ -23,6 +23,18 @@
 
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
           <Button Classes="tb compact"
+                  Click="CenterSelection_Click"
+                  IsVisible="{Binding HasSelectionDetails}"
+                  Padding="8,4">
+            <TextBlock Text="Centralizar selecao"/>
+          </Button>
+          <Button Classes="tb compact"
+                  Click="FitSelection_Click"
+                  IsVisible="{Binding HasSelectionDetails}"
+                  Padding="8,4">
+            <TextBlock Text="Enquadrar selecao"/>
+          </Button>
+          <Button Classes="tb compact"
                   Command="{Binding RefreshCommand}"
                   Padding="8,4">
             <StackPanel Orientation="Horizontal" Spacing="4">
@@ -98,16 +110,14 @@
         </StackPanel>
       </Border>
 
-      <ctrl:CanvasViewportSurface x:Name="ViewportSurface"
+      <ctrl:InfiniteCanvasCoreControl x:Name="ViewportSurface"
                                   Grid.Row="2"
-                                  Background="Transparent"
-                                  ClipToBounds="True"
                                   Viewport="{Binding}"
                                   PointerWheelChanged="Viewport_PointerWheelChanged"
                                   PointerPressed="Viewport_PointerPressed"
                                   PointerMoved="Viewport_PointerMoved"
                                   PointerReleased="Viewport_PointerReleased">
-        <ctrl:CanvasViewportSurface.SceneContent>
+        <ctrl:InfiniteCanvasCoreControl.SceneContent>
           <Canvas x:Name="SceneContentCanvas"
                   x:DataType="ervm:ErCanvasViewModel"
                   DataContext="{Binding DataContext, ElementName=ViewportSurface}"
@@ -173,8 +183,8 @@
               </ItemsControl.ItemTemplate>
             </ItemsControl>
           </Canvas>
-        </ctrl:CanvasViewportSurface.SceneContent>
-        <ctrl:CanvasViewportSurface.OverlayContent>
+        </ctrl:InfiniteCanvasCoreControl.SceneContent>
+        <ctrl:InfiniteCanvasCoreControl.OverlayContent>
           <Canvas x:DataType="ervm:ErCanvasViewModel"
             DataContext="{Binding DataContext, ElementName=ViewportSurface}"
                   IsHitTestVisible="False">
@@ -186,8 +196,8 @@
                                      Stroke="{StaticResource AccentPrimaryHoverBrush}"
                                      StrokeThickness="2"/>
           </Canvas>
-        </ctrl:CanvasViewportSurface.OverlayContent>
-      </ctrl:CanvasViewportSurface>
+        </ctrl:InfiniteCanvasCoreControl.OverlayContent>
+      </ctrl:InfiniteCanvasCoreControl>
     </Grid>
   </Grid>
 </UserControl>

@@ -10,7 +10,8 @@ public class InfiniteCanvasBindingTests
     {
         var canvas = new InfiniteCanvas();
 
-        Assert.Equal(3, canvas.Children.Count);
+        Assert.Single(canvas.Children);
+        Assert.IsType<InfiniteCanvasCoreControl>(canvas.Children[0]);
     }
 
     [Fact]

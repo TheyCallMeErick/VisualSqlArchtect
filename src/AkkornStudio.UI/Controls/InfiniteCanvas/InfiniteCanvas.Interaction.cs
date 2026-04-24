@@ -664,7 +664,18 @@ public sealed partial class InfiniteCanvas
         {
             Log($"<<< RUBBER BAND COMPLETED: Canvas={canvas}");
             _isRubberBanding = false;
-            UpdateRubberBand();
+            if (ViewModel is ICanvasViewportSelectionState selectionState)
+            {
+                Rect region = new(
+                    Math.Min(_rubberStart.X, _rubberCurrent.X),
+                    Math.Min(_rubberStart.Y, _rubberCurrent.Y),
+                    Math.Abs(_rubberCurrent.X - _rubberStart.X),
+                    Math.Abs(_rubberCurrent.Y - _rubberStart.Y));
+                _selectionAdornerController.CompleteMarqueeSelection(selectionState, region, _rubberBandRect);
+            }
+            else
+            {
+            }
             UpdateRubberBandVisual();
             e.Pointer.Capture(null);
 
@@ -838,16 +849,16 @@ public sealed partial class InfiniteCanvas
 
     private void UpdateRubberBand()
     {
-        if (ViewModel is null)
+        if (ViewModel is not ICanvasViewportSelectionState selectionState)
             return;
-        var r = new Rect(
+
+        Rect region = new(
             Math.Min(_rubberStart.X, _rubberCurrent.X),
             Math.Min(_rubberStart.Y, _rubberCurrent.Y),
             Math.Abs(_rubberCurrent.X - _rubberStart.X),
             Math.Abs(_rubberCurrent.Y - _rubberStart.Y)
         );
-        foreach (NodeViewModel n in ViewModel.Nodes)
-            n.IsSelected = r.Contains(n.Position);
+        _ = selectionState.TrySelectInRegion(region);
     }
 
     private void UpdateRubberBandVisual()
@@ -865,10 +876,11 @@ public sealed partial class InfiniteCanvas
             return;
         }
 
-        double x = _panOffset.X + Math.Min(_rubberStart.X, _rubberCurrent.X) * _zoom;
-        double y = _panOffset.Y + Math.Min(_rubberStart.Y, _rubberCurrent.Y) * _zoom;
-        double w = Math.Abs(_rubberCurrent.X - _rubberStart.X) * _zoom;
-        double h = Math.Abs(_rubberCurrent.Y - _rubberStart.Y) * _zoom;
+        Rect region = new(
+            Math.Min(_rubberStart.X, _rubberCurrent.X),
+            Math.Min(_rubberStart.Y, _rubberCurrent.Y),
+            Math.Abs(_rubberCurrent.X - _rubberStart.X),
+            Math.Abs(_rubberCurrent.Y - _rubberStart.Y));
 
         if (_rubberBandRect is null)
         {
@@ -883,7 +895,7 @@ public sealed partial class InfiniteCanvas
             _overlay.Children.Insert(0, _rubberBandRect);
         }
 
-        _rubberBandRect.SelectionRect = new Rect(x, y, w, h);
+        _selectionAdornerController.SyncMarqueeAdorner(ViewModel!, region, _rubberBandRect);
 
         // Ensure wires remain visible during rubber band selection
         EnsureWiresOnTop();

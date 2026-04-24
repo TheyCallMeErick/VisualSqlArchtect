@@ -14,22 +14,14 @@ public sealed partial class InfiniteCanvas
 
     private bool CenterSelectionInView()
     {
-        if (ViewModel is null)
+        if (ViewModel is not ICanvasViewportSelectionState selectionState)
             return false;
-
-        if (!CanvasSelectionViewportMath.TryGetSelectionBounds(
-            ViewModel.Nodes.Where(n => n.IsSelected),
-            DefaultNodeH,
-            out CanvasSelectionViewportMath.SelectionBounds bounds
-        ))
-            return false;
-
-        _panOffset = CanvasSelectionViewportMath.ComputeCenterPan(bounds, Bounds.Size, _zoom);
 
         _isApplyingViewportFromCanvas = true;
         try
         {
-            ViewModel.PanOffset = _panOffset;
+            if (!_selectionNavigationController.TryCenterSelection(selectionState, Bounds.Size))
+                return false;
         }
         finally
         {
@@ -43,32 +35,21 @@ public sealed partial class InfiniteCanvas
 
     private bool FitSelectionInView()
     {
-        if (ViewModel is null)
+        if (ViewModel is not ICanvasViewportSelectionState selectionState)
             return false;
-
-        if (!CanvasSelectionViewportMath.TryGetSelectionBounds(
-            ViewModel.Nodes.Where(n => n.IsSelected),
-            DefaultNodeH,
-            out CanvasSelectionViewportMath.SelectionBounds bounds
-        ))
-            return false;
-
-        (double newZoom, Point newPan) = CanvasSelectionViewportMath.ComputeFit(
-            bounds,
-            Bounds.Size,
-            padding: 40,
-            minZoom: 0.15,
-            maxZoom: 4.0
-        );
-
-        _zoom = newZoom;
-        _panOffset = newPan;
 
         _isApplyingViewportFromCanvas = true;
         try
         {
-            ViewModel.Zoom = _zoom;
-            ViewModel.PanOffset = _panOffset;
+            if (!_selectionNavigationController.TryFitSelection(
+                selectionState,
+                Bounds.Size,
+                padding: 40,
+                minZoom: 0.15,
+                maxZoom: 4.0))
+            {
+                return false;
+            }
         }
         finally
         {

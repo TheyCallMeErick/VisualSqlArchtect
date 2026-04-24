@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia;
 using AkkornStudio.UI.ViewModels.ErDiagram;
@@ -12,6 +13,8 @@ public sealed partial class ErCanvasControl : UserControl
 {
     private readonly CanvasViewportInteractionHost _interactionHost =
         new(CanvasViewportGesturePolicy.ErCanvasDefault);
+    private readonly CanvasViewportSelectionAdornerController _selectionAdornerController = new();
+    private readonly CanvasViewportSelectionNavigationController _selectionNavigationController = new();
     private readonly CanvasViewportGesturePolicy _gesturePolicy = CanvasViewportGesturePolicy.ErCanvasDefault;
     private ErCanvasViewModel? _observedCanvas;
 
@@ -111,39 +114,67 @@ public sealed partial class ErCanvasControl : UserControl
             return;
 
         UpdateViewportState();
-        _observedCanvas.CenterViewportOnCanvasPoint(_observedCanvas.FocusTargetX, _observedCanvas.FocusTargetY);
+        if (!_selectionNavigationController.TryCenterSelection(_observedCanvas, Bounds.Size))
+            _observedCanvas.CenterViewportOnCanvasPoint(_observedCanvas.FocusTargetX, _observedCanvas.FocusTargetY);
         SyncTransform();
+    }
+
+    private void CenterSelection_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_observedCanvas is null)
+            return;
+
+        UpdateViewportState();
+        if (_selectionNavigationController.TryCenterSelection(_observedCanvas, Bounds.Size))
+            SyncTransform();
+    }
+
+    private void FitSelection_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_observedCanvas is null)
+            return;
+
+        UpdateViewportState();
+        if (_selectionNavigationController.TryFitSelection(
+            _observedCanvas,
+            Bounds.Size,
+            padding: 40,
+            minZoom: 0.15,
+            maxZoom: 2.0))
+        {
+            SyncTransform();
+        }
     }
 
     private void Viewport_PointerWheelChanged(object? sender, PointerWheelEventArgs e)
     {
-        if (_observedCanvas is null || sender is not CanvasViewportSurface viewportSurface)
+        if (_observedCanvas is null || sender is not InfiniteCanvasCoreControl viewportHost)
             return;
 
-        _interactionHost.HandlePointerWheel(_observedCanvas, viewportSurface, e);
-        viewportSurface.SyncViewport();
+        _interactionHost.HandlePointerWheel(_observedCanvas, viewportHost.ViewportSurface, e);
+        viewportHost.SyncViewport();
     }
 
     private void Viewport_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (_observedCanvas is null || sender is not CanvasViewportSurface viewportSurface)
+        if (_observedCanvas is null || sender is not InfiniteCanvasCoreControl viewportHost)
             return;
 
-        PointerPointProperties props = e.GetCurrentPoint(viewportSurface).Properties;
+        PointerPointProperties props = e.GetCurrentPoint(viewportHost.ViewportSurface).Properties;
         bool isPanGesture = CanvasViewportGestureDecisions.IsPanGesture(_gesturePolicy, props, e.KeyModifiers);
         if (!isPanGesture && !props.IsLeftButtonPressed)
             return;
 
-        if (_interactionHost.HandlePointerPressed(_observedCanvas, viewportSurface, e))
+        if (_interactionHost.HandlePointerPressed(_observedCanvas, viewportHost.ViewportSurface, e))
             UpdateMarqueeVisual();
     }
 
     private void Viewport_PointerMoved(object? sender, PointerEventArgs e)
     {
-        if (_observedCanvas is null || sender is not CanvasViewportSurface viewportSurface)
+        if (_observedCanvas is null || sender is not InfiniteCanvasCoreControl viewportHost)
             return;
 
-        if (!_interactionHost.HandlePointerMoved(_observedCanvas, viewportSurface, e, out bool marqueeChanged))
+        if (!_interactionHost.HandlePointerMoved(_observedCanvas, viewportHost.ViewportSurface, e, out bool marqueeChanged))
             return;
 
         if (marqueeChanged)
@@ -152,7 +183,7 @@ public sealed partial class ErCanvasControl : UserControl
             return;
         }
 
-        viewportSurface.SyncViewport();
+        viewportHost.SyncViewport();
     }
 
     private void Viewport_PointerReleased(object? sender, PointerReleasedEventArgs e)
@@ -163,22 +194,12 @@ public sealed partial class ErCanvasControl : UserControl
 
         if (releaseKind != CanvasViewportPointerReleaseKind.MarqueeCompleted
             || _observedCanvas is null
-            || sender is not CanvasViewportSurface viewportSurface)
+            || sender is not InfiniteCanvasCoreControl viewportHost)
             return;
 
-        Rect region = _interactionHost.MarqueeCanvasRegion;
         CanvasMarqueeAdorner? marquee = this.FindControl<CanvasMarqueeAdorner>("SelectionMarquee");
-        if (marquee is not null)
-            marquee.SelectionRect = default;
-
-        if (region.Width < 8 || region.Height < 8)
-        {
-            _observedCanvas.ClearSelection();
-            return;
-        }
-
-        _ = _observedCanvas.TrySelectEntityInRegion(region);
-        viewportSurface.SyncViewport();
+        _selectionAdornerController.CompleteMarqueeSelection(_observedCanvas, _interactionHost, marquee);
+        viewportHost.SyncViewport();
     }
 
     private void UpdateViewportState()
@@ -186,17 +207,17 @@ public sealed partial class ErCanvasControl : UserControl
         if (_observedCanvas is null)
             return;
 
-        CanvasViewportSurface? viewportSurface = this.FindControl<CanvasViewportSurface>("ViewportSurface");
-        if (viewportSurface is null)
+        InfiniteCanvasCoreControl? viewportHost = this.FindControl<InfiniteCanvasCoreControl>("ViewportSurface");
+        if (viewportHost is null)
             return;
 
-        _observedCanvas.SetViewportSize(viewportSurface.Bounds.Width, viewportSurface.Bounds.Height);
-        viewportSurface.SyncViewport();
+        _observedCanvas.SetViewportSize(viewportHost.Bounds.Width, viewportHost.Bounds.Height);
+        viewportHost.SyncViewport();
     }
 
     private void SyncTransform()
     {
-        this.FindControl<CanvasViewportSurface>("ViewportSurface")?.SyncViewport();
+        this.FindControl<InfiniteCanvasCoreControl>("ViewportSurface")?.SyncViewport();
         UpdateFocusAdorner();
         UpdateMarqueeVisual();
     }
@@ -207,38 +228,19 @@ public sealed partial class ErCanvasControl : UserControl
             return;
 
         CanvasFocusAdorner? adorner = this.FindControl<CanvasFocusAdorner>("FocusOverlay");
-        if (adorner is null)
-            return;
-
-        if (!_observedCanvas.TryGetSelectionFrame(12, out Rect frame))
-        {
-            adorner.FocusRect = default;
-            return;
-        }
-
-        adorner.FocusRect = new Rect(
-            frame.X * _observedCanvas.Zoom + _observedCanvas.PanOffset.X,
-            frame.Y * _observedCanvas.Zoom + _observedCanvas.PanOffset.Y,
-            frame.Width * _observedCanvas.Zoom,
-            frame.Height * _observedCanvas.Zoom);
+        _selectionAdornerController.SyncFocusAdorner(_observedCanvas, adorner, padding: 12);
     }
 
     private void UpdateMarqueeVisual()
     {
         CanvasMarqueeAdorner? marquee = this.FindControl<CanvasMarqueeAdorner>("SelectionMarquee");
-        if (marquee is null || _observedCanvas is null || !_interactionHost.IsMarqueeSelecting)
+        if (_observedCanvas is null)
         {
             if (marquee is not null)
                 marquee.SelectionRect = default;
-
             return;
         }
 
-        Rect region = _interactionHost.MarqueeCanvasRegion;
-        marquee.SelectionRect = new Rect(
-            region.X * _observedCanvas.Zoom + _observedCanvas.PanOffset.X,
-            region.Y * _observedCanvas.Zoom + _observedCanvas.PanOffset.Y,
-            region.Width * _observedCanvas.Zoom,
-            region.Height * _observedCanvas.Zoom);
+        _selectionAdornerController.SyncMarqueeAdorner(_observedCanvas, _interactionHost, marquee);
     }
 }

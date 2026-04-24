@@ -11,7 +11,7 @@ namespace AkkornStudio.UI.ViewModels.ErDiagram;
 /// <summary>
 /// Represents the full ER canvas state for read-only schema visualization.
 /// </summary>
-public sealed class ErCanvasViewModel : ViewModelBase, ICanvasViewportState
+public sealed class ErCanvasViewModel : ViewModelBase, ICanvasViewportState, ICanvasViewportSelectionState
 {
     private const double EntityWidth = 220d;
     private const double HeaderHeight = 36d;
@@ -403,6 +403,8 @@ public sealed class ErCanvasViewModel : ViewModelBase, ICanvasViewportState
         SelectedEntity = selected;
         return true;
     }
+
+    public bool TrySelectInRegion(Rect region) => TrySelectEntityInRegion(region);
 
     public void SetViewportSize(double width, double height)
     {
