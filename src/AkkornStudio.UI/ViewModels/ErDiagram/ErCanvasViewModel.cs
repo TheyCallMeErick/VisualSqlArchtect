@@ -1,14 +1,17 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using AkkornStudio.Metadata;
+using AkkornStudio.UI.Controls;
 using AkkornStudio.UI.ViewModels;
+using Avalonia;
+using AkkornStudio.CanvasKit;
 
 namespace AkkornStudio.UI.ViewModels.ErDiagram;
 
 /// <summary>
 /// Represents the full ER canvas state for read-only schema visualization.
 /// </summary>
-public sealed class ErCanvasViewModel : ViewModelBase
+public sealed class ErCanvasViewModel : ViewModelBase, ICanvasViewportState
 {
     private const double EntityWidth = 220d;
     private const double HeaderHeight = 36d;
@@ -20,11 +23,14 @@ public sealed class ErCanvasViewModel : ViewModelBase
     private double _viewportX;
     private double _viewportY;
     private double _zoom = 1.0;
+    private double _viewportWidth;
+    private double _viewportHeight;
     private double _focusTargetX;
     private double _focusTargetY;
     private int _focusRequestVersion;
     private bool _includeViews;
     private bool _isRebuilding;
+    private bool _pendingAutoFit;
     private DbMetadata? _sourceMetadata;
 
     public ErCanvasViewModel()
@@ -124,6 +130,28 @@ public sealed class ErCanvasViewModel : ViewModelBase
     {
         get => _zoom;
         set => Set(ref _zoom, value);
+    }
+
+    public Point PanOffset
+    {
+        get => new(ViewportX, ViewportY);
+        set
+        {
+            ViewportX = value.X;
+            ViewportY = value.Y;
+        }
+    }
+
+    public double ViewportWidth
+    {
+        get => _viewportWidth;
+        private set => Set(ref _viewportWidth, value);
+    }
+
+    public double ViewportHeight
+    {
+        get => _viewportHeight;
+        private set => Set(ref _viewportHeight, value);
     }
 
     public bool IncludeViews
@@ -322,6 +350,137 @@ public sealed class ErCanvasViewModel : ViewModelBase
         }
     }
 
+    public bool TryGetSelectionFrame(double padding, out Rect frame)
+    {
+        if (SelectedEntity is not null)
+        {
+            frame = new Rect(
+                SelectedEntity.X - padding,
+                SelectedEntity.Y - padding,
+                EntityWidth + (padding * 2d),
+                GetEntityHeight(SelectedEntity) + (padding * 2d));
+            return true;
+        }
+
+        if (SelectedEdge is not null)
+        {
+            IReadOnlyList<Point> route = SelectedEdge.RoutePoints;
+            if (route.Count == 0)
+            {
+                frame = default;
+                return false;
+            }
+
+            double minX = route.Min(point => point.X) - padding;
+            double minY = route.Min(point => point.Y) - padding;
+            double maxX = route.Max(point => point.X) + padding;
+            double maxY = route.Max(point => point.Y) + padding;
+            frame = new Rect(minX, minY, Math.Max(1, maxX - minX), Math.Max(1, maxY - minY));
+            return true;
+        }
+
+        frame = default;
+        return false;
+    }
+
+    public bool TrySelectEntityInRegion(Rect region)
+    {
+        ErEntityNodeViewModel? selected = Entities
+            .Where(entity => region.Intersects(new Rect(entity.X, entity.Y, EntityWidth, GetEntityHeight(entity))))
+            .OrderBy(entity =>
+            {
+                double centerX = entity.X + (EntityWidth / 2d);
+                double centerY = entity.Y + (GetEntityHeight(entity) / 2d);
+                double dx = centerX - region.Center.X;
+                double dy = centerY - region.Center.Y;
+                return (dx * dx) + (dy * dy);
+            })
+            .FirstOrDefault();
+
+        if (selected is null)
+            return false;
+
+        SelectedEntity = selected;
+        return true;
+    }
+
+    public void SetViewportSize(double width, double height)
+    {
+        if (width > 0)
+            ViewportWidth = width;
+
+        if (height > 0)
+            ViewportHeight = height;
+
+        if (_pendingAutoFit)
+        {
+            TryConsumePendingAutoFit();
+            return;
+        }
+
+        if (EntityCount > 0 && width > 0 && height > 0 && ViewportX == 0 && ViewportY == 0 && Zoom == 1.0)
+            FitToContents();
+    }
+
+    internal void SetIncludeViewsSilently(bool includeViews)
+    {
+        _isRebuilding = true;
+        IncludeViews = includeViews;
+        _isRebuilding = false;
+    }
+
+    public void ZoomToward(Point screen, double factor)
+    {
+        double old = Zoom;
+        if (old <= 0)
+            return;
+
+        Zoom = Math.Clamp(old * factor, 0.15, 4.0);
+        PanOffset = new Point(
+            screen.X - (screen.X - PanOffset.X) * (Zoom / old),
+            screen.Y - (screen.Y - PanOffset.Y) * (Zoom / old));
+    }
+
+    public void PanBy(Vector delta)
+    {
+        PanOffset = PanOffset + delta;
+    }
+
+    public void CenterViewportOnCanvasPoint(double canvasX, double canvasY)
+    {
+        if (ViewportWidth <= 0 || ViewportHeight <= 0)
+            return;
+
+        PanOffset = new Point(
+            (ViewportWidth / 2d) - (canvasX * Zoom),
+            (ViewportHeight / 2d) - (canvasY * Zoom));
+    }
+
+    public void FitToContents()
+    {
+        if (ViewportWidth <= 0 || ViewportHeight <= 0 || Entities.Count == 0)
+            return;
+
+        CanvasViewportNodeFrame[] frames = Entities
+            .Select(entity => new CanvasViewportNodeFrame(
+                entity.X,
+                entity.Y,
+                EntityWidth,
+                GetEntityHeight(entity)))
+            .ToArray();
+        if (!CanvasViewportMath.TryGetSelectionBounds(frames, out CanvasSelectionBounds bounds))
+            return;
+
+        (double zoom, CanvasViewportPoint pan) = CanvasViewportMath.ComputeFit(
+            bounds,
+            new CanvasViewportSize(ViewportWidth, ViewportHeight),
+            padding: 48,
+            minZoom: 0.15,
+            maxZoom: 2.0);
+        Zoom = zoom;
+        PanOffset = new Point(pan.X, pan.Y);
+    }
+
     private void OnEntitiesChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         RaisePropertyChanged(nameof(EntityCount));
@@ -345,6 +504,9 @@ public sealed class ErCanvasViewModel : ViewModelBase
             Edges.Clear();
             TechnicalWarnings.Clear();
             AddTechnicalWarning("W-ER-NO-METADATA");
+            _pendingAutoFit = false;
+            Zoom = 1.0;
+            PanOffset = new Point(0, 0);
             RaisePropertyChanged(nameof(StatusMessage));
             return;
         }
@@ -352,6 +514,19 @@ public sealed class ErCanvasViewModel : ViewModelBase
         ErCanvasViewModel rebuilt = ErCanvasBuilder.Build(_sourceMetadata, IncludeViews);
         rebuilt.BindSourceMetadata(_sourceMetadata, rebuild: false);
         ReplaceContents(rebuilt);
+        _pendingAutoFit = true;
+        TryConsumePendingAutoFit();
+    }
+
+    private void TryConsumePendingAutoFit()
+    {
+        if (!_pendingAutoFit || ViewportWidth <= 0 || ViewportHeight <= 0 || EntityCount == 0)
+            return;
+
+        _pendingAutoFit = false;
+        Zoom = 1.0;
+        PanOffset = new Point(0, 0);
+        FitToContents();
     }
 
     private void ApplySelectionHighlights()

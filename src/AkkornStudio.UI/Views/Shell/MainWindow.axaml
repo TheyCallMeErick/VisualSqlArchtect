@@ -28,32 +28,6 @@
     <Style Selector="GridSplitter:pointerover">
       <Setter Property="Background" Value="{StaticResource AccentPrimaryHoverBrush}"/>
     </Style>
-    <Style Selector="Button.tb">
-      <Setter Property="Background"      Value="Transparent"/>
-      <Setter Property="BorderThickness" Value="0"/>
-      <Setter Property="Foreground"      Value="{StaticResource TextSecondaryBrush}"/>
-      <Setter Property="Padding"         Value="7,5"/>
-      <Setter Property="CornerRadius"    Value="6"/>
-      <Setter Property="FontSize"        Value="{StaticResource FontSizeBody}"/>
-      <Setter Property="Cursor"          Value="Hand"/>
-      <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
-      <Setter Property="Transitions">
-        <Transitions>
-          <BrushTransition Property="Background" Duration="0:0:0.12"/>
-          <BrushTransition Property="Foreground" Duration="0:0:0.12"/>
-          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.12"/>
-        </Transitions>
-      </Setter>
-    </Style>
-    <Style Selector="Button.tb:pointerover">
-      <Setter Property="Background" Value="{StaticResource Bg2Brush}"/>
-      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
-      <Setter Property="RenderTransform" Value="scale(1.03)"/>
-    </Style>
-    <Style Selector="Button.tb.danger:pointerover">
-      <Setter Property="Background" Value="{StaticResource BtnDangerBgBrush}"/>
-      <Setter Property="Foreground" Value="{StaticResource BtnDangerFgBrush}"/>
-    </Style>
     <Style Selector="Border.undo-redo-host">
       <Setter Property="Background" Value="{StaticResource Bg3Brush}"/>
       <Setter Property="BorderBrush" Value="{StaticResource BorderSubtleBrush}"/>
@@ -260,31 +234,6 @@
       <Setter Property="BorderBrush" Value="{StaticResource BorderSubtleBrush}"/>
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="VerticalAlignment" Value="Center"/>
-    </Style>
-    <Style Selector="Button.settings-nav">
-      <Setter Property="Background" Value="Transparent"/>
-      <Setter Property="BorderThickness" Value="0"/>
-      <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
-      <Setter Property="HorizontalContentAlignment" Value="Left"/>
-      <Setter Property="Padding" Value="8,6"/>
-      <Setter Property="CornerRadius" Value="{StaticResource RadiusSM}"/>
-      <Setter Property="FontSize" Value="{StaticResource FontSizeBody}"/>
-      <Setter Property="Cursor" Value="Hand"/>
-      <Setter Property="Transitions">
-        <Transitions>
-          <BrushTransition Property="Background" Duration="0:0:0.12"/>
-          <BrushTransition Property="Foreground" Duration="0:0:0.12"/>
-        </Transitions>
-      </Setter>
-    </Style>
-    <Style Selector="Button.settings-nav:pointerover">
-      <Setter Property="Background" Value="{StaticResource Bg3Brush}"/>
-      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
-    </Style>
-    <Style Selector="Button.settings-nav.active">
-      <Setter Property="Background" Value="{StaticResource Bg2Brush}"/>
-      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
-      <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
   </Window.Styles>
 

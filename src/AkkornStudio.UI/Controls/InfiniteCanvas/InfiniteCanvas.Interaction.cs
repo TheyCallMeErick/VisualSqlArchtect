@@ -21,7 +21,7 @@ public sealed partial class InfiniteCanvas
 {
     // Note: In Avalonia 11+, Panel.Render() is sealed and cannot be overridden.
     // Rubber band selection rectangle is drawn as a visual element instead.
-    private Border? _rubberBandRect;
+    private CanvasMarqueeAdorner? _rubberBandRect;
 
     private const double GuideThreshold = 8.0; // canvas units — how close to snap a guide
     private const double DefaultNodeH = 130;
@@ -140,7 +140,7 @@ public sealed partial class InfiniteCanvas
         _isApplyingViewportFromCanvas = true;
         try
         {
-            ViewModel.ZoomToward(screen, factor);
+            _viewportController.ZoomAtPointer(ViewModel, this, e);
         }
         finally
         {
@@ -168,10 +168,9 @@ public sealed partial class InfiniteCanvas
         {
             ClearHoverHighlights();
             Log($">>> PAN STARTED: Screen={screen}, PanOffset={_panOffset}, Zoom={_zoom}");
+            _viewportController.BeginPan(this, e.Pointer, screen);
             _isPanning = true;
-            _panStart = screen; // Store screen position, not difference
             _startPanOffset = _panOffset; // NodifyM pattern: capture pan offset at start
-            e.Pointer.Capture(this);
             Cursor = new Cursor(StandardCursorType.SizeAll);
             e.Handled = true;
             return;
@@ -535,8 +534,8 @@ public sealed partial class InfiniteCanvas
             if (d.X * d.X + d.Y * d.Y >= ContextPanStartThreshold * ContextPanStartThreshold)
             {
                 _contextMenuPending = false;
+                _viewportController.BeginPan(this, e.Pointer, screen);
                 _isPanning = true;
-                _panStart = screen;
                 _startPanOffset = _panOffset;
                 Cursor = new Cursor(StandardCursorType.SizeAll);
                 Log($">>> PAN STARTED (right-drag): Screen={screen}, PanOffset={_panOffset}, Zoom={_zoom}");
@@ -550,25 +549,14 @@ public sealed partial class InfiniteCanvas
         if (_isPanning)
         {
             ClearHoverHighlights();
-            Point delta = screen - _panStart;
-            _panOffset = _panOffset + (Vector)delta;
+            _viewportController.TryPan(ViewModel!, this, e);
+            _panOffset = ViewModel!.PanOffset;
 
-            Log($"    PAN MOVING: Screen={screen}, Delta={delta}, NewPanOffset={_panOffset}, Zoom={_zoom}");
+            Log($"    PAN MOVING: Screen={screen}, NewPanOffset={_panOffset}, Zoom={_zoom}");
 
             // Force immediate visual update during pan (don't wait for layout pass)
-            _scene.RenderTransform = new TransformGroup
-            {
-                Children =
-                [
-                    new ScaleTransform(_zoom, _zoom),
-                    new TranslateTransform(_panOffset.X, _panOffset.Y),
-                ],
-            };
-            _grid.PanOffset = _panOffset;
-            _grid.InvalidateVisual();
+            _viewportController.SyncVisuals(ViewModel!, _scene, _grid, Bounds.Size);
             SyncWires();
-
-            _panStart = screen; // Update for next frame
             return;
         }
         if (_pinDrag?.IsDragging == true)
@@ -637,7 +625,7 @@ public sealed partial class InfiniteCanvas
                 Log($"    Synced to ViewModel: PanOffset={_panOffset}");
             }
             _isPanning = false;
-            e.Pointer.Capture(null);
+            _viewportController.EndPan(e);
             Cursor = _isSpacePanArmed ? new Cursor(StandardCursorType.Hand) : Cursor.Default;
             return;
         }
@@ -868,7 +856,7 @@ public sealed partial class InfiniteCanvas
         {
             if (_rubberBandRect is not null)
             {
-                _scene.Children.Remove(_rubberBandRect);
+                _overlay.Children.Remove(_rubberBandRect);
                 _rubberBandRect = null;
 
                 // Ensure wires stay on top after rubber band is removed
@@ -884,29 +872,18 @@ public sealed partial class InfiniteCanvas
 
         if (_rubberBandRect is null)
         {
-            _rubberBandRect = new Border
+            _rubberBandRect = new CanvasMarqueeAdorner
             {
-                Background = ResourceBrush("SelectedOverlayBrush", UiColorConstants.C_7C96FF22),
-                BorderBrush = ResourceBrush("BorderFocusBrush", UiColorConstants.C_6B8CFF),
-                BorderThickness = new Thickness(1),
+                Fill = ResourceBrush("SelectedOverlayBrush", UiColorConstants.C_7C96FF22),
+                Stroke = ResourceBrush("BorderFocusBrush", UiColorConstants.C_6B8CFF),
+                StrokeThickness = 1,
                 IsHitTestVisible = false,
             };
             // Add rubber band before wires so it renders behind
-            int wiresIndex = _scene.Children.IndexOf(_wires);
-            if (wiresIndex >= 0)
-            {
-                _scene.Children.Insert(wiresIndex, _rubberBandRect);
-            }
-            else
-            {
-                _scene.Children.Add(_rubberBandRect);
-            }
+            _overlay.Children.Insert(0, _rubberBandRect);
         }
 
-        Canvas.SetLeft(_rubberBandRect, x);
-        Canvas.SetTop(_rubberBandRect, y);
-        _rubberBandRect.Width = w;
-        _rubberBandRect.Height = h;
+        _rubberBandRect.SelectionRect = new Rect(x, y, w, h);
 
         // Ensure wires remain visible during rubber band selection
         EnsureWiresOnTop();

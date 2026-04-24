@@ -131,6 +131,14 @@ public partial class MainWindow
         Button? leftHideBtn = this.FindControl<Button>("LeftSidebarHideBtn");
         Button? rightHideBtn = this.FindControl<Button>("RightSidebarHideBtn");
 
+        if (!CurrentShell.ActivePageContract.ShowsDiagramSidebar
+            && !CurrentShell.ActivePageContract.ShowsSqlEditorSidebar)
+        {
+            HideLeftSidebarForMode();
+            HideRightSidebarForMode();
+            return;
+        }
+
         SetLeftSidebarCollapsed(false);
         SetRightSidebarCollapsed(false);
 

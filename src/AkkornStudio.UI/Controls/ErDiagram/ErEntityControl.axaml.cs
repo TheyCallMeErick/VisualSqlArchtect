@@ -14,6 +14,13 @@ public sealed partial class ErEntityControl : UserControl
 
     private void Root_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
+        PointerPointProperties pointerProperties = e.GetCurrentPoint(this).Properties;
+        bool isPanGesture = pointerProperties.IsMiddleButtonPressed
+            || pointerProperties.IsRightButtonPressed
+            || (pointerProperties.IsLeftButtonPressed && e.KeyModifiers.HasFlag(KeyModifiers.Alt));
+        if (isPanGesture)
+            return;
+
         if (DataContext is not ErEntityNodeViewModel entity)
             return;
 

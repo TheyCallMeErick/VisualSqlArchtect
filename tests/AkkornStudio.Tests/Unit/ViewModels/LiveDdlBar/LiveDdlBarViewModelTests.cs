@@ -1,5 +1,6 @@
 using Avalonia;
 using AkkornStudio.Core;
+using AkkornStudio.Ddl.SchemaAnalysis.Application.Processing;
 using AkkornStudio.Ddl.SchemaAnalysis.Domain.Contracts;
 using AkkornStudio.Ddl.SchemaAnalysis.Domain.Enums;
 using AkkornStudio.Metadata;
@@ -83,16 +84,16 @@ public class LiveDdlBarViewModelTests
     }
 
     [Fact]
-    public async Task AnalyzeSchemaStructureAsync_WhenMetadataMissing_SetsIdleState()
+    public async Task AnalyzeSchemaStructureAsync_WhenMetadataMissing_SetsEmptyState()
     {
         var ddlCanvas = new CanvasViewModel(null, null, null, null, new DdlDomainStrategy());
         LiveDdlBarViewModel liveDdl = Assert.IsType<LiveDdlBarViewModel>(ddlCanvas.LiveDdl);
 
         await liveDdl.AnalyzeSchemaStructureAsync();
 
-        Assert.Equal(SchemaAnalysisViewState.Idle, liveDdl.SchemaAnalysisPanel.State);
+        Assert.Equal(SchemaAnalysisViewState.Empty, liveDdl.SchemaAnalysisPanel.State);
         Assert.Equal(
-            L("preview.schemaAnalysis.state.metadataUnavailable", "Metadata indisponível para análise estrutural."),
+            L("preview.schemaAnalysis.state.empty", "Nenhum problema estrutural infer�vel foi detectado."),
             liveDdl.SchemaAnalysisPanel.StateMessage
         );
     }
@@ -286,8 +287,12 @@ public class LiveDdlBarViewModelTests
                 InfoCount: issues.Count(i => i.Severity == SchemaIssueSeverity.Info),
                 WarningCount: issues.Count(i => i.Severity == SchemaIssueSeverity.Warning),
                 CriticalCount: issues.Count(i => i.Severity == SchemaIssueSeverity.Critical),
+                QuickWinCount: 0,
+                OverallScore: 0d,
                 PerRuleCount: new Dictionary<SchemaRuleCode, int>(),
-                PerTableCount: new Dictionary<string, int>())));
+                PerTableCount: new Dictionary<string, int>(),
+                AreaScores: new Dictionary<string, double>(),
+                ObservedPatterns: new SchemaObservedPatterns(NamingConvention.MixedAllowed, null, null)));
     }
 
     private static SchemaIssue CreateIssue(
@@ -315,3 +320,4 @@ public class LiveDdlBarViewModelTests
             IsAmbiguous: false);
     }
 }
+

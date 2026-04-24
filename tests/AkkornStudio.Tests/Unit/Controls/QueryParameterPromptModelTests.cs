@@ -54,18 +54,18 @@ public sealed class QueryParameterPromptModelTests
     }
 
     [Theory]
-    [InlineData("boolean", QueryParameterPromptInputKind.Boolean)]
-    [InlineData("integer", QueryParameterPromptInputKind.Integer)]
-    [InlineData("decimal", QueryParameterPromptInputKind.Decimal)]
-    [InlineData("date/time", QueryParameterPromptInputKind.DateTime)]
-    [InlineData("text", QueryParameterPromptInputKind.Text)]
+    [InlineData("boolean", "Boolean")]
+    [InlineData("integer", "Integer")]
+    [InlineData("decimal", "Decimal")]
+    [InlineData("date/time", "DateTime")]
+    [InlineData("text", "Text")]
     public void ResolveInputKind_MapsHintTypesToPromptControlKinds(
         string typeLabel,
-        QueryParameterPromptInputKind expected)
+        string expected)
     {
         QueryParameterHint hint = new(typeLabel, "sample", "description");
 
-        Assert.Equal(expected, QueryParameterPromptModel.ResolveInputKind(hint));
+        Assert.Equal(expected, QueryParameterPromptModel.ResolveInputKind(hint).ToString());
     }
 
     [Theory]

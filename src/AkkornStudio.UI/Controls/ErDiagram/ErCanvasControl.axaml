@@ -2,15 +2,14 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ervm="using:AkkornStudio.UI.ViewModels.ErDiagram"
              xmlns:erc="using:AkkornStudio.UI.Controls.ErDiagram"
+             xmlns:ctrl="using:AkkornStudio.UI.Controls"
              xmlns:shapes="clr-namespace:Avalonia.Controls.Shapes;assembly=Avalonia.Controls"
              x:Class="AkkornStudio.UI.Controls.ErDiagram.ErCanvasControl"
              x:DataType="ervm:ErCanvasViewModel">
 
   <Grid RowDefinitions="Auto,*" Background="{StaticResource Bg0Brush}">
     <Border Grid.Row="0"
-            Background="{StaticResource Bg1Brush}"
-            BorderBrush="{StaticResource BorderSubtleBrush}"
-            BorderThickness="0,0,0,1"
+            Classes="app-header-shell"
             Padding="12,8">
       <DockPanel LastChildFill="False">
         <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="16">
@@ -23,7 +22,7 @@
         </StackPanel>
 
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-          <Button Classes="tb"
+          <Button Classes="tb compact"
                   Command="{Binding RefreshCommand}"
                   Padding="8,4">
             <StackPanel Orientation="Horizontal" Spacing="4">
@@ -41,9 +40,9 @@
 
     <Grid Grid.Row="1" RowDefinitions="Auto,Auto,*">
       <Border IsVisible="{Binding HasTechnicalWarnings}"
-              Background="{StaticResource Bg1Brush}"
-              BorderBrush="{StaticResource BorderSubtleBrush}"
+              Classes="callout-subtle"
               BorderThickness="0,0,0,1"
+              CornerRadius="0"
               Padding="12,8">
         <StackPanel Spacing="6">
           <TextBlock Classes="txt-label"
@@ -63,9 +62,9 @@
 
       <Border Grid.Row="1"
               IsVisible="{Binding HasSelectionDetails}"
-              Background="{StaticResource Bg1Brush}"
-              BorderBrush="{StaticResource BorderSubtleBrush}"
+              Classes="callout-subtle"
               BorderThickness="0,0,0,1"
+              CornerRadius="0"
               Padding="12,8">
         <StackPanel Spacing="6">
           <StackPanel Orientation="Horizontal" Spacing="8">
@@ -73,7 +72,7 @@
                        Foreground="{StaticResource TextPrimaryBrush}"
                        Text="{Binding SelectionTitle}"
                        VerticalAlignment="Center"/>
-            <Button Classes="tb"
+            <Button Classes="tb compact"
                     Command="{Binding OpenSelectionInQueryCommand}"
                     IsVisible="{Binding HasSelectionJoinPredicate}"
                     Padding="8,4">
@@ -87,10 +86,8 @@
                      Foreground="{StaticResource TextPrimaryBrush}"
                      Text="{Binding SelectionBody}"
                      TextWrapping="Wrap"/>
-          <Border Background="{StaticResource Bg0Brush}"
-                  BorderBrush="{StaticResource BorderSubtleBrush}"
-                  BorderThickness="1"
-                  CornerRadius="{StaticResource RadiusSM}"
+          <Border Classes="callout-subtle"
+                  Background="{StaticResource Bg0Brush}"
                   Padding="8,6"
                   IsVisible="{Binding HasSelectionJoinPredicate}">
             <TextBlock FontFamily="{StaticResource MonoFont}"
@@ -101,64 +98,96 @@
         </StackPanel>
       </Border>
 
-      <ScrollViewer x:Name="CanvasScrollViewer"
-                  Grid.Row="2"
-                  HorizontalScrollBarVisibility="Auto"
-                  VerticalScrollBarVisibility="Auto">
-        <Canvas MinWidth="1000" MinHeight="700" Background="{StaticResource Bg0Brush}" PointerPressed="CanvasBackground_PointerPressed">
-          <ItemsControl ItemsSource="{Binding Edges}">
-            <ItemsControl.ItemsPanel>
-              <ItemsPanelTemplate>
-                <Canvas/>
-              </ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
+      <ctrl:CanvasViewportSurface x:Name="ViewportSurface"
+                                  Grid.Row="2"
+                                  Background="Transparent"
+                                  ClipToBounds="True"
+                                  Viewport="{Binding}"
+                                  PointerWheelChanged="Viewport_PointerWheelChanged"
+                                  PointerPressed="Viewport_PointerPressed"
+                                  PointerMoved="Viewport_PointerMoved"
+                                  PointerReleased="Viewport_PointerReleased">
+        <ctrl:CanvasViewportSurface.SceneContent>
+          <Canvas x:Name="SceneContentCanvas"
+                  x:DataType="ervm:ErCanvasViewModel"
+                  DataContext="{Binding DataContext, ElementName=ViewportSurface}"
+                  Background="Transparent"
+                  PointerPressed="CanvasBackground_PointerPressed">
+            <ItemsControl x:Name="EdgeItems"
+                          ItemsSource="{Binding Edges}"
+                          Width="{Binding Width, ElementName=SceneContentCanvas}"
+                          Height="{Binding Height, ElementName=SceneContentCanvas}"
+                          ClipToBounds="False">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <Canvas/>
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
 
-            <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="ervm:ErRelationEdgeViewModel">
-                <Canvas>
-                  <shapes:Polyline Points="{Binding RoutePoints}"
-                                   Stroke="#00FFFFFF"
-                                   StrokeThickness="12"
-                                   PointerPressed="Edge_PointerPressed"/>
-                  <shapes:Polyline Points="{Binding RoutePoints}"
-                                   Stroke="{StaticResource TextMutedBrush}"
-                                   StrokeThickness="2"/>
-                  <shapes:Polyline Points="{Binding RoutePoints}"
-                                   Stroke="{StaticResource AccentPrimaryHoverBrush}"
-                                   StrokeThickness="3"
-                                   IsVisible="{Binding IsSelected}"/>
-                  <Border Canvas.Left="{Binding LabelX}"
-                          Canvas.Top="{Binding LabelY}"
-                          Background="{StaticResource Bg1Brush}"
-                          BorderBrush="{StaticResource AccentPrimaryHoverBrush}"
-                          BorderThickness="1"
-                          CornerRadius="{StaticResource RadiusPill}"
-                          Padding="6,2"
-                          IsVisible="{Binding IsSelected}">
-                    <TextBlock Classes="txt-body"
-                               Foreground="{StaticResource TextPrimaryBrush}"
-                               Text="{Binding Cardinality}"/>
-                  </Border>
-                </Canvas>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="ervm:ErRelationEdgeViewModel">
+                  <Canvas>
+                    <shapes:Polyline Points="{Binding RoutePoints}"
+                                     Stroke="#00FFFFFF"
+                                     StrokeThickness="12"
+                                     PointerPressed="Edge_PointerPressed"/>
+                    <shapes:Polyline Points="{Binding RoutePoints}"
+                                     Stroke="{StaticResource TextMutedBrush}"
+                                     StrokeThickness="2"/>
+                    <shapes:Polyline Points="{Binding RoutePoints}"
+                                     Stroke="{StaticResource AccentPrimaryHoverBrush}"
+                                     StrokeThickness="3"
+                                     IsVisible="{Binding IsSelected}"/>
+                    <Border Canvas.Left="{Binding LabelX}"
+                            Canvas.Top="{Binding LabelY}"
+                            Background="{StaticResource Bg1Brush}"
+                            BorderBrush="{StaticResource AccentPrimaryHoverBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource RadiusPill}"
+                            Padding="6,2"
+                            IsVisible="{Binding IsSelected}">
+                      <TextBlock Classes="txt-body"
+                                 Foreground="{StaticResource TextPrimaryBrush}"
+                                 Text="{Binding Cardinality}"/>
+                    </Border>
+                  </Canvas>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
 
-          <ItemsControl ItemsSource="{Binding Entities}">
-            <ItemsControl.ItemsPanel>
-              <ItemsPanelTemplate>
-                <Canvas/>
-              </ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
+            <ItemsControl x:Name="EntityItems"
+                          ItemsSource="{Binding Entities}"
+                          Width="{Binding Width, ElementName=SceneContentCanvas}"
+                          Height="{Binding Height, ElementName=SceneContentCanvas}"
+                          ClipToBounds="False">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <Canvas/>
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
 
-            <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="ervm:ErEntityNodeViewModel">
-                <erc:ErEntityControl Canvas.Left="{Binding X}" Canvas.Top="{Binding Y}"/>
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </Canvas>
-      </ScrollViewer>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="ervm:ErEntityNodeViewModel">
+                  <erc:ErEntityControl Canvas.Left="{Binding X}" Canvas.Top="{Binding Y}"/>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Canvas>
+        </ctrl:CanvasViewportSurface.SceneContent>
+        <ctrl:CanvasViewportSurface.OverlayContent>
+          <Canvas x:DataType="ervm:ErCanvasViewModel"
+            DataContext="{Binding DataContext, ElementName=ViewportSurface}"
+                  IsHitTestVisible="False">
+            <ctrl:CanvasMarqueeAdorner x:Name="SelectionMarquee"
+                                       Fill="{StaticResource SelectedOverlayBrush}"
+                                       Stroke="{StaticResource BorderFocusBrush}"
+                                       StrokeThickness="1"/>
+            <ctrl:CanvasFocusAdorner x:Name="FocusOverlay"
+                                     Stroke="{StaticResource AccentPrimaryHoverBrush}"
+                                     StrokeThickness="2"/>
+          </Canvas>
+        </ctrl:CanvasViewportSurface.OverlayContent>
+      </ctrl:CanvasViewportSurface>
     </Grid>
   </Grid>
 </UserControl>

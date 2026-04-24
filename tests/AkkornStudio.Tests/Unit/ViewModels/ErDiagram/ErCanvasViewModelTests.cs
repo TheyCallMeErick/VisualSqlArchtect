@@ -28,6 +28,7 @@ public sealed class ErCanvasViewModelTests
 
         Assert.Equal(3, vm.EntityCount);
         Assert.Contains(vm.Entities, entity => entity.IsView);
+        Assert.DoesNotContain("W-ER-NO-METADATA", vm.TechnicalWarnings);
     }
 
     [Fact]
@@ -44,6 +45,32 @@ public sealed class ErCanvasViewModelTests
         Assert.True(edge.EndY > 0);
         Assert.NotEqual(edge.StartPoint, edge.EndPoint);
         Assert.Equal(4, edge.RoutePoints.Count);
+    }
+
+    [Fact]
+    public void SetViewportSize_ThenBindSourceMetadata_FitsDiagramIntoViewport()
+    {
+        var vm = new ErCanvasViewModel();
+        vm.SetViewportSize(1280, 720);
+
+        vm.BindSourceMetadata(CreateMetadata());
+
+        Assert.True(vm.Zoom > 0.15);
+        Assert.True(vm.ViewportWidth > 0);
+        Assert.True(vm.ViewportHeight > 0);
+    }
+
+    [Fact]
+    public void PanOffset_UpdatesViewportCoordinates()
+    {
+        var vm = new ErCanvasViewModel
+        {
+            PanOffset = new Avalonia.Point(120, 340),
+        };
+
+        Assert.Equal(120, vm.ViewportX);
+        Assert.Equal(340, vm.ViewportY);
+        Assert.Equal(new Avalonia.Point(120, 340), vm.PanOffset);
     }
 
     [Fact]
@@ -93,6 +120,52 @@ public sealed class ErCanvasViewModelTests
         Assert.False(vm.HasSelectionJoinPredicate);
         Assert.Equal(entity.DisplayName, vm.SelectionTitle);
         Assert.Contains("2 coluna(s)", vm.SelectionBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TryGetSelectionFrame_ForEntity_ReturnsEntityBoundsWithPadding()
+    {
+        var vm = new ErCanvasViewModel();
+        vm.BindSourceMetadata(CreateMetadata());
+        ErEntityNodeViewModel entity = Assert.Single(vm.Entities.Where(item => item.Name == "orders"));
+        vm.SelectedEntity = entity;
+
+        bool ok = vm.TryGetSelectionFrame(12, out Avalonia.Rect frame);
+
+        Assert.True(ok);
+        Assert.Equal(entity.X - 12, frame.X);
+        Assert.Equal(entity.Y - 12, frame.Y);
+        Assert.True(frame.Width > 220);
+        Assert.True(frame.Height > 36);
+    }
+
+    [Fact]
+    public void TryGetSelectionFrame_ForEdge_ReturnsRouteBoundsWithPadding()
+    {
+        var vm = new ErCanvasViewModel();
+        vm.BindSourceMetadata(CreateCompositeMetadata());
+        ErRelationEdgeViewModel edge = Assert.Single(vm.Edges);
+        vm.SelectedEdge = edge;
+
+        bool ok = vm.TryGetSelectionFrame(10, out Avalonia.Rect frame);
+
+        Assert.True(ok);
+        Assert.True(frame.Width > 0);
+        Assert.True(frame.Height > 0);
+        Assert.True(frame.X <= edge.RoutePoints.Min(point => point.X));
+        Assert.True(frame.Y <= edge.RoutePoints.Min(point => point.Y));
+    }
+
+    [Fact]
+    public void TrySelectEntityInRegion_SelectsNearestIntersectingEntity()
+    {
+        var vm = new ErCanvasViewModel();
+        vm.BindSourceMetadata(CreateMetadata());
+
+        bool selected = vm.TrySelectEntityInRegion(new Avalonia.Rect(340, 40, 260, 220));
+
+        Assert.True(selected);
+        Assert.Equal("orders", vm.SelectedEntity?.Name);
     }
 
     [Fact]

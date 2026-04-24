@@ -878,6 +878,24 @@
                                  Height="12"
                                  Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
               </Button>
+              <Button Classes="preview-toggle"
+                      Name="ResetAutoProjectionBtn"
+                      ToolTip.Tip="Resetar sugestao do ER"
+                      AutomationProperties.Name="Resetar sugestao do ER">
+                <mi:MaterialIcon Kind="Restore"
+                                 Width="12"
+                                 Height="12"
+                                 Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+              </Button>
+              <Button Classes="preview-toggle"
+                      Name="AddSuggestedFilterBtn"
+                      ToolTip.Tip="Adicionar filtro sugerido"
+                      AutomationProperties.Name="Adicionar filtro sugerido">
+                <mi:MaterialIcon Kind="FilterPlus"
+                                 Width="12"
+                                 Height="12"
+                                 Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+              </Button>
             </StackPanel>
           </Border>
 

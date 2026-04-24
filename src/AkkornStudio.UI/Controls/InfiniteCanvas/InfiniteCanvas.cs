@@ -37,15 +37,19 @@ public sealed partial class InfiniteCanvas : Panel
         ClipToBoundsProperty.OverrideDefaultValue<InfiniteCanvas>(true);
     }
 
-    private readonly DotGridBackground _grid = new() { IsHitTestVisible = false };
-    private readonly CanvasControl _scene = new();
+    private readonly CanvasViewportSurface _surface = new();
+    private readonly CanvasControl _sceneRoot = new() { Background = Brushes.Transparent };
+    private readonly CanvasControl _overlayRoot = new() { Background = Brushes.Transparent, IsHitTestVisible = false };
     private readonly BezierWireLayer _wires = new();
+    private readonly CanvasViewportController _viewportController = new();
+    private DotGridBackground _grid => _surface.GridBackground;
+    private CanvasControl _scene => _sceneRoot;
+    private CanvasControl _overlay => _overlayRoot;
 
     private PinDragInteraction? _pinDrag;
     private double _zoom = 1.0;
     private Point _panOffset;
     private bool _isPanning;
-    private Point _panStart;
     private bool _isApplyingViewportFromCanvas;
     private bool _isSpacePanArmed;
     private bool _contextMenuPending;
@@ -100,11 +104,11 @@ public sealed partial class InfiniteCanvas : Panel
         // Transparent background makes the entire panel surface hit-testable,
         // so middle-mouse panning and rubber-band work even on empty canvas areas.
         Background = Brushes.Transparent;
-        _scene.RenderTransformOrigin = new RelativePoint(0, 0, RelativeUnit.Relative);
-        Children.Add(_grid);
-        Children.Add(_scene);
+        _surface.SceneContent = _sceneRoot;
+        _surface.OverlayContent = _overlayRoot;
+        Children.Add(_surface);
         _scene.Children.Add(_wires);
-        Children.Add(_guides);
+        _overlay.Children.Add(_guides);
         PointerWheelChanged += OnWheel;
         PointerPressed += OnPressed;
         PointerMoved += OnMoved;
@@ -178,36 +182,14 @@ public sealed partial class InfiniteCanvas : Panel
 
     protected override Size MeasureOverride(Size s)
     {
-        _grid.Measure(s);
-        _scene.Measure(Size.Infinity);
+        _surface.Measure(s);
         Log($"    MeasureOverride: Size={s}, PanOffset={_panOffset}");
         return s;
     }
 
     protected override Size ArrangeOverride(Size s)
     {
-        _grid.Arrange(new Rect(s));
-        _grid.Width = s.Width;
-        _grid.Height = s.Height;
-        _grid.Zoom = _zoom;
-        _grid.PanOffset = _panOffset;
-
-        _scene.RenderTransform = new TransformGroup
-        {
-            Children =
-            [
-                new ScaleTransform(_zoom, _zoom),
-                new TranslateTransform(_panOffset.X, _panOffset.Y),
-            ],
-        };
-        _scene.Arrange(
-            new Rect(
-                // Keep scene arranged at origin; pan/zoom must be applied only via RenderTransform.
-                // Applying pan both in Arrange origin and TranslateTransform causes visual reset on layout passes.
-                new Point(0, 0),
-                new Size(20000, 20000)
-            )
-        );
+        _surface.Arrange(new Rect(s));
 
         foreach (NodeControl nc in _scene.Children.OfType<NodeControl>())
             if (nc.DataContext is NodeViewModel vm)
@@ -219,7 +201,6 @@ public sealed partial class InfiniteCanvas : Panel
             }
 
         _wires.Arrange(new Rect(new Size(20000, 20000)));
-        _guides.Arrange(new Rect(s));
         _guides.Width = s.Width;
         _guides.Height = s.Height;
         _guides.Zoom = _zoom;
@@ -247,8 +228,10 @@ public sealed partial class InfiniteCanvas : Panel
         if (ViewModel is null)
         {
             Log($"    ViewModel is null, exiting rebuild");
+            _surface.Viewport = null;
             return;
         }
+        _surface.Viewport = ViewModel;
         _pinDrag = new PinDragInteraction(ViewModel, _scene);
         ViewModel.Nodes.CollectionChanged += (_, e) =>
         {
@@ -509,19 +492,8 @@ public sealed partial class InfiniteCanvas : Panel
 
         // Apply immediately (not only on next layout pass) to avoid transient
         // or missed viewport states during fast wheel interactions.
-        _scene.RenderTransform = new TransformGroup
-        {
-            Children =
-            [
-                new ScaleTransform(_zoom, _zoom),
-                new TranslateTransform(_panOffset.X, _panOffset.Y),
-            ],
-        };
-
         InvalidateArrange();
-        _grid.Zoom = _zoom;
-        _grid.PanOffset = _panOffset;
-        _grid.InvalidateVisual();
+        _surface.SyncViewport();
         _wires.InvalidateVisual();
     }
 

@@ -131,5 +131,11 @@ public class ShellExtractedPanelsTests
 
         Assert.True(query.PropertyPanel.CanRefineAutoProjection);
         Assert.True(query.PropertyPanel.RefineAutoProjectionCommand.CanExecute(null));
+        Assert.True(query.PropertyPanel.CanResetAutoProjection);
+        Assert.True(query.PropertyPanel.ResetAutoProjectionCommand.CanExecute(null));
+        Assert.True(query.PropertyPanel.CanAddSuggestedFilter);
+        Assert.True(query.PropertyPanel.AddSuggestedFilterCommand.CanExecute(null));
+        Assert.True(query.PropertyPanel.CanApplySuggestedAggregation);
+        Assert.True(query.PropertyPanel.ApplySuggestedAggregationCommand.CanExecute(null));
     }
 }

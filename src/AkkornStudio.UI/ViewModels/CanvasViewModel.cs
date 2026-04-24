@@ -10,6 +10,7 @@ using AkkornStudio.Nodes;
 using AkkornStudio.UI.Services.Export;
 using AkkornStudio.UI.Services.Localization;
 using AkkornStudio.UI.Serialization;
+using AkkornStudio.UI.Controls;
 using AkkornStudio.UI.ViewModels.Canvas;
 using AkkornStudio.UI.ViewModels.Canvas.Strategies;
 using AkkornStudio.UI.Services.QueryPreview;
@@ -29,7 +30,7 @@ namespace AkkornStudio.UI.ViewModels;
 ///   - <see cref="NodeLayoutManager"/>  â€” zoom, pan, snap, auto-layout
 ///   - <see cref="ValidationManager"/>  â€” graph validation and orphan detection
 /// </summary>
-public sealed class CanvasViewModel : ViewModelBase, IDisposable
+public sealed class CanvasViewModel : ViewModelBase, IDisposable, ICanvasViewportState
 {
     public ObservableCollection<NodeViewModel> Nodes { get; } = [];
     public ObservableCollection<ConnectionViewModel> Connections { get; } = [];

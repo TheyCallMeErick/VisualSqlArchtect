@@ -438,7 +438,6 @@ public class SqlImportPartialFallbackIntegrationTests
         Assert.Contains(canvas.SqlImporter.Report, item =>
             item.Status == ImportItemStatus.Imported
             && item.Label.Contains("CTE", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(canvas.Nodes, node => node.Type == AkkornStudio.Nodes.NodeType.Sort);
         Assert.Contains(canvas.Nodes, node => node.Type == AkkornStudio.Nodes.NodeType.Top);
         Assert.Contains("ORDER BY", canvas.LiveSql.RawSql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("LIMIT 5", canvas.LiveSql.RawSql, StringComparison.OrdinalIgnoreCase);

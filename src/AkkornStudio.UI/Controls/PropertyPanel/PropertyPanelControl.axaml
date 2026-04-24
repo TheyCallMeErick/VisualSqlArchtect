@@ -7,49 +7,6 @@
              x:DataType="vm:PropertyPanelViewModel">
 
   <UserControl.Styles>
-
-    <!-- Section header -->
-    <Style Selector="TextBlock.section-label">
-      <Setter Property="FontSize"      Value="{StaticResource FontSizeCaption}"/>
-      <Setter Property="FontWeight"    Value="{StaticResource FontWeightHeading}"/>
-      <Setter Property="Foreground"    Value="{StaticResource TextMutedBrush}"/>
-      <Setter Property="LetterSpacing" Value="1.5"/>
-      <Setter Property="Margin"        Value="0,0,0,6"/>
-    </Style>
-
-    <!-- Parameter label -->
-    <Style Selector="TextBlock.param-label">
-      <Setter Property="FontSize"   Value="{StaticResource FontSizeCaption}"/>
-      <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
-      <Setter Property="Margin"     Value="0,0,0,3"/>
-    </Style>
-
-    <!-- Parameter input -->
-    <Style Selector="TextBox.param-input">
-      <Setter Property="Background"    Value="{StaticResource CanvasBgBrush}"/>
-      <Setter Property="BorderBrush"   Value="{StaticResource BorderBrush}"/>
-      <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="Foreground"    Value="{StaticResource TextPrimaryBrush}"/>
-      <Setter Property="FontFamily"    Value="{StaticResource MonoFont}"/>
-      <Setter Property="FontSize"      Value="{StaticResource FontSizeCaption}"/>
-      <Setter Property="CornerRadius"  Value="6"/>
-      <Setter Property="Padding"       Value="7,5"/>
-    </Style>
-    <Style Selector="TextBox.param-input:focus /template/ Border#PART_BorderElement">
-      <Setter Property="BorderBrush" Value="{StaticResource BorderActiveBrush}"/>
-    </Style>
-
-    <!-- ComboBox -->
-    <Style Selector="ComboBox.param-combo">
-      <Setter Property="Background"    Value="{StaticResource CanvasBgBrush}"/>
-      <Setter Property="BorderBrush"   Value="{StaticResource BorderBrush}"/>
-      <Setter Property="Foreground"    Value="{StaticResource TextPrimaryBrush}"/>
-      <Setter Property="FontSize"      Value="{StaticResource FontSizeCaption}"/>
-      <Setter Property="CornerRadius"  Value="6"/>
-      <Setter Property="Padding"       Value="7,5"/>
-      <Setter Property="HorizontalAlignment" Value="Stretch"/>
-    </Style>
-
     <!-- Pin row -->
     <Style Selector="Border.pin-info-row">
       <Setter Property="Padding"       Value="8,5"/>
@@ -63,44 +20,6 @@
     </Style>
     <Style Selector="Border.pin-info-row:pointerover">
       <Setter Property="Background" Value="{StaticResource Bg3Brush}"/>
-    </Style>
-
-    <Style Selector="Button.panel-tab">
-      <Setter Property="Background" Value="Transparent"/>
-      <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
-      <Setter Property="FontWeight" Value="{StaticResource FontWeightStrong}"/>
-      <Setter Property="FontFamily" Value="{StaticResource UIFont}"/>
-      <Setter Property="FontSize" Value="{StaticResource FontSizeBody}"/>
-      <Setter Property="Padding" Value="14,9"/>
-      <Setter Property="MinHeight" Value="42"/>
-      <Setter Property="VerticalContentAlignment" Value="Center"/>
-      <Setter Property="CornerRadius" Value="0"/>
-      <Setter Property="BorderThickness" Value="0"/>
-      <Setter Property="Cursor" Value="Hand"/>
-      <Setter Property="Transitions">
-        <Transitions>
-          <BrushTransition Property="Background" Duration="0:0:0.1"/>
-          <BrushTransition Property="Foreground" Duration="0:0:0.1"/>
-        </Transitions>
-      </Setter>
-    </Style>
-    <Style Selector="Button.panel-tab:pointerover">
-      <Setter Property="Background" Value="{StaticResource Bg2Brush}"/>
-      <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
-    </Style>
-    <Style Selector="Button.panel-tab.active">
-      <Setter Property="Background" Value="{StaticResource AccentPrimaryBrush}"/>
-      <Setter Property="Foreground" Value="{StaticResource BtnPrimaryFgBrush}"/>
-    </Style>
-    <Style Selector="Button.panel-tab:focus-visible">
-      <Setter Property="Background" Value="{StaticResource Bg2Brush}"/>
-      <Setter Property="BorderBrush" Value="{StaticResource BorderActiveBrush}"/>
-      <Setter Property="BorderThickness" Value="0,0,0,2"/>
-    </Style>
-    <Style Selector="Button.panel-tab:disabled">
-      <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
-      <Setter Property="Opacity" Value="0.62"/>
-      <Setter Property="Border.BorderBrush" Value="Transparent"/>
     </Style>
   </UserControl.Styles>
 
@@ -182,7 +101,7 @@
                       IsEnabled="{Binding CanSetAsPrimaryFromSource}"
                       Command="{Binding SetAsPrimaryFromSourceCommand}"
                       Content="Definir como FROM"
-                      Classes="secondary"
+                      Classes="secondary compact"
                       HorizontalAlignment="Left"
                       FontSize="{StaticResource FontSizeCaption}"/>
               <Button Margin="0,6,0,0"
@@ -190,13 +109,11 @@
                       IsEnabled="{Binding CanOpenSelectedJoinInErDiagram}"
                       Command="{Binding OpenSelectedJoinInErDiagramCommand}"
                       Content="Abrir relacao no ER"
-                      Classes="secondary"
+                      Classes="secondary compact"
                       HorizontalAlignment="Left"
                       FontSize="{StaticResource FontSizeCaption}"/>
               <Border Margin="0,6,0,0"
-                      Padding="8,6"
-                      Background="{StaticResource Bg2Brush}"
-                      CornerRadius="6"
+                      Classes="callout-subtle"
                       IsVisible="{Binding IsSelectedNodeAutoProjectionResultOutput}">
                 <TextBlock Text="Projection sugerida automaticamente a partir do ER"
                            FontSize="{StaticResource FontSizeCaption}"
@@ -208,7 +125,31 @@
                       IsEnabled="{Binding CanRefineAutoProjection}"
                       Command="{Binding RefineAutoProjectionCommand}"
                       Content="Refinar sugestao de colunas"
-                      Classes="secondary"
+                      Classes="secondary compact"
+                      HorizontalAlignment="Left"
+                      FontSize="{StaticResource FontSizeCaption}"/>
+              <Button Margin="0,6,0,0"
+                      IsVisible="{Binding IsSelectedNodeAutoProjectionResultOutput}"
+                      IsEnabled="{Binding CanResetAutoProjection}"
+                      Command="{Binding ResetAutoProjectionCommand}"
+                      Content="Resetar sugestao do ER"
+                      Classes="secondary compact"
+                      HorizontalAlignment="Left"
+                      FontSize="{StaticResource FontSizeCaption}"/>
+              <Button Margin="0,6,0,0"
+                      IsVisible="{Binding IsSelectedNodeAutoProjectionResultOutput}"
+                      IsEnabled="{Binding CanAddSuggestedFilter}"
+                      Command="{Binding AddSuggestedFilterCommand}"
+                      Content="Adicionar filtro sugerido"
+                      Classes="secondary compact"
+                      HorizontalAlignment="Left"
+                      FontSize="{StaticResource FontSizeCaption}"/>
+              <Button Margin="0,6,0,0"
+                      IsVisible="{Binding IsSelectedNodeAutoProjectionResultOutput}"
+                      IsEnabled="{Binding CanApplySuggestedAggregation}"
+                      Command="{Binding ApplySuggestedAggregationCommand}"
+                      Content="Aplicar agregacao sugerida"
+                      Classes="secondary compact"
                       HorizontalAlignment="Left"
                       FontSize="{StaticResource FontSizeCaption}"/>
             </StackPanel>
@@ -317,21 +258,9 @@
 
               <!-- Apply button -->
                     <Button Content="{Binding [property.apply], Source={x:Static loc:LocalizationService.Instance}}"
-                      HorizontalAlignment="Right"
-                      Background="{StaticResource Bg2Brush}"
-                      BorderBrush="{StaticResource BorderActiveBrush}"
-                      BorderThickness="1"
-                      Foreground="{StaticResource AccentPrimaryHoverBrush}"
-                      FontSize="{StaticResource FontSizeCaption}"
-                      CornerRadius="{StaticResource RadiusSM}"
-                      Padding="10,4"
-                      Name="ApplyBtn">
-                <Button.Styles>
-                  <Style Selector="Button:pointerover">
-                    <Setter Property="Background" Value="{StaticResource Bg2Brush}"/>
-                  </Style>
-                </Button.Styles>
-              </Button>
+                            HorizontalAlignment="Right"
+                            Classes="info compact"
+                            Name="ApplyBtn"/>
             </StackPanel>
           </Border>
 

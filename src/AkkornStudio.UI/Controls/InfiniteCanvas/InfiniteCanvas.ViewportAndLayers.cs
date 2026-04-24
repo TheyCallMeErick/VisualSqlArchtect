@@ -10,7 +10,7 @@ namespace AkkornStudio.UI.Controls;
 public sealed partial class InfiniteCanvas
 {
     private Point ScreenToCanvas(Point s) =>
-        new((s.X - _panOffset.X) / _zoom, (s.Y - _panOffset.Y) / _zoom);
+        ViewModel is null ? default : _viewportController.ScreenToCanvas(ViewModel, s);
 
     private bool CenterSelectionInView()
     {

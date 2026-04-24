@@ -29,6 +29,10 @@ namespace AkkornStudio.UI.ViewModels;
 public sealed class ShellViewModel : ViewModelBase
 {
     private const string AutoProjectionMarkerParameter = "__akkorn_auto_projection";
+    private const string AutoProjectionChildEntityParameter = "__akkorn_auto_projection_child";
+    private const string AutoProjectionParentEntityParameter = "__akkorn_auto_projection_parent";
+    private const string AutoProjectionChildColumnsParameter = "__akkorn_auto_projection_child_columns";
+    private const string AutoProjectionParentColumnsParameter = "__akkorn_auto_projection_parent_columns";
 
     public enum AppMode
     {
@@ -67,7 +71,10 @@ public sealed class ShellViewModel : ViewModelBase
     private CanvasContext _activeCanvasContext = CanvasContext.Query;
     private ConnectionManagerViewModel? _observedQueryConnectionManager;
     private ConnectionManagerViewModel? _observedDdlConnectionManager;
+    private CanvasViewModel? _observedQueryCanvas;
+    private CanvasViewModel? _observedDdlCanvas;
     private PropertyChangedEventHandler? _activeConnectionManagerPropertyChanged;
+    private PropertyChangedEventHandler? _canvasMetadataPropertyChanged;
     private readonly ILocalizationService _localization;
     private readonly ISqlEditorViewModelFactory _sqlEditorViewModelFactory;
     private readonly IWorkspaceRouter _workspaceRouter;
@@ -327,6 +334,7 @@ public sealed class ShellViewModel : ViewModelBase
             if (!Set(ref _ddlCanvas, value))
                 return;
 
+            AttachCanvasObservers(value);
             RefreshConnectionManagerObservers();
             RaisePropertyChanged(nameof(ActiveCanvas));
             RaisePropertyChanged(nameof(ActiveConnectionManager));
@@ -524,7 +532,7 @@ public sealed class ShellViewModel : ViewModelBase
             return false;
 
         return erCanvas.TryFocusRelation(
-            relation.ChildEntityId,
+            relation!.ChildEntityId,
             relation.ParentEntityId,
             relation.ChildColumns,
             relation.ParentColumns);
@@ -779,6 +787,7 @@ public sealed class ShellViewModel : ViewModelBase
     private void AttachCanvasObservers(CanvasViewModel? _)
     {
         RefreshConnectionManagerObservers();
+        RefreshCanvasMetadataObservers();
     }
 
     private void RefreshConnectionManagerObservers()
@@ -822,6 +831,37 @@ public sealed class ShellViewModel : ViewModelBase
         RaisePropertyChanged(nameof(ActiveConnectionManager));
         RaisePropertyChanged(nameof(IsConnectionManagerVisible));
         RaisePropertyChanged(nameof(IsConnectionManagerOverlayVisible));
+    }
+
+    private void RefreshCanvasMetadataObservers()
+    {
+        _canvasMetadataPropertyChanged ??= (_, e) =>
+        {
+            if (e.PropertyName is nameof(CanvasViewModel.DatabaseMetadata) or nameof(CanvasViewModel.ActiveConnectionConfig))
+                RefreshErDiagramDocument();
+        };
+
+        CanvasViewModel? queryCanvas = Canvas;
+        if (!ReferenceEquals(_observedQueryCanvas, queryCanvas))
+        {
+            if (_observedQueryCanvas is not null)
+                _observedQueryCanvas.PropertyChanged -= _canvasMetadataPropertyChanged;
+
+            _observedQueryCanvas = queryCanvas;
+            if (_observedQueryCanvas is not null)
+                _observedQueryCanvas.PropertyChanged += _canvasMetadataPropertyChanged;
+        }
+
+        CanvasViewModel? ddlCanvas = DdlCanvas;
+        if (!ReferenceEquals(_observedDdlCanvas, ddlCanvas))
+        {
+            if (_observedDdlCanvas is not null)
+                _observedDdlCanvas.PropertyChanged -= _canvasMetadataPropertyChanged;
+
+            _observedDdlCanvas = ddlCanvas;
+            if (_observedDdlCanvas is not null)
+                _observedDdlCanvas.PropertyChanged += _canvasMetadataPropertyChanged;
+        }
     }
 
     private ConnectionManagerViewModel? ResolveDocumentConnectionManager() =>
@@ -1361,7 +1401,7 @@ public sealed class ShellViewModel : ViewModelBase
 
         NodeViewModel resultOutput = EnsureResultOutputNode(canvas);
         NodeViewModel columnSetBuilder = EnsureProjectionColumnSetBuilder(canvas, resultOutput);
-        MarkAutoProjection(resultOutput);
+        MarkAutoProjection(resultOutput, edge);
         PinViewModel? columnsInput = columnSetBuilder.InputPins.FirstOrDefault(pin =>
             string.Equals(pin.Name, "columns", StringComparison.OrdinalIgnoreCase));
         if (columnsInput is null)
@@ -1378,9 +1418,13 @@ public sealed class ShellViewModel : ViewModelBase
         }
     }
 
-    private static void MarkAutoProjection(NodeViewModel resultOutput)
+    private static void MarkAutoProjection(NodeViewModel resultOutput, ErRelationEdgeViewModel edge)
     {
         resultOutput.Parameters[AutoProjectionMarkerParameter] = "true";
+        resultOutput.Parameters[AutoProjectionChildEntityParameter] = edge.ChildEntityId;
+        resultOutput.Parameters[AutoProjectionParentEntityParameter] = edge.ParentEntityId;
+        resultOutput.Parameters[AutoProjectionChildColumnsParameter] = string.Join("|", edge.ChildColumns);
+        resultOutput.Parameters[AutoProjectionParentColumnsParameter] = string.Join("|", edge.ParentColumns);
         resultOutput.RaiseParameterChanged(AutoProjectionMarkerParameter);
     }
 
@@ -1606,6 +1650,81 @@ public sealed class ShellViewModel : ViewModelBase
         return added;
     }
 
+    private static bool TryResetAutoProjection(CanvasViewModel canvas, NodeViewModel resultOutput)
+    {
+        if (!IsAutoProjectionResultOutput(resultOutput))
+            return false;
+
+        if (!TryReadStoredAutoProjection(resultOutput, out string? childEntityId, out string? parentEntityId, out IReadOnlyList<string>? childColumns, out IReadOnlyList<string>? parentColumns))
+            return false;
+
+        NodeViewModel? childTable = FindTableSourceNode(canvas, childEntityId!);
+        NodeViewModel? parentTable = FindTableSourceNode(canvas, parentEntityId!);
+        if (childTable is null || parentTable is null)
+            return false;
+
+        NodeViewModel columnSetBuilder = FindProjectionColumnSetBuilder(canvas, resultOutput)
+            ?? EnsureProjectionColumnSetBuilder(canvas, resultOutput);
+        PinViewModel? columnsInput = columnSetBuilder.InputPins.FirstOrDefault(pin =>
+            string.Equals(pin.Name, "columns", StringComparison.OrdinalIgnoreCase));
+        if (columnsInput is null)
+            return false;
+
+        foreach (ConnectionViewModel connection in canvas.Connections
+                     .Where(connection =>
+                         connection.ToPin is not null
+                         && ReferenceEquals(connection.ToPin.Owner, columnSetBuilder)
+                         && string.Equals(connection.ToPin.Name, "columns", StringComparison.OrdinalIgnoreCase))
+                     .ToList())
+        {
+            canvas.DeleteConnection(connection);
+        }
+
+        var edge = new ErRelationEdgeViewModel(
+            constraintName: "stored-auto-projection",
+            childEntityId: childEntityId!,
+            parentEntityId: parentEntityId!,
+            childColumns: childColumns!,
+            parentColumns: parentColumns!,
+            onDelete: ReferentialAction.NoAction,
+            onUpdate: ReferentialAction.NoAction);
+        foreach ((NodeViewModel tableNode, string columnName) in EnumerateSuggestedProjectionColumns(canvas, childTable, parentTable, edge))
+        {
+            PinViewModel? columnPin = tableNode.OutputPins.FirstOrDefault(pin =>
+                string.Equals(pin.Name, columnName, StringComparison.OrdinalIgnoreCase));
+            if (columnPin is null || HasConnection(canvas, columnPin, columnsInput))
+                continue;
+
+            canvas.ConnectPins(columnPin, columnsInput);
+        }
+
+        return true;
+    }
+
+    private static bool TryReadStoredAutoProjection(
+        NodeViewModel resultOutput,
+        out string? childEntityId,
+        out string? parentEntityId,
+        out IReadOnlyList<string>? childColumns,
+        out IReadOnlyList<string>? parentColumns)
+    {
+        childEntityId = resultOutput.Parameters.GetValueOrDefault(AutoProjectionChildEntityParameter);
+        parentEntityId = resultOutput.Parameters.GetValueOrDefault(AutoProjectionParentEntityParameter);
+        childColumns = SplitStoredProjectionColumns(resultOutput.Parameters.GetValueOrDefault(AutoProjectionChildColumnsParameter));
+        parentColumns = SplitStoredProjectionColumns(resultOutput.Parameters.GetValueOrDefault(AutoProjectionParentColumnsParameter));
+
+        return !string.IsNullOrWhiteSpace(childEntityId)
+            && !string.IsNullOrWhiteSpace(parentEntityId)
+            && childColumns.Count > 0
+            && parentColumns.Count > 0
+            && childColumns.Count == parentColumns.Count;
+    }
+
+    private static IReadOnlyList<string> SplitStoredProjectionColumns(string? raw) =>
+        string.IsNullOrWhiteSpace(raw)
+            ? []
+            : raw.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
     private static HashSet<string> GetProjectedColumnsForTable(
         CanvasViewModel canvas,
         NodeViewModel columnSetBuilder,
@@ -1634,6 +1753,191 @@ public sealed class ShellViewModel : ViewModelBase
             && string.Equals(connection.ToPin.Name, "columns", StringComparison.OrdinalIgnoreCase)
             && ReferenceEquals(connection.FromPin.Owner, tableNode)
             && string.Equals(connection.FromPin.Name, "*", StringComparison.OrdinalIgnoreCase));
+
+    private static bool HasWhereCondition(CanvasViewModel canvas, NodeViewModel resultOutput) =>
+        canvas.Connections.Any(connection =>
+            connection.ToPin is not null
+            && ReferenceEquals(connection.ToPin.Owner, resultOutput)
+            && string.Equals(connection.ToPin.Name, "where", StringComparison.OrdinalIgnoreCase));
+
+    private static bool HasGroupByCondition(CanvasViewModel canvas, NodeViewModel resultOutput) =>
+        canvas.Connections.Any(connection =>
+            connection.ToPin is not null
+            && ReferenceEquals(connection.ToPin.Owner, resultOutput)
+            && string.Equals(connection.ToPin.Name, "group_by", StringComparison.OrdinalIgnoreCase));
+
+    private static bool TryAddSuggestedFilter(CanvasViewModel canvas, NodeViewModel resultOutput)
+    {
+        if (!IsAutoProjectionResultOutput(resultOutput) || HasWhereCondition(canvas, resultOutput))
+            return false;
+
+        if (!TryReadStoredAutoProjection(
+                resultOutput,
+                out _,
+                out string? parentEntityId,
+                out _,
+                out IReadOnlyList<string>? parentColumns))
+        {
+            return false;
+        }
+
+        NodeViewModel? parentTable = FindTableSourceNode(canvas, parentEntityId!);
+        if (parentTable is null)
+            return false;
+
+        TableMetadata? parentMetadata = canvas.DatabaseMetadata?.FindTable(parentEntityId!);
+        string[] excludedColumns = parentColumns?.ToArray() ?? [];
+        ColumnMetadata? filterColumn = PickDescriptiveColumn(parentMetadata, excludedColumns)
+            ?? parentMetadata?.PrimaryKeyColumns.FirstOrDefault();
+        if (filterColumn is null)
+            return false;
+
+        PinViewModel? leftPin = parentTable.OutputPins.FirstOrDefault(pin =>
+            string.Equals(pin.Name, filterColumn.Name, StringComparison.OrdinalIgnoreCase));
+        PinViewModel? wherePin = resultOutput.InputPins.FirstOrDefault(pin =>
+            string.Equals(pin.Name, "where", StringComparison.OrdinalIgnoreCase));
+        if (leftPin is null || wherePin is null)
+            return false;
+
+        Point basePosition = new(resultOutput.Position.X - 280d, resultOutput.Position.Y + 120d);
+        NodeViewModel equalsNode = canvas.SpawnNode(
+            NodeDefinitionRegistry.Get(NodeType.Equals),
+            basePosition);
+        PinViewModel? equalsLeft = equalsNode.InputPins.FirstOrDefault(pin => pin.Name == "left");
+        PinViewModel? equalsRight = equalsNode.InputPins.FirstOrDefault(pin => pin.Name == "right");
+        PinViewModel? equalsResult = equalsNode.OutputPins.FirstOrDefault(pin => pin.Name == "result");
+        if (equalsLeft is null || equalsRight is null || equalsResult is null)
+            return false;
+
+        NodeViewModel literalNode = CreateSuggestedFilterLiteralNode(canvas, filterColumn, new Point(basePosition.X - 220d, basePosition.Y + 8d));
+        PinViewModel? literalResult = literalNode.OutputPins.FirstOrDefault(pin =>
+            string.Equals(pin.Name, "result", StringComparison.OrdinalIgnoreCase));
+        if (literalResult is null)
+            return false;
+
+        canvas.ConnectPins(leftPin, equalsLeft);
+        canvas.ConnectPins(literalResult, equalsRight);
+        canvas.ConnectPins(equalsResult, wherePin);
+        return true;
+    }
+
+    private static NodeViewModel CreateSuggestedFilterLiteralNode(
+        CanvasViewModel canvas,
+        ColumnMetadata column,
+        Point position)
+    {
+        NodeType nodeType;
+        string value;
+
+        switch (column.SemanticType)
+        {
+            case ColumnSemanticType.Numeric:
+                nodeType = NodeType.ValueNumber;
+                value = "0";
+                break;
+            case ColumnSemanticType.Boolean:
+                nodeType = NodeType.ValueBoolean;
+                value = "true";
+                break;
+            case ColumnSemanticType.DateTime:
+                nodeType = NodeType.ValueDateTime;
+                value = string.Empty;
+                break;
+            default:
+                nodeType = NodeType.ValueString;
+                value = string.Empty;
+                break;
+        }
+
+        NodeViewModel node = canvas.SpawnNode(NodeDefinitionRegistry.Get(nodeType), position);
+        node.Parameters["value"] = value;
+        node.RaiseParameterChanged("value");
+        return node;
+    }
+
+    private static bool TryApplySuggestedAggregation(CanvasViewModel canvas, NodeViewModel resultOutput)
+    {
+        if (!IsAutoProjectionResultOutput(resultOutput) || HasGroupByCondition(canvas, resultOutput))
+            return false;
+
+        if (!TryReadStoredAutoProjection(
+                resultOutput,
+                out _,
+                out string? parentEntityId,
+                out _,
+                out IReadOnlyList<string>? parentColumns))
+        {
+            return false;
+        }
+
+        NodeViewModel? parentTable = FindTableSourceNode(canvas, parentEntityId!);
+        if (parentTable is null)
+            return false;
+
+        TableMetadata? parentMetadata = canvas.DatabaseMetadata?.FindTable(parentEntityId!);
+        ColumnMetadata? groupColumn = PickDescriptiveColumn(parentMetadata, parentColumns?.ToArray() ?? [])
+            ?? parentMetadata?.PrimaryKeyColumns.FirstOrDefault();
+        if (groupColumn is null)
+            return false;
+
+        PinViewModel? parentGroupPin = parentTable.OutputPins.FirstOrDefault(pin =>
+            string.Equals(pin.Name, groupColumn.Name, StringComparison.OrdinalIgnoreCase));
+        PinViewModel? outputColumnPin = resultOutput.InputPins.FirstOrDefault(pin =>
+            string.Equals(pin.Name, "column", StringComparison.OrdinalIgnoreCase));
+        PinViewModel? outputGroupByPin = resultOutput.InputPins.FirstOrDefault(pin =>
+            string.Equals(pin.Name, "group_by", StringComparison.OrdinalIgnoreCase));
+        if (parentGroupPin is null || outputColumnPin is null || outputGroupByPin is null)
+            return false;
+
+        RemoveConnectionsToResultOutputPin(canvas, resultOutput, "columns");
+        RemoveConnectionsToResultOutputPin(canvas, resultOutput, "column");
+        RemoveConnectionsToResultOutputPin(canvas, resultOutput, "group_by");
+        RemoveConnectionsToResultOutputPin(canvas, resultOutput, "order_by");
+        RemoveConnectionsToResultOutputPin(canvas, resultOutput, "order_by_desc");
+
+        Point aggregatePosition = new(resultOutput.Position.X - 280d, resultOutput.Position.Y - 60d);
+        NodeViewModel countNode = canvas.SpawnNode(
+            NodeDefinitionRegistry.Get(NodeType.CountStar),
+            aggregatePosition);
+        NodeViewModel aliasNode = canvas.SpawnNode(
+            NodeDefinitionRegistry.Get(NodeType.Alias),
+            new Point(aggregatePosition.X + 180d, aggregatePosition.Y));
+        aliasNode.Parameters["alias"] = "related_count";
+        aliasNode.RaiseParameterChanged("alias");
+
+        PinViewModel? countPin = countNode.OutputPins.FirstOrDefault(pin =>
+            string.Equals(pin.Name, "count", StringComparison.OrdinalIgnoreCase));
+        PinViewModel? aliasExpression = aliasNode.InputPins.FirstOrDefault(pin =>
+            string.Equals(pin.Name, "expression", StringComparison.OrdinalIgnoreCase));
+        PinViewModel? aliasResult = aliasNode.OutputPins.FirstOrDefault(pin =>
+            string.Equals(pin.Name, "result", StringComparison.OrdinalIgnoreCase));
+        PinViewModel? outputOrderByDesc = resultOutput.InputPins.FirstOrDefault(pin =>
+            string.Equals(pin.Name, "order_by_desc", StringComparison.OrdinalIgnoreCase));
+        if (countPin is null || aliasExpression is null || aliasResult is null)
+            return false;
+
+        canvas.ConnectPins(parentGroupPin, outputColumnPin);
+        canvas.ConnectPins(parentGroupPin, outputGroupByPin);
+        canvas.ConnectPins(countPin, aliasExpression);
+        canvas.ConnectPins(aliasResult, outputColumnPin);
+        if (outputOrderByDesc is not null)
+            canvas.ConnectPins(aliasResult, outputOrderByDesc);
+
+        return true;
+    }
+
+    private static void RemoveConnectionsToResultOutputPin(CanvasViewModel canvas, NodeViewModel resultOutput, string pinName)
+    {
+        foreach (ConnectionViewModel connection in canvas.Connections
+                     .Where(connection =>
+                         connection.ToPin is not null
+                         && ReferenceEquals(connection.ToPin.Owner, resultOutput)
+                         && string.Equals(connection.ToPin.Name, pinName, StringComparison.OrdinalIgnoreCase))
+                     .ToList())
+        {
+            canvas.DeleteConnection(connection);
+        }
+    }
 
     private static bool HasEquivalentJoin(
         CanvasViewModel canvas,
@@ -1691,6 +1995,9 @@ public sealed class ShellViewModel : ViewModelBase
 
         canvas.PropertyPanel.BindOpenSelectedJoinInErDiagram(OpenSelectedQueryJoinInErDiagramFromPanel);
         canvas.PropertyPanel.BindRefineAutoProjection(() => RefineAutoProjectionFromPanel(canvas));
+        canvas.PropertyPanel.BindResetAutoProjection(() => ResetAutoProjectionFromPanel(canvas));
+        canvas.PropertyPanel.BindAddSuggestedFilter(() => AddSuggestedFilterFromPanel(canvas));
+        canvas.PropertyPanel.BindApplySuggestedAggregation(() => ApplySuggestedAggregationFromPanel(canvas));
     }
 
     private void OpenSelectedQueryJoinInErDiagramFromPanel()
@@ -1725,6 +2032,28 @@ public sealed class ShellViewModel : ViewModelBase
         return true;
     }
 
+    public bool TryResetSelectedQueryAutoProjection()
+    {
+        CanvasViewModel? canvas = ActiveQueryCanvasDocument;
+        NodeViewModel? selectedNode = canvas?.PropertyPanel.SelectedNode;
+        if (canvas is null || selectedNode is null || !IsAutoProjectionResultOutput(selectedNode))
+            return false;
+
+        if (!TryResetAutoProjection(canvas, selectedNode))
+        {
+            canvas.NotifyWarning(
+                "Nao foi possivel resetar a sugestao do ER.",
+                "O contexto original da projection automatica nao esta mais disponivel.");
+            return true;
+        }
+
+        canvas.PropertyPanel.ShowNode(selectedNode);
+        canvas.NotifySuccess(
+            "Sugestao do ER restaurada.",
+            "A projection voltou para o conjunto base gerado a partir da relacao selecionada.");
+        return true;
+    }
+
     private void RefineAutoProjectionFromPanel(CanvasViewModel canvas)
     {
         NodeViewModel? selectedNode = canvas.PropertyPanel.SelectedNode;
@@ -1736,6 +2065,93 @@ public sealed class ShellViewModel : ViewModelBase
         }
 
         _ = TryRefineSelectedQueryAutoProjection();
+    }
+
+    private void ResetAutoProjectionFromPanel(CanvasViewModel canvas)
+    {
+        NodeViewModel? selectedNode = canvas.PropertyPanel.SelectedNode;
+        if (!IsAutoProjectionResultOutput(selectedNode))
+        {
+            Toasts.ShowWarning(
+                "Selecione um ResultOutput autogerado para resetar a sugestao do ER.");
+            return;
+        }
+
+        _ = TryResetSelectedQueryAutoProjection();
+    }
+
+    public bool TryAddSuggestedFilterToSelectedAutoProjection()
+    {
+        CanvasViewModel? canvas = ActiveQueryCanvasDocument;
+        NodeViewModel? selectedNode = canvas?.PropertyPanel.SelectedNode;
+        if (canvas is null || selectedNode is null || !IsAutoProjectionResultOutput(selectedNode))
+            return false;
+
+        if (!TryAddSuggestedFilter(canvas, selectedNode))
+        {
+            canvas.NotifyWarning(
+                "Nao foi possivel adicionar o filtro sugerido.",
+                HasWhereCondition(canvas, selectedNode)
+                    ? "O ResultOutput ja possui uma condicao WHERE conectada."
+                    : "Nao foi possivel resolver uma coluna adequada para o filtro.");
+            return true;
+        }
+
+        canvas.PropertyPanel.ShowNode(selectedNode);
+        canvas.NotifySuccess(
+            "Filtro sugerido adicionado.",
+            "O Query Canvas recebeu uma condicao inicial editavel baseada na tabela relacionada.");
+        return true;
+    }
+
+    private void AddSuggestedFilterFromPanel(CanvasViewModel canvas)
+    {
+        NodeViewModel? selectedNode = canvas.PropertyPanel.SelectedNode;
+        if (!IsAutoProjectionResultOutput(selectedNode))
+        {
+            Toasts.ShowWarning(
+                "Selecione um ResultOutput autogerado para adicionar o filtro sugerido.");
+            return;
+        }
+
+        _ = TryAddSuggestedFilterToSelectedAutoProjection();
+    }
+
+    public bool TryApplySuggestedAggregationToSelectedAutoProjection()
+    {
+        CanvasViewModel? canvas = ActiveQueryCanvasDocument;
+        NodeViewModel? selectedNode = canvas?.PropertyPanel.SelectedNode;
+        if (canvas is null || selectedNode is null || !IsAutoProjectionResultOutput(selectedNode))
+            return false;
+
+        if (!TryApplySuggestedAggregation(canvas, selectedNode))
+        {
+            canvas.NotifyWarning(
+                "Nao foi possivel aplicar a agregacao sugerida.",
+                HasGroupByCondition(canvas, selectedNode)
+                    ? "O ResultOutput ja possui agrupamento configurado."
+                    : "Nao foi possivel resolver uma coluna adequada para o agrupamento.");
+            return true;
+        }
+
+        canvas.PropertyPanel.ShowNode(selectedNode);
+        canvas.NotifySuccess(
+            "Agregacao sugerida aplicada.",
+            "O output foi convertido para uma visao inicial de grupo + COUNT(*) da entidade relacionada.");
+        return true;
+    }
+
+    private void ApplySuggestedAggregationFromPanel(CanvasViewModel canvas)
+    {
+        NodeViewModel? selectedNode = canvas.PropertyPanel.SelectedNode;
+        if (!IsAutoProjectionResultOutput(selectedNode))
+        {
+            Toasts.ShowWarning(
+                "Selecione um ResultOutput autogerado para aplicar a agregacao sugerida.");
+            return;
+        }
+
+        _ = TryApplySuggestedAggregationToSelectedAutoProjection();
     }
 
     private static bool TryResolveJoinSelection(
@@ -1751,8 +2167,8 @@ public sealed class ShellViewModel : ViewModelBase
             return false;
         }
 
-        NodeViewModel childTable = leftConnection.FromPin.Owner;
-        NodeViewModel parentTable = rightConnection.FromPin.Owner;
+        NodeViewModel childTable = leftConnection!.FromPin.Owner;
+        NodeViewModel parentTable = rightConnection!.FromPin.Owner;
         if (!childTable.IsTableSource || !parentTable.IsTableSource)
             return false;
 
@@ -1792,7 +2208,7 @@ public sealed class ShellViewModel : ViewModelBase
             return TryResolveJoinConditionPairsFromParameters(joinNode, childTable, parentTable, childColumns, parentColumns);
         }
 
-        NodeViewModel conditionNode = conditionConnection.FromPin.Owner;
+        NodeViewModel conditionNode = conditionConnection!.FromPin.Owner;
         if (conditionNode.Type == NodeType.Equals)
             return TryCollectEqualsPair(canvas, conditionNode, childTable, parentTable, childColumns, parentColumns);
 
@@ -1864,8 +2280,8 @@ public sealed class ShellViewModel : ViewModelBase
             return false;
         }
 
-        if (ReferenceEquals(leftConnection.FromPin.Owner, childTable)
-            && ReferenceEquals(rightConnection.FromPin.Owner, parentTable))
+        if (ReferenceEquals(leftConnection!.FromPin.Owner, childTable)
+            && ReferenceEquals(rightConnection!.FromPin.Owner, parentTable))
         {
             childColumns.Add(leftConnection.FromPin.Name);
             parentColumns.Add(rightConnection.FromPin.Name);
@@ -1873,7 +2289,7 @@ public sealed class ShellViewModel : ViewModelBase
         }
 
         if (ReferenceEquals(leftConnection.FromPin.Owner, parentTable)
-            && ReferenceEquals(rightConnection.FromPin.Owner, childTable))
+            && ReferenceEquals(rightConnection!.FromPin.Owner, childTable))
         {
             childColumns.Add(rightConnection.FromPin.Name);
             parentColumns.Add(leftConnection.FromPin.Name);

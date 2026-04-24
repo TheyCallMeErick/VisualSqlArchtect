@@ -187,6 +187,7 @@ public class SqlImportApplyStepsTests
             groupBy,
             havingClause,
             limit,
-            OuterAliases: []
+            OuterAliases: [],
+            SetOperations: []
         );
 }

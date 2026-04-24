@@ -15,15 +15,14 @@ public static class ErCanvasBuilder
     private const double VerticalGap = 40;
     private const int MaxEntitiesPerRow = 4;
     private const double ReverseLaneOffset = 48;
+    private const double ForwardLaneOffset = 24;
 
     public static ErCanvasViewModel Build(DbMetadata metadata, bool includeViews = false)
     {
         ArgumentNullException.ThrowIfNull(metadata);
 
-        var canvas = new ErCanvasViewModel
-        {
-            IncludeViews = includeViews,
-        };
+        var canvas = new ErCanvasViewModel();
+        canvas.SetIncludeViewsSilently(includeViews);
 
         IReadOnlyList<TableMetadata> eligibleTables = metadata.AllTables
             .Where(table => includeViews || table.Kind == TableKind.Table)
@@ -32,17 +31,34 @@ public static class ErCanvasBuilder
             .ToList();
 
         var entityById = new Dictionary<string, ErEntityNodeViewModel>(StringComparer.OrdinalIgnoreCase);
-        for (int index = 0; index < eligibleTables.Count; index++)
+        var entities = new List<(ErEntityNodeViewModel Entity, double Height)>();
+        foreach (TableMetadata table in eligibleTables)
         {
-            TableMetadata table = eligibleTables[index];
             ErEntityNodeViewModel entity = BuildEntity(table);
+            double entityHeight = HeaderHeight + (entity.Columns.Count * ColumnRowHeight);
+            entities.Add((entity, entityHeight));
+        }
 
+        int totalRows = (int)Math.Ceiling(entities.Count / (double)MaxEntitiesPerRow);
+        var rowMaxHeights = new double[Math.Max(1, totalRows)];
+        for (int index = 0; index < entities.Count; index++)
+        {
+            int row = index / MaxEntitiesPerRow;
+            rowMaxHeights[row] = Math.Max(rowMaxHeights[row], entities[index].Height);
+        }
+
+        var rowTop = new double[rowMaxHeights.Length];
+        for (int row = 1; row < rowTop.Length; row++)
+            rowTop[row] = rowTop[row - 1] + rowMaxHeights[row - 1] + VerticalGap;
+
+        for (int index = 0; index < entities.Count; index++)
+        {
             int col = index % MaxEntitiesPerRow;
             int row = index / MaxEntitiesPerRow;
-            double entityHeight = HeaderHeight + (entity.Columns.Count * ColumnRowHeight);
+            ErEntityNodeViewModel entity = entities[index].Entity;
 
             entity.X = col * (EntityWidth + HorizontalGap);
-            entity.Y = row * (entityHeight + VerticalGap);
+            entity.Y = rowTop[row];
 
             canvas.Entities.Add(entity);
             entityById[entity.Id] = entity;
@@ -134,10 +150,10 @@ public static class ErCanvasBuilder
 
             double childHeight = HeaderHeight + (child.Columns.Count * ColumnRowHeight);
             double parentHeight = HeaderHeight + (parent.Columns.Count * ColumnRowHeight);
-
-            edge.StartX = child.X + EntityWidth;
+            bool childIsLeftOfParent = child.X <= parent.X;
+            edge.StartX = childIsLeftOfParent ? child.X + EntityWidth : child.X;
             edge.StartY = child.Y + (childHeight / 2d);
-            edge.EndX = parent.X;
+            edge.EndX = childIsLeftOfParent ? parent.X : parent.X + EntityWidth;
             edge.EndY = parent.Y + (parentHeight / 2d);
             edge.SetRoute(BuildOrthogonalRoute(edge, child, parent, index));
         }
@@ -153,11 +169,12 @@ public static class ErCanvasBuilder
         double startY = edge.StartY;
         double endX = edge.EndX;
         double endY = edge.EndY;
-        double laneOffset = ReverseLaneOffset * ((edgeIndex % 3) + 1);
+        double laneOffset = ((edgeIndex % 3) + 1);
+        bool flowsLeftToRight = startX <= endX;
 
-        if (child.X + EntityWidth <= parent.X)
+        if (flowsLeftToRight)
         {
-            double midX = startX + ((endX - startX) / 2d);
+            double midX = startX + ((endX - startX) / 2d) + (ForwardLaneOffset * laneOffset);
             return
             [
                 new Point(startX, startY),
@@ -167,7 +184,7 @@ public static class ErCanvasBuilder
             ];
         }
 
-        double corridorX = Math.Max(child.X + EntityWidth, parent.X + EntityWidth) + laneOffset;
+        double corridorX = Math.Max(child.X + EntityWidth, parent.X + EntityWidth) + (ReverseLaneOffset * laneOffset);
         return
         [
             new Point(startX, startY),

@@ -112,6 +112,54 @@ public sealed partial class NodeControl : UserControl
                     "Nao foi possivel refinar a projection automatica deste ResultOutput.");
             };
 
+        Button? resetAutoProjection = this.FindControl<Button>("ResetAutoProjectionBtn");
+        if (resetAutoProjection is not null)
+            resetAutoProjection.Click += (_, e) =>
+            {
+                e.Handled = true;
+                if (DataContext is not NodeViewModel node || !node.IsAutoProjectionResultOutput)
+                    return;
+
+                CanvasViewModel? canvasVm = FindCanvasVm();
+                ShellViewModel? shellVm = FindShellVm();
+                if (canvasVm is null || shellVm is null)
+                    return;
+
+                canvasVm.DeselectAll();
+                canvasVm.SelectNode(node);
+                canvasVm.PropertyPanel.ShowNode(node);
+
+                if (shellVm.TryResetSelectedQueryAutoProjection())
+                    return;
+
+                shellVm.Toasts.ShowWarning(
+                    "Nao foi possivel resetar a projection automatica deste ResultOutput.");
+            };
+
+        Button? addSuggestedFilter = this.FindControl<Button>("AddSuggestedFilterBtn");
+        if (addSuggestedFilter is not null)
+            addSuggestedFilter.Click += (_, e) =>
+            {
+                e.Handled = true;
+                if (DataContext is not NodeViewModel node || !node.IsAutoProjectionResultOutput)
+                    return;
+
+                CanvasViewModel? canvasVm = FindCanvasVm();
+                ShellViewModel? shellVm = FindShellVm();
+                if (canvasVm is null || shellVm is null)
+                    return;
+
+                canvasVm.DeselectAll();
+                canvasVm.SelectNode(node);
+                canvasVm.PropertyPanel.ShowNode(node);
+
+                if (shellVm.TryAddSuggestedFilterToSelectedAutoProjection())
+                    return;
+
+                shellVm.Toasts.ShowWarning(
+                    "Nao foi possivel adicionar o filtro sugerido para este ResultOutput.");
+            };
+
         HookWindowSlotButton("AddPartitionBtn", vm => vm.AddWindowPartitionSlot());
         HookWindowSlotButton("RemovePartitionBtn", vm => vm.RemoveWindowPartitionSlot());
         HookWindowSlotButton("AddOrderBtn", vm => vm.AddWindowOrderSlot());

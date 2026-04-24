@@ -1,5 +1,6 @@
 using AkkornStudio.Ddl.SchemaAnalysis.Domain.Contracts;
 using AkkornStudio.Ddl.SchemaAnalysis.Domain.Enums;
+using AkkornStudio.Ddl.SchemaAnalysis.Application.Processing;
 using AkkornStudio.Metadata;
 using AkkornStudio.UI.Services.Localization;
 using AkkornStudio.UI.ViewModels;
@@ -441,8 +442,12 @@ public sealed class SchemaAnalysisPanelViewModelTests
                 InfoCount: issues.Count(i => i.Severity == SchemaIssueSeverity.Info),
                 WarningCount: issues.Count(i => i.Severity == SchemaIssueSeverity.Warning),
                 CriticalCount: issues.Count(i => i.Severity == SchemaIssueSeverity.Critical),
+                QuickWinCount: 0,
+                OverallScore: 0d,
                 PerRuleCount: new Dictionary<SchemaRuleCode, int>(),
-                PerTableCount: new Dictionary<string, int>()
+                PerTableCount: new Dictionary<string, int>(),
+                AreaScores: new Dictionary<string, double>(),
+                ObservedPatterns: new SchemaObservedPatterns(NamingConvention.MixedAllowed, null, null)
             )
         );
     }

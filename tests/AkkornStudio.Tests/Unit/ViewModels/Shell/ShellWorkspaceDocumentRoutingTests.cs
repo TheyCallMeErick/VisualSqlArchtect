@@ -94,6 +94,26 @@ public class ShellWorkspaceDocumentRoutingTests
     }
 
     [Fact]
+    public void ErDiagramDocument_OpenBeforeMetadata_RefreshesWhenCanvasMetadataArrives()
+    {
+        var shell = new ShellViewModel(connectionManagerViewModelFactory: global::AkkornStudio.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
+        shell.EnterCanvas();
+        shell.ActivateDocument(WorkspaceDocumentType.ErDiagram);
+        ErCanvasViewModel erCanvas = Assert.IsType<ErCanvasViewModel>(shell.ActiveErDiagramDocument);
+        Assert.Equal(0, erCanvas.EntityCount);
+
+        CanvasViewModel queryCanvas = Assert.IsType<CanvasViewModel>(
+            shell.OpenWorkspaceDocuments
+                .Single(document => document.Descriptor.DocumentType == WorkspaceDocumentType.QueryCanvas)
+                .DocumentViewModel);
+        queryCanvas.SetDatabaseContext(CreateMetadata(), null);
+
+        Assert.Equal(2, erCanvas.EntityCount);
+        Assert.Equal(1, erCanvas.EdgeCount);
+        Assert.DoesNotContain("W-ER-NO-METADATA", erCanvas.TechnicalWarnings);
+    }
+
+    [Fact]
     public void ErDiagramSelection_OpenInQuery_CreatesSimpleJoinInQueryCanvas()
     {
         var shell = new ShellViewModel(connectionManagerViewModelFactory: global::AkkornStudio.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
@@ -294,6 +314,123 @@ public class ShellWorkspaceDocumentRoutingTests
             && string.Equals(connection.ToPin?.Name, "columns", StringComparison.OrdinalIgnoreCase)
             && string.Equals(connection.FromPin.Owner.Subtitle, "public.orders", StringComparison.OrdinalIgnoreCase)
             && string.Equals(connection.FromPin.Name, "order_number", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void TryResetSelectedQueryAutoProjection_AfterRefine_RestoresBaseProjection()
+    {
+        var shell = new ShellViewModel(connectionManagerViewModelFactory: global::AkkornStudio.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
+        shell.EnterCanvas();
+        CanvasViewModel queryCanvas = Assert.IsType<CanvasViewModel>(shell.ActiveQueryCanvasDocument);
+        queryCanvas.SetDatabaseContext(CreateMetadata(), null);
+
+        shell.ActivateDocument(WorkspaceDocumentType.ErDiagram);
+        ErCanvasViewModel erCanvas = Assert.IsType<ErCanvasViewModel>(shell.ActiveErDiagramDocument);
+        ErRelationEdgeViewModel edge = Assert.Single(erCanvas.Edges);
+        erCanvas.SelectedEdge = edge;
+        erCanvas.OpenSelectionInQueryCommand.Execute(null);
+
+        NodeViewModel resultOutput = Assert.Single(queryCanvas.Nodes.Where(node => node.Type == NodeType.ResultOutput));
+        queryCanvas.DeselectAll();
+        queryCanvas.SelectNode(resultOutput);
+        Assert.True(shell.TryRefineSelectedQueryAutoProjection());
+
+        Assert.True(shell.TryResetSelectedQueryAutoProjection());
+
+        NodeViewModel columnSetBuilder = Assert.Single(queryCanvas.Nodes.Where(node => node.Type == NodeType.ColumnSetBuilder));
+        var projectionPins = queryCanvas.Connections
+            .Where(connection =>
+                ReferenceEquals(connection.ToPin?.Owner, columnSetBuilder)
+                && string.Equals(connection.ToPin?.Name, "columns", StringComparison.OrdinalIgnoreCase))
+            .Select(connection => $"{connection.FromPin.Owner.Subtitle}.{connection.FromPin.Name}")
+            .ToArray();
+
+        Assert.Contains("public.orders.id", projectionPins);
+        Assert.Contains("public.orders.customer_id", projectionPins);
+        Assert.Contains("public.customers.id", projectionPins);
+        Assert.Contains("public.customers.name", projectionPins);
+        Assert.DoesNotContain("public.orders.order_number", projectionPins);
+    }
+
+    [Fact]
+    public void TryAddSuggestedFilterToSelectedAutoProjection_CreatesEditableWhereGraph()
+    {
+        var shell = new ShellViewModel(connectionManagerViewModelFactory: global::AkkornStudio.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
+        shell.EnterCanvas();
+        CanvasViewModel queryCanvas = Assert.IsType<CanvasViewModel>(shell.ActiveQueryCanvasDocument);
+        queryCanvas.SetDatabaseContext(CreateMetadata(), null);
+
+        shell.ActivateDocument(WorkspaceDocumentType.ErDiagram);
+        ErCanvasViewModel erCanvas = Assert.IsType<ErCanvasViewModel>(shell.ActiveErDiagramDocument);
+        ErRelationEdgeViewModel edge = Assert.Single(erCanvas.Edges);
+        erCanvas.SelectedEdge = edge;
+        erCanvas.OpenSelectionInQueryCommand.Execute(null);
+
+        NodeViewModel resultOutput = Assert.Single(queryCanvas.Nodes.Where(node => node.Type == NodeType.ResultOutput));
+        queryCanvas.DeselectAll();
+        queryCanvas.SelectNode(resultOutput);
+
+        bool added = shell.TryAddSuggestedFilterToSelectedAutoProjection();
+
+        Assert.True(added);
+        NodeViewModel equalsNode = Assert.Single(queryCanvas.Nodes.Where(node => node.Type == NodeType.Equals));
+        NodeViewModel valueNode = Assert.Single(queryCanvas.Nodes.Where(node => node.Type == NodeType.ValueString));
+        Assert.Contains(queryCanvas.Connections, connection =>
+            ReferenceEquals(connection.ToPin?.Owner, resultOutput)
+            && string.Equals(connection.ToPin?.Name, "where", StringComparison.OrdinalIgnoreCase)
+            && ReferenceEquals(connection.FromPin.Owner, equalsNode));
+        Assert.Contains(queryCanvas.Connections, connection =>
+            ReferenceEquals(connection.ToPin?.Owner, equalsNode)
+            && string.Equals(connection.ToPin?.Name, "left", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(connection.FromPin.Owner.Subtitle, "public.customers", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(connection.FromPin.Name, "name", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(queryCanvas.Connections, connection =>
+            ReferenceEquals(connection.ToPin?.Owner, equalsNode)
+            && string.Equals(connection.ToPin?.Name, "right", StringComparison.OrdinalIgnoreCase)
+            && ReferenceEquals(connection.FromPin.Owner, valueNode));
+    }
+
+    [Fact]
+    public void TryApplySuggestedAggregationToSelectedAutoProjection_RewritesOutputAsGroupByCount()
+    {
+        var shell = new ShellViewModel(connectionManagerViewModelFactory: global::AkkornStudio.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
+        shell.EnterCanvas();
+        CanvasViewModel queryCanvas = Assert.IsType<CanvasViewModel>(shell.ActiveQueryCanvasDocument);
+        queryCanvas.SetDatabaseContext(CreateMetadata(), null);
+
+        shell.ActivateDocument(WorkspaceDocumentType.ErDiagram);
+        ErCanvasViewModel erCanvas = Assert.IsType<ErCanvasViewModel>(shell.ActiveErDiagramDocument);
+        ErRelationEdgeViewModel edge = Assert.Single(erCanvas.Edges);
+        erCanvas.SelectedEdge = edge;
+        erCanvas.OpenSelectionInQueryCommand.Execute(null);
+
+        NodeViewModel resultOutput = Assert.Single(queryCanvas.Nodes.Where(node => node.Type == NodeType.ResultOutput));
+        queryCanvas.DeselectAll();
+        queryCanvas.SelectNode(resultOutput);
+
+        bool applied = shell.TryApplySuggestedAggregationToSelectedAutoProjection();
+
+        Assert.True(applied);
+        NodeViewModel countNode = Assert.Single(queryCanvas.Nodes.Where(node => node.Type == NodeType.CountStar));
+        NodeViewModel aliasNode = Assert.Single(queryCanvas.Nodes.Where(node => node.Type == NodeType.Alias));
+        Assert.Equal("related_count", aliasNode.Parameters["alias"]);
+        Assert.Contains(queryCanvas.Connections, connection =>
+            ReferenceEquals(connection.ToPin?.Owner, resultOutput)
+            && string.Equals(connection.ToPin?.Name, "group_by", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(connection.FromPin.Owner.Subtitle, "public.customers", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(connection.FromPin.Name, "name", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(queryCanvas.Connections, connection =>
+            ReferenceEquals(connection.ToPin?.Owner, resultOutput)
+            && string.Equals(connection.ToPin?.Name, "column", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(connection.FromPin.Owner.Subtitle, "public.customers", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(connection.FromPin.Name, "name", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(queryCanvas.Connections, connection =>
+            ReferenceEquals(connection.ToPin?.Owner, aliasNode)
+            && string.Equals(connection.ToPin?.Name, "expression", StringComparison.OrdinalIgnoreCase)
+            && ReferenceEquals(connection.FromPin.Owner, countNode));
+        Assert.DoesNotContain(queryCanvas.Connections, connection =>
+            ReferenceEquals(connection.ToPin?.Owner, resultOutput)
+            && string.Equals(connection.ToPin?.Name, "columns", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

@@ -85,7 +85,13 @@ public class PropertyPanelJoinParameterTests
         var undo = new UndoRedoStack(canvas);
         var panel = new PropertyPanelViewModel(undo);
         bool invoked = false;
+        bool resetInvoked = false;
+        bool filterInvoked = false;
+        bool aggregationInvoked = false;
         panel.BindRefineAutoProjection(() => invoked = true);
+        panel.BindResetAutoProjection(() => resetInvoked = true);
+        panel.BindAddSuggestedFilter(() => filterInvoked = true);
+        panel.BindApplySuggestedAggregation(() => aggregationInvoked = true);
 
         var resultOutput = new NodeViewModel(NodeDefinitionRegistry.Get(NodeType.ResultOutput), new Point(0, 0));
         resultOutput.Parameters[AutoProjectionMarkerParameter] = "true";
@@ -93,11 +99,23 @@ public class PropertyPanelJoinParameterTests
 
         Assert.True(panel.IsSelectedNodeAutoProjectionResultOutput);
         Assert.True(panel.CanRefineAutoProjection);
+        Assert.True(panel.CanResetAutoProjection);
+        Assert.True(panel.CanAddSuggestedFilter);
+        Assert.True(panel.CanApplySuggestedAggregation);
         Assert.True(panel.RefineAutoProjectionCommand.CanExecute(null));
+        Assert.True(panel.ResetAutoProjectionCommand.CanExecute(null));
+        Assert.True(panel.AddSuggestedFilterCommand.CanExecute(null));
+        Assert.True(panel.ApplySuggestedAggregationCommand.CanExecute(null));
 
         panel.RefineAutoProjectionCommand.Execute(null);
+        panel.ResetAutoProjectionCommand.Execute(null);
+        panel.AddSuggestedFilterCommand.Execute(null);
+        panel.ApplySuggestedAggregationCommand.Execute(null);
 
         Assert.True(invoked);
+        Assert.True(resetInvoked);
+        Assert.True(filterInvoked);
+        Assert.True(aggregationInvoked);
     }
 
     [Fact]
@@ -113,6 +131,12 @@ public class PropertyPanelJoinParameterTests
 
         Assert.False(panel.IsSelectedNodeAutoProjectionResultOutput);
         Assert.False(panel.CanRefineAutoProjection);
+        Assert.False(panel.CanResetAutoProjection);
+        Assert.False(panel.CanAddSuggestedFilter);
+        Assert.False(panel.CanApplySuggestedAggregation);
         Assert.False(panel.RefineAutoProjectionCommand.CanExecute(null));
+        Assert.False(panel.ResetAutoProjectionCommand.CanExecute(null));
+        Assert.False(panel.AddSuggestedFilterCommand.CanExecute(null));
+        Assert.False(panel.ApplySuggestedAggregationCommand.CanExecute(null));
     }
 }
