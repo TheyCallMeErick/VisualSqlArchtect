@@ -7,6 +7,8 @@ namespace AkkornStudio.UI.Controls.ErDiagram;
 
 public sealed partial class ErEntityControl : UserControl
 {
+    private static readonly CanvasViewportGesturePolicy GesturePolicy = CanvasViewportGesturePolicy.ErCanvasDefault;
+
     public ErEntityControl()
     {
         InitializeComponent();
@@ -15,9 +17,10 @@ public sealed partial class ErEntityControl : UserControl
     private void Root_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
         PointerPointProperties pointerProperties = e.GetCurrentPoint(this).Properties;
-        bool isPanGesture = pointerProperties.IsMiddleButtonPressed
-            || pointerProperties.IsRightButtonPressed
-            || (pointerProperties.IsLeftButtonPressed && e.KeyModifiers.HasFlag(KeyModifiers.Alt));
+        bool isPanGesture = CanvasViewportGestureDecisions.IsPanGesture(
+            GesturePolicy,
+            pointerProperties,
+            e.KeyModifiers);
         if (isPanGesture)
             return;
 

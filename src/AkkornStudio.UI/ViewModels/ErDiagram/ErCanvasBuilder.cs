@@ -39,26 +39,18 @@ public static class ErCanvasBuilder
             entities.Add((entity, entityHeight));
         }
 
-        int totalRows = (int)Math.Ceiling(entities.Count / (double)MaxEntitiesPerRow);
-        var rowMaxHeights = new double[Math.Max(1, totalRows)];
-        for (int index = 0; index < entities.Count; index++)
-        {
-            int row = index / MaxEntitiesPerRow;
-            rowMaxHeights[row] = Math.Max(rowMaxHeights[row], entities[index].Height);
-        }
-
-        var rowTop = new double[rowMaxHeights.Length];
-        for (int row = 1; row < rowTop.Length; row++)
-            rowTop[row] = rowTop[row - 1] + rowMaxHeights[row - 1] + VerticalGap;
+        int columnCount = Math.Max(1, MaxEntitiesPerRow);
+        var columnBottom = new double[columnCount];
 
         for (int index = 0; index < entities.Count; index++)
         {
-            int col = index % MaxEntitiesPerRow;
-            int row = index / MaxEntitiesPerRow;
+            int col = GetShortestColumnIndex(columnBottom);
             ErEntityNodeViewModel entity = entities[index].Entity;
+            double entityHeight = entities[index].Height;
 
             entity.X = col * (EntityWidth + HorizontalGap);
-            entity.Y = rowTop[row];
+            entity.Y = columnBottom[col];
+            columnBottom[col] += entityHeight + VerticalGap;
 
             canvas.Entities.Add(entity);
             entityById[entity.Id] = entity;
@@ -192,5 +184,21 @@ public static class ErCanvasBuilder
             new Point(corridorX, endY),
             new Point(endX, endY),
         ];
+    }
+
+    private static int GetShortestColumnIndex(IReadOnlyList<double> columnBottom)
+    {
+        int bestIndex = 0;
+        double bestValue = columnBottom[0];
+        for (int index = 1; index < columnBottom.Count; index++)
+        {
+            if (columnBottom[index] >= bestValue)
+                continue;
+
+            bestValue = columnBottom[index];
+            bestIndex = index;
+        }
+
+        return bestIndex;
     }
 }

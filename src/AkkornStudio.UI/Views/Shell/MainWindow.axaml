@@ -827,19 +827,13 @@
               MaxWidth="1180"
               MinWidth="900"
               MinHeight="620"
-              Background="{StaticResource Bg1Brush}"
-              BorderBrush="{StaticResource BorderSubtleBrush}"
-              BorderThickness="1"
-              CornerRadius="{StaticResource RadiusXL}"
+              Classes="surface-floating"
               Padding="0"
-              BoxShadow="{StaticResource PanelShadow}"
               ClipToBounds="True"
               PointerPressed="SettingsDialog_PointerPressed">
         <Grid ColumnDefinitions="280,*">
           <Border Grid.Column="0"
-                  Background="{StaticResource Bg2Brush}"
-                  BorderBrush="{StaticResource BorderSubtleBrush}"
-                  BorderThickness="0,0,1,0"
+                  Classes="surface-card"
                   Padding="18">
             <StackPanel Spacing="12">
               <TextBlock Text="{Binding [settings.section.default.title], Source={x:Static loc:LocalizationService.Instance}}"
@@ -847,10 +841,7 @@
                          FontWeight="{StaticResource FontWeightDisplay}"
                          Foreground="{StaticResource TextPrimaryBrush}"/>
 
-              <Border Background="{StaticResource Bg3Brush}"
-                      BorderBrush="{StaticResource BorderSubtleBrush}"
-                      BorderThickness="1"
-                      CornerRadius="{StaticResource RadiusMD}"
+              <Border Classes="surface-card"
                       Padding="10,8">
                 <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
                   <mi:MaterialIcon Grid.Column="0" Kind="CogOutline" Width="14" Height="14" Foreground="{StaticResource AccentPrimaryHoverBrush}"/>
@@ -884,9 +875,12 @@
             </StackPanel>
           </Border>
 
-          <Border Grid.Column="1" Padding="18">
+          <Border Grid.Column="1" Classes="surface-floating" Padding="18">
           <Grid RowDefinitions="Auto,*">
-            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+            <Grid Grid.Row="0"
+                  Classes="surface-floating-header"
+                  ColumnDefinitions="*,Auto"
+                  Margin="0,0,0,8">
               <StackPanel Grid.Column="0" Spacing="2">
                 <TextBlock Text="{Binding SettingsSectionTitle}"
                            FontSize="{StaticResource FontSizeHeading}"
@@ -902,12 +896,10 @@
                            Foreground="{StaticResource TextMutedBrush}"
                            VerticalAlignment="Center"/>
                 <Button Name="SettingsCloseBtn"
-                        Click="SettingsCloseBtn_Click"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        Foreground="{StaticResource TextSecondaryBrush}"
-                        Padding="4"
-                        Content="✕"/>
+                        Classes="icon-ghost"
+                        Click="SettingsCloseBtn_Click">
+                  <mi:MaterialIcon Kind="Close" Width="14" Height="14"/>
+                </Button>
               </StackPanel>
             </Grid>
 
@@ -920,31 +912,27 @@
                              FontWeight="{StaticResource FontWeightTitle}"
                              Foreground="{StaticResource TextPrimaryBrush}"/>
                   <Grid ColumnDefinitions="*,*,*">
-                    <Border Grid.Column="0" Background="{StaticResource Bg3Brush}" BorderBrush="{StaticResource BorderFocusBrush}" BorderThickness="1" CornerRadius="{StaticResource RadiusLG}" Padding="10">
+                    <Border Grid.Column="0" Classes="surface-card accented" Padding="10">
                       <StackPanel Spacing="8">
                         <Border Height="64" CornerRadius="{StaticResource RadiusSM}" Background="{StaticResource BtnPrimaryFgBrush}"/>
                         <Button Content="{Binding [settings.theme.light], Source={x:Static loc:LocalizationService.Instance}}"
-                                Classes="secondary"
+                                Classes="secondary compact"
                                 Click="SettingsThemeLightBtn_Click"
-                                HorizontalAlignment="Stretch"
-                                Padding="10,6"
-                                CornerRadius="{StaticResource RadiusSM}"/>
+                                HorizontalAlignment="Stretch"/>
                       </StackPanel>
                     </Border>
 
-                    <Border Grid.Column="1" Margin="10,0,0,0" Background="{StaticResource Bg1Brush}" BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1" CornerRadius="{StaticResource RadiusLG}" Padding="10">
+                    <Border Grid.Column="1" Margin="10,0,0,0" Classes="surface-card" Padding="10">
                       <StackPanel Spacing="8">
                         <Border Height="64" CornerRadius="{StaticResource RadiusSM}" Background="{StaticResource Bg2Brush}"/>
                         <Button Content="{Binding [settings.theme.dark], Source={x:Static loc:LocalizationService.Instance}}"
-                                Classes="secondary"
+                                Classes="secondary compact"
                                 Click="SettingsThemeDarkBtn_Click"
-                                HorizontalAlignment="Stretch"
-                                Padding="10,6"
-                                CornerRadius="{StaticResource RadiusSM}"/>
+                                HorizontalAlignment="Stretch"/>
                       </StackPanel>
                     </Border>
 
-                    <Border Grid.Column="2" Margin="10,0,0,0" Background="{StaticResource Bg1Brush}" BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1" CornerRadius="{StaticResource RadiusLG}" Padding="10">
+                    <Border Grid.Column="2" Margin="10,0,0,0" Classes="surface-card" Padding="10">
                       <StackPanel Spacing="8">
                         <Border Height="64" CornerRadius="{StaticResource RadiusSM}" Background="{StaticResource Bg3Brush}"/>
                         <TextBlock Text="{Binding [settings.theme.system], Source={x:Static loc:LocalizationService.Instance}}"
@@ -970,11 +958,9 @@
                                  Foreground="{StaticResource TextSecondaryBrush}"/>
                     </StackPanel>
                     <Button Grid.Column="1"
-                            Classes="secondary"
+                            Classes="secondary compact"
                             Click="SettingsToggleSnapBtn_Click"
-                            ToolTip.Tip="{Binding [tooltip.snapToGrid], Source={x:Static loc:LocalizationService.Instance}}"
-                            Padding="10,6"
-                            CornerRadius="{StaticResource RadiusSM}">
+                            ToolTip.Tip="{Binding [tooltip.snapToGrid], Source={x:Static loc:LocalizationService.Instance}}">
                       <StackPanel Orientation="Horizontal" Spacing="6">
                         <mi:MaterialIcon Kind="GridLarge" Width="14" Height="14"/>
                         <TextBlock Text="{Binding Canvas.SnapToGridLabel, FallbackValue=Snap OFF}"/>
@@ -986,10 +972,7 @@
                 <Border Height="1" Background="{StaticResource BorderSubtleBrush}" IsVisible="{Binding IsAppearanceSectionSelected}"/>
 
                 <StackPanel Spacing="12" IsVisible="{Binding IsEditorSectionSelected}">
-                  <Border Background="{StaticResource Bg2Brush}"
-                          BorderBrush="{StaticResource BorderSubtleBrush}"
-                          BorderThickness="1"
-                          CornerRadius="{StaticResource RadiusMD}"
+                  <Border Classes="surface-card"
                           Padding="12">
                     <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
                       <StackPanel Grid.Column="0" Spacing="2">
@@ -1010,10 +993,7 @@
                     </Grid>
                   </Border>
 
-                  <Border Background="{StaticResource Bg2Brush}"
-                          BorderBrush="{StaticResource BorderSubtleBrush}"
-                          BorderThickness="1"
-                          CornerRadius="{StaticResource RadiusMD}"
+                  <Border Classes="surface-card"
                           Padding="12">
                     <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
                       <StackPanel Grid.Column="0" Spacing="2">
@@ -1050,7 +1030,7 @@
                     </StackPanel>
                     <ComboBox Grid.Column="1"
                               x:Name="SettingsLanguageCombo"
-                              Classes="param-combo"
+                              Classes="field"
                               Width="220"
                               SelectionChanged="SettingsLanguageCombo_SelectionChanged">
                       <ComboBoxItem Tag="pt-BR" Content="{Binding [settings.language.option.ptBR], Source={x:Static loc:LocalizationService.Instance}}"/>
@@ -1075,6 +1055,7 @@
                              Foreground="{StaticResource TextSecondaryBrush}"/>
 
                   <TextBox x:Name="SettingsThemeJsonTextBox"
+                           Classes="field"
                            AcceptsReturn="True"
                            TextWrapping="Wrap"
                            FontFamily="{StaticResource MonoFont}"
@@ -1085,17 +1066,13 @@
                   <Grid ColumnDefinitions="Auto,Auto,*,Auto" VerticalAlignment="Center">
                     <Button Grid.Column="0"
                             Content="{Binding [settings.themeJson.apply], Source={x:Static loc:LocalizationService.Instance}}"
-                            Classes="info"
-                            Click="SettingsApplyThemeJsonBtn_Click"
-                            Padding="10,6"
-                            CornerRadius="{StaticResource RadiusSM}"/>
+                            Classes="info compact"
+                            Click="SettingsApplyThemeJsonBtn_Click"/>
                     <Button Grid.Column="1"
                             Margin="8,0,0,0"
                             Content="{Binding [settings.themeJson.restoreDefault], Source={x:Static loc:LocalizationService.Instance}}"
-                            Classes="secondary"
-                            Click="SettingsRestoreDefaultThemeBtn_Click"
-                            Padding="10,6"
-                            CornerRadius="{StaticResource RadiusSM}"/>
+                            Classes="secondary compact"
+                            Click="SettingsRestoreDefaultThemeBtn_Click"/>
                     <TextBlock Grid.Column="2"
                                x:Name="SettingsThemeStatusText"
                                Margin="8,0,0,0"
@@ -1106,10 +1083,8 @@
                     <Button Grid.Column="3"
                             Margin="8,0,0,0"
                             Content="{Binding [common.close], Source={x:Static loc:LocalizationService.Instance}}"
-                            Classes="secondary"
-                            Click="SettingsCloseBtn_Click"
-                            Padding="10,6"
-                            CornerRadius="{StaticResource RadiusSM}"/>
+                            Classes="secondary compact"
+                            Click="SettingsCloseBtn_Click"/>
                   </Grid>
                 </StackPanel>
 
@@ -1129,10 +1104,7 @@
                   <TextBlock Text="{Binding [settings.section.keyboard.subtitle], Source={x:Static loc:LocalizationService.Instance}, FallbackValue=Customize keyboard shortcuts used by command palette and canvas execution.}"
                              FontSize="{StaticResource FontSizeCaption}"
                              Foreground="{StaticResource TextSecondaryBrush}"/>
-                  <Border Background="{StaticResource Bg2Brush}"
-                          BorderBrush="{StaticResource BorderSubtleBrush}"
-                          BorderThickness="1"
-                          CornerRadius="{StaticResource RadiusMD}"
+                  <Border Classes="surface-card"
                           Padding="10"
                           MinHeight="280">
                     <ContentControl x:Name="SettingsKeyboardShortcutsHost"/>
@@ -1180,3 +1152,7 @@
     </Border>
     </Grid>
 </Window>
+
+
+
+

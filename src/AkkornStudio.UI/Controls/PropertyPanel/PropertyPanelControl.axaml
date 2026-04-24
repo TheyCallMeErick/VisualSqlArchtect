@@ -32,9 +32,7 @@
 
       <!-- ── Panel header ──────────────────────────────────────────────────── -->
       <Border Grid.Row="0"
-              Background="{StaticResource Bg1Brush}"
-              BorderBrush="{StaticResource BorderSubtleBrush}"
-              BorderThickness="0,0,0,1">
+              Classes="surface-panel">
         <StackPanel Orientation="Horizontal" Spacing="0">
           <Button Classes="panel-tab"
                   Classes.active="{Binding ShowPropertiesTab}"
@@ -430,10 +428,7 @@
         <Border Grid.Row="1"
                 Margin="12,44,12,0"
                 Padding="10"
-                Background="{StaticResource Bg0Brush}"
-                BorderBrush="{StaticResource BorderBrush}"
-                BorderThickness="1"
-                CornerRadius="{StaticResource RadiusSM}"
+                Classes="callout-subtle"
                 IsVisible="{Binding HasSelectedWire}">
           <StackPanel Spacing="6">
             <TextBlock Classes="section-label" Text="Selected wire"/>
@@ -491,10 +486,7 @@
                       SelectedItem="{Binding SelectedWireCurveMode, Mode=TwoWay}"/>
           </StackPanel>
 
-          <Border Background="{StaticResource CanvasBgBrush}"
-                  BorderBrush="{StaticResource BorderBrush}"
-                  BorderThickness="1"
-                  CornerRadius="{StaticResource RadiusSM}"
+          <Border Classes="callout-subtle"
                   Padding="8,7">
             <TextBlock Text="{Binding [property.namingSettingsHint], Source={x:Static loc:LocalizationService.Instance}}"
                        FontSize="{StaticResource FontSizeCaption}"

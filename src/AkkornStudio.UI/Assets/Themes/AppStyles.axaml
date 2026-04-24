@@ -85,6 +85,32 @@
     <Setter Property="BoxShadow" Value="{StaticResource ShadowSM}"/>
   </Style>
 
+  <Style Selector="Border.surface-floating">
+    <Setter Property="Background" Value="{StaticResource Bg1Brush}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource BorderSubtleBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusLG}"/>
+    <Setter Property="BoxShadow" Value="{StaticResource ShadowXL}"/>
+  </Style>
+
+  <Style Selector="Border.surface-floating.accented">
+    <Setter Property="BorderBrush" Value="{StaticResource BorderActiveBrush}"/>
+  </Style>
+
+  <Style Selector="Border.surface-floating-header">
+    <Setter Property="Background" Value="{StaticResource Bg2Brush}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource BorderSubtleBrush}"/>
+    <Setter Property="BorderThickness" Value="0,0,0,1"/>
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusLGTop}"/>
+  </Style>
+
+  <Style Selector="Border.surface-floating-footer">
+    <Setter Property="Background" Value="{StaticResource Bg1Brush}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource BorderSubtleBrush}"/>
+    <Setter Property="BorderThickness" Value="0,1,0,0"/>
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusLGBottom}"/>
+  </Style>
+
   <Style Selector="Border.surface-card">
     <Setter Property="Background" Value="{StaticResource Bg2Brush}"/>
     <Setter Property="BorderBrush" Value="{StaticResource BorderSubtleBrush}"/>
@@ -133,6 +159,31 @@
   <Style Selector="Border.badge.danger">
     <Setter Property="Background" Value="{StaticResource BtnDangerBgBrush}"/>
     <Setter Property="BorderBrush" Value="{StaticResource StatusErrorBrush}"/>
+  </Style>
+
+  <Style Selector="Border.kbd-chip">
+    <Setter Property="Background" Value="{StaticResource Bg3Brush}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource BorderSubtleBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusXS}"/>
+    <Setter Property="Padding" Value="4,1"/>
+  </Style>
+
+  <Style Selector="Border.list-row">
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusSM}"/>
+    <Setter Property="Padding" Value="8,5"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.08"/>
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Border.list-row:pointerover">
+    <Setter Property="Background" Value="{StaticResource Bg3Brush}"/>
+  </Style>
+  <Style Selector="Border.list-row.selected">
+    <Setter Property="Background" Value="{StaticResource PanelActiveBrush}"/>
   </Style>
 
   <Style Selector="TextBlock.section-label">

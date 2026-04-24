@@ -48,15 +48,6 @@
       <Setter Property="FontSize" Value="{StaticResource FontSizeCaption}"/>
       <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}"/>
     </Style>
-    <Style Selector="Button.icon-ghost">
-      <Setter Property="Background" Value="{StaticResource Bg2Brush}"/>
-      <Setter Property="BorderBrush" Value="{StaticResource BorderSubtleBrush}"/>
-      <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="CornerRadius" Value="{StaticResource RadiusSM}"/>
-      <Setter Property="Padding" Value="6,2"/>
-      <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
-      <Setter Property="Cursor" Value="Hand"/>
-    </Style>
     <Style Selector="Button.tips-pill">
       <Setter Property="Background" Value="{StaticResource Bg2Brush}"/>
       <Setter Property="BorderBrush" Value="{StaticResource AccentPrimaryBrush}"/>
@@ -251,7 +242,6 @@
             </ToolTip.Tip>
           </Button>
           <Button Classes="icon-ghost"
-                  Padding="7,4"
                   ToolTip.Tip="{Binding [menu.settings], Source={x:Static loc:LocalizationService.Instance}}"
                   VerticalAlignment="Center"
                   Command="{Binding OpenSettingsCommand}">
@@ -280,6 +270,7 @@
           <TextBlock Classes="h2" Text="{Binding [start.recentProjectsTitle], Source={x:Static loc:LocalizationService.Instance}}"/>
 
           <TextBox Grid.Row="1"
+                   Classes="field"
                    Margin="{StaticResource StartMarginInnerTop}"
                    Text="{Binding RecentSearchQuery}"
                    Watermark="{Binding [start.searchRecent], Source={x:Static loc:LocalizationService.Instance}}"

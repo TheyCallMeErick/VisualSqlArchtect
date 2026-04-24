@@ -131,17 +131,11 @@
                  Margin="2,8,0,8"/>
 
       <Border Grid.Row="1"
-              Background="{StaticResource Bg1Brush}"
-              BorderBrush="{StaticResource BorderSubtleBrush}"
-              BorderThickness="1"
-              CornerRadius="{StaticResource RadiusLG}"
+              Classes="surface-card"
               Padding="10"
               Margin="0,0,0,8">
         <Grid ColumnDefinitions="*,Auto">
-          <Border Background="{StaticResource Bg2Brush}"
-                  BorderBrush="{StaticResource BorderSubtleBrush}"
-                  BorderThickness="1"
-                  CornerRadius="{StaticResource RadiusSM}"
+          <Border Classes="surface-card"
                   Padding="10,8">
             <DockPanel>
               <mi:MaterialIcon DockPanel.Dock="Left"
@@ -165,11 +159,9 @@
           </Border>
 
           <Button Grid.Column="1"
-                  Classes="secondary"
+                  Classes="secondary compact"
                   Command="{Binding ReloadMetadataCommand}"
-                  Padding="8"
               Margin="8,0,0,0"
-                  CornerRadius="{StaticResource RadiusSM}"
                   ToolTip.Tip="Recarregar metadados">
             <mi:MaterialIcon Kind="Refresh"
                      Width="16"
@@ -179,10 +171,7 @@
       </Border>
 
       <Border Grid.Row="2"
-              Background="{StaticResource Bg1Brush}"
-              BorderBrush="{StaticResource BorderSubtleBrush}"
-              BorderThickness="1"
-              CornerRadius="{StaticResource RadiusLG}"
+              Classes="surface-card"
               ClipToBounds="True"
               VerticalAlignment="Stretch">
         <ctrl:SchemaControl Margin="0"

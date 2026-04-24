@@ -42,6 +42,7 @@ public sealed partial class InfiniteCanvas : Panel
     private readonly CanvasControl _overlayRoot = new() { Background = Brushes.Transparent, IsHitTestVisible = false };
     private readonly BezierWireLayer _wires = new();
     private readonly CanvasViewportController _viewportController = new();
+    private readonly CanvasViewportGesturePolicy _gesturePolicy = CanvasViewportGesturePolicy.InfiniteCanvasDefault;
     private DotGridBackground _grid => _surface.GridBackground;
     private CanvasControl _scene => _sceneRoot;
     private CanvasControl _overlay => _overlayRoot;

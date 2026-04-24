@@ -28,61 +28,17 @@
       <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}"/>
       <Setter Property="Margin"     Value="0,0,0,4"/>
     </Style>
-    <!-- Form input fields -->
-    <Style Selector="TextBox.field">
-      <Setter Property="Background"      Value="{StaticResource Bg0Brush}"/>
-      <Setter Property="BorderBrush"     Value="{StaticResource BorderSubtleBrush}"/>
-      <Setter Property="Foreground"      Value="{StaticResource TextSecondaryBrush}"/>
-      <Setter Property="FontSize"        Value="{StaticResource FontSizeBody}"/>
-      <Setter Property="Padding"         Value="8,6"/>
-      <Setter Property="CornerRadius"    Value="{StaticResource RadiusSM}"/>
-      <Setter Property="BorderThickness" Value="1"/>
-    </Style>
-    <!-- Button variants -->
-    <Style Selector="Button.primary">
-      <Setter Property="Background"      Value="{StaticResource AccentPrimaryBrush}"/>
-      <Setter Property="Foreground"      Value="{StaticResource BtnPrimaryFgBrush}"/>
-      <Setter Property="Padding"         Value="12,7"/>
-      <Setter Property="CornerRadius"    Value="{StaticResource RadiusSM}"/>
-      <Setter Property="FontSize"        Value="{StaticResource FontSizeBody}"/>
-      <Setter Property="BorderThickness" Value="0"/>
-      <Setter Property="Cursor"          Value="Hand"/>
-    </Style>
-    <Style Selector="Button.secondary">
-      <Setter Property="Background"      Value="{StaticResource Bg2Brush}"/>
-      <Setter Property="Foreground"      Value="{StaticResource TextSecondaryBrush}"/>
-      <Setter Property="Padding"         Value="12,7"/>
-      <Setter Property="CornerRadius"    Value="{StaticResource RadiusSM}"/>
-      <Setter Property="FontSize"        Value="{StaticResource FontSizeBody}"/>
-      <Setter Property="BorderBrush"     Value="{StaticResource BorderSubtleBrush}"/>
-      <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="Cursor"          Value="Hand"/>
-    </Style>
-    <Style Selector="Button.danger">
-      <Setter Property="Background"      Value="Transparent"/>
-      <Setter Property="Foreground"      Value="{StaticResource StatusErrorBrush}"/>
-      <Setter Property="Padding"         Value="8,7"/>
-      <Setter Property="CornerRadius"    Value="{StaticResource RadiusSM}"/>
-      <Setter Property="FontSize"        Value="{StaticResource FontSizeBody}"/>
-      <Setter Property="BorderBrush"     Value="{StaticResource StatusErrorBrush}"/>
-      <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="Cursor"          Value="Hand"/>
-    </Style>
   </UserControl.Styles>
 
   <!-- ══ Connection Manager overlay card ══════════════════════════════════════ -->
     <Border Width="780"
       MaxHeight="560"
-      CornerRadius="{StaticResource RadiusLG}"
-      Background="{StaticResource Bg1Brush}"
-      BorderBrush="{StaticResource BorderBrush}"
-          BorderThickness="1"
-          BoxShadow="{StaticResource ShadowXL}">
+      Classes="surface-floating">
 
     <Grid RowDefinitions="Auto,Auto,*">
 
       <!-- Header -->
-      <Border Grid.Row="0" BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="0,0,0,1" Padding="20,14">
+      <Border Grid.Row="0" Classes="surface-floating-header" Padding="20,14">
         <Grid ColumnDefinitions="Auto,*,Auto">
           <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
             <Border Width="30" Height="30" CornerRadius="{StaticResource RadiusSM}"
@@ -100,9 +56,7 @@
             </StackPanel>
           </StackPanel>
 
-          <Button Grid.Column="2" Classes="secondary" Command="{Binding CloseCommand}"
-                  Width="28" Height="28" Padding="0"
-                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+          <Button Grid.Column="2" Classes="icon-ghost" Command="{Binding CloseCommand}"
               ToolTip.Tip="{Binding [tooltip.closeEsc], Source={x:Static loc:LocalizationService.Instance}}"
                   AutomationProperties.Name="{Binding [connection.close], Source={x:Static loc:LocalizationService.Instance}}">
             <mi:MaterialIcon Kind="Close" Width="14" Height="14"/>
@@ -223,11 +177,10 @@
 
               <!-- Provider -->
               <TextBlock Classes="label" Text="{Binding [connection.provider], Source={x:Static loc:LocalizationService.Instance}}"/>
-              <Border Background="{StaticResource Bg1Brush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="{StaticResource RadiusSM}" Padding="8" Margin="0,0,0,12">
-                <ComboBox ItemsSource="{x:Static vm:ConnectionManagerViewModel.AvailableProviderOptions}"
+              <Border Classes="surface-card" Padding="8" Margin="0,0,0,12">
+                <ComboBox Classes="field"
+                          ItemsSource="{x:Static vm:ConnectionManagerViewModel.AvailableProviderOptions}"
                           SelectedItem="{Binding SelectedProviderOption}"
-                          Background="{StaticResource Bg0Brush}" BorderBrush="{StaticResource AccentPrimaryBrush}" Foreground="{StaticResource TextSecondaryBrush}"
-                          FontSize="{StaticResource FontSizeBody}" Padding="10,6" CornerRadius="{StaticResource RadiusSM}"
                           HorizontalAlignment="Stretch"
                           MaxDropDownHeight="220">
                   <ComboBox.ItemTemplate>

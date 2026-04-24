@@ -160,11 +160,11 @@ public sealed partial class InfiniteCanvas
         Point screen = e.GetPosition(this);
 
         if (_dragBreakpointWire is null
-            && (
-                props.IsMiddleButtonPressed
-                || (props.IsLeftButtonPressed && _isSpacePanArmed)
-                || (props.IsLeftButtonPressed && e.KeyModifiers.HasFlag(KeyModifiers.Alt))
-            ))
+            && CanvasViewportGestureDecisions.IsPanGesture(
+                _gesturePolicy,
+                props,
+                e.KeyModifiers,
+                _isSpacePanArmed))
         {
             ClearHoverHighlights();
             Log($">>> PAN STARTED: Screen={screen}, PanOffset={_panOffset}, Zoom={_zoom}");

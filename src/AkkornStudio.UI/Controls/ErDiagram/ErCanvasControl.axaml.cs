@@ -10,11 +10,10 @@ namespace AkkornStudio.UI.Controls.ErDiagram;
 
 public sealed partial class ErCanvasControl : UserControl
 {
-    private readonly CanvasViewportController _viewportController = new();
+    private readonly CanvasViewportInteractionHost _interactionHost =
+        new(CanvasViewportGesturePolicy.ErCanvasDefault);
+    private readonly CanvasViewportGesturePolicy _gesturePolicy = CanvasViewportGesturePolicy.ErCanvasDefault;
     private ErCanvasViewModel? _observedCanvas;
-    private bool _isMarqueeSelecting;
-    private Point _marqueeStartCanvas;
-    private Point _marqueeCurrentCanvas;
 
     public ErCanvasControl()
     {
@@ -29,9 +28,10 @@ public sealed partial class ErCanvasControl : UserControl
             return;
 
         PointerPointProperties pointerProperties = e.GetCurrentPoint(this).Properties;
-        bool isPanGesture = pointerProperties.IsMiddleButtonPressed
-            || pointerProperties.IsRightButtonPressed
-            || (pointerProperties.IsLeftButtonPressed && e.KeyModifiers.HasFlag(KeyModifiers.Alt));
+        bool isPanGesture = CanvasViewportGestureDecisions.IsPanGesture(
+            _gesturePolicy,
+            pointerProperties,
+            e.KeyModifiers);
         if (isPanGesture)
             return;
 
@@ -48,17 +48,14 @@ public sealed partial class ErCanvasControl : UserControl
             return;
 
         PointerPointProperties pointerProperties = e.GetCurrentPoint(this).Properties;
-        bool isPanGesture = pointerProperties.IsMiddleButtonPressed
-            || pointerProperties.IsRightButtonPressed
-            || (pointerProperties.IsLeftButtonPressed && e.KeyModifiers.HasFlag(KeyModifiers.Alt));
+        bool isPanGesture = CanvasViewportGestureDecisions.IsPanGesture(
+            _gesturePolicy,
+            pointerProperties,
+            e.KeyModifiers);
         if (isPanGesture)
             return;
 
-        if (DataContext is not ErCanvasViewModel canvas)
-            return;
-
-        canvas.ClearSelection();
-        e.Handled = true;
+        // Deixa o evento subir para o ViewportSurface decidir entre pan/marquee.
     }
 
     private void OnDataContextChanged(object? sender, EventArgs e)
@@ -123,9 +120,8 @@ public sealed partial class ErCanvasControl : UserControl
         if (_observedCanvas is null || sender is not CanvasViewportSurface viewportSurface)
             return;
 
-        _viewportController.ZoomAtPointer(_observedCanvas, viewportSurface, e);
+        _interactionHost.HandlePointerWheel(_observedCanvas, viewportSurface, e);
         viewportSurface.SyncViewport();
-        e.Handled = true;
     }
 
     private void Viewport_PointerPressed(object? sender, PointerPressedEventArgs e)
@@ -134,27 +130,12 @@ public sealed partial class ErCanvasControl : UserControl
             return;
 
         PointerPointProperties props = e.GetCurrentPoint(viewportSurface).Properties;
-        bool isPanGesture = props.IsMiddleButtonPressed
-            || props.IsRightButtonPressed
-            || (props.IsLeftButtonPressed && e.KeyModifiers.HasFlag(KeyModifiers.Alt));
-
-        if (!isPanGesture)
-        {
-            if (!props.IsLeftButtonPressed)
-                return;
-
-            Point screen = e.GetPosition(viewportSurface);
-            _marqueeStartCanvas = _viewportController.ScreenToCanvas(_observedCanvas, screen);
-            _marqueeCurrentCanvas = _marqueeStartCanvas;
-            _isMarqueeSelecting = true;
-            UpdateMarqueeVisual();
-            e.Pointer.Capture(viewportSurface);
-            e.Handled = true;
+        bool isPanGesture = CanvasViewportGestureDecisions.IsPanGesture(_gesturePolicy, props, e.KeyModifiers);
+        if (!isPanGesture && !props.IsLeftButtonPressed)
             return;
-        }
 
-        _viewportController.BeginPan(viewportSurface, e.Pointer, e.GetPosition(viewportSurface));
-        e.Handled = true;
+        if (_interactionHost.HandlePointerPressed(_observedCanvas, viewportSurface, e))
+            UpdateMarqueeVisual();
     }
 
     private void Viewport_PointerMoved(object? sender, PointerEventArgs e)
@@ -162,12 +143,11 @@ public sealed partial class ErCanvasControl : UserControl
         if (_observedCanvas is null || sender is not CanvasViewportSurface viewportSurface)
             return;
 
-        if (!_viewportController.TryPan(_observedCanvas, viewportSurface, e))
-        {
-            if (!_isMarqueeSelecting)
-                return;
+        if (!_interactionHost.HandlePointerMoved(_observedCanvas, viewportSurface, e, out bool marqueeChanged))
+            return;
 
-            _marqueeCurrentCanvas = _viewportController.ScreenToCanvas(_observedCanvas, e.GetPosition(viewportSurface));
+        if (marqueeChanged)
+        {
             UpdateMarqueeVisual();
             return;
         }
@@ -177,18 +157,19 @@ public sealed partial class ErCanvasControl : UserControl
 
     private void Viewport_PointerReleased(object? sender, PointerReleasedEventArgs e)
     {
-        if (_viewportController.EndPan(e))
+        CanvasViewportPointerReleaseKind releaseKind = _interactionHost.HandlePointerReleased(e);
+        if (releaseKind == CanvasViewportPointerReleaseKind.PanEnded)
             return;
 
-        if (!_isMarqueeSelecting || _observedCanvas is null || sender is not CanvasViewportSurface viewportSurface)
+        if (releaseKind != CanvasViewportPointerReleaseKind.MarqueeCompleted
+            || _observedCanvas is null
+            || sender is not CanvasViewportSurface viewportSurface)
             return;
 
-        _isMarqueeSelecting = false;
-        Rect region = CreateCanvasRegion(_marqueeStartCanvas, _marqueeCurrentCanvas);
+        Rect region = _interactionHost.MarqueeCanvasRegion;
         CanvasMarqueeAdorner? marquee = this.FindControl<CanvasMarqueeAdorner>("SelectionMarquee");
         if (marquee is not null)
             marquee.SelectionRect = default;
-        e.Pointer.Capture(null);
 
         if (region.Width < 8 || region.Height < 8)
         {
@@ -245,7 +226,7 @@ public sealed partial class ErCanvasControl : UserControl
     private void UpdateMarqueeVisual()
     {
         CanvasMarqueeAdorner? marquee = this.FindControl<CanvasMarqueeAdorner>("SelectionMarquee");
-        if (marquee is null || _observedCanvas is null || !_isMarqueeSelecting)
+        if (marquee is null || _observedCanvas is null || !_interactionHost.IsMarqueeSelecting)
         {
             if (marquee is not null)
                 marquee.SelectionRect = default;
@@ -253,18 +234,11 @@ public sealed partial class ErCanvasControl : UserControl
             return;
         }
 
-        Rect region = CreateCanvasRegion(_marqueeStartCanvas, _marqueeCurrentCanvas);
+        Rect region = _interactionHost.MarqueeCanvasRegion;
         marquee.SelectionRect = new Rect(
             region.X * _observedCanvas.Zoom + _observedCanvas.PanOffset.X,
             region.Y * _observedCanvas.Zoom + _observedCanvas.PanOffset.Y,
             region.Width * _observedCanvas.Zoom,
             region.Height * _observedCanvas.Zoom);
     }
-
-    private static Rect CreateCanvasRegion(Point start, Point end) =>
-        new(
-            Math.Min(start.X, end.X),
-            Math.Min(start.Y, end.Y),
-            Math.Abs(end.X - start.X),
-            Math.Abs(end.Y - start.Y));
 }

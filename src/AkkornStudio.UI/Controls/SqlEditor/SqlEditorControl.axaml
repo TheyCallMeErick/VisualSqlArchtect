@@ -15,23 +15,9 @@
       <Setter Property="Foreground" Value="{StaticResource StatusErrorBrush}"/>
     </Style>
     <Style Selector="Border.sql-connection-badge">
-      <Setter Property="Padding" Value="8,4"/>
-      <Setter Property="BorderThickness" Value="1"/>
-      <Setter Property="CornerRadius" Value="{StaticResource RadiusPill}"/>
-      <Setter Property="BorderBrush" Value="{StaticResource BorderSubtleBrush}"/>
       <Setter Property="MaxWidth" Value="300"/>
     </Style>
-    <Style Selector="Button.sql-primary-runstop">
-      <Setter Property="Padding" Value="10,2"/>
-      <Setter Property="MinHeight" Value="24"/>
-      <Setter Property="FontSize" Value="{StaticResource FontSizeCaption}"/>
-    </Style>
     <Style Selector="Button.sql-tool-action">
-      <Setter Property="MinHeight" Value="24"/>
-      <Setter Property="Padding" Value="10,2"/>
-      <Setter Property="FontSize" Value="{StaticResource FontSizeCaption}"/>
-      <Setter Property="CornerRadius" Value="{StaticResource RadiusSM}"/>
-      <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
       <Setter Property="Transitions">
         <Transitions>
@@ -71,12 +57,10 @@
           Margin="10,8,10,0"
           ColumnDefinitions="Auto,*">
       <Button Grid.Column="0"
-              Background="Transparent"
-              BorderThickness="0"
-              Padding="0"
+              Classes="icon-ghost"
               Command="{Binding OpenConnectionSwitcherCommand}">
         <Grid>
-          <Border Classes="sql-connection-badge"
+          <Border Classes="badge sql-connection-badge"
                   IsVisible="{Binding IsNeutralConnectionContext}"
                   Background="{StaticResource Bg2Brush}">
             <TextBlock Text="{Binding ActiveConnectionContextBadgeText}"
@@ -84,7 +68,7 @@
                        Foreground="{StaticResource TextPrimaryBrush}"
                        FontSize="{StaticResource FontSizeCaption}"/>
           </Border>
-          <Border Classes="sql-connection-badge"
+          <Border Classes="badge sql-connection-badge"
                   IsVisible="{Binding IsProductionConnectionContext}"
                   Background="#33E16174">
             <TextBlock Text="{Binding ActiveConnectionContextBadgeText}"
@@ -92,7 +76,7 @@
                        Foreground="{StaticResource TextPrimaryBrush}"
                        FontSize="{StaticResource FontSizeCaption}"/>
           </Border>
-          <Border Classes="sql-connection-badge"
+          <Border Classes="badge sql-connection-badge"
                   IsVisible="{Binding IsStagingConnectionContext}"
                   Background="#33D9A441">
             <TextBlock Text="{Binding ActiveConnectionContextBadgeText}"
@@ -100,7 +84,7 @@
                        Foreground="{StaticResource TextPrimaryBrush}"
                        FontSize="{StaticResource FontSizeCaption}"/>
           </Border>
-          <Border Classes="sql-connection-badge"
+          <Border Classes="badge sql-connection-badge"
                   IsVisible="{Binding HasNoActiveConnection}"
                   Background="{StaticResource Bg2Brush}">
             <TextBlock Text="{Binding ActiveConnectionContextBadgeText}"
@@ -114,12 +98,8 @@
 
     <Grid Grid.Row="2" ClipToBounds="True">
       <Border Grid.Row="0"
+              Classes="surface-panel"
               Margin="10,10,10,12"
-              Background="{StaticResource Bg0Brush}"
-              BorderBrush="{StaticResource BorderSubtleBrush}"
-              BorderThickness="1"
-              CornerRadius="{StaticResource RadiusLG}"
-              BoxShadow="{StaticResource PanelShadow}"
               ClipToBounds="True">
         <ae:TextEditor x:Name="SqlTextEditor"
                        FontFamily="{StaticResource MonoFont}"
@@ -133,23 +113,20 @@
 
       <Border Grid.Row="0"
               x:Name="GoToLineOverlay"
+              Classes="surface-floating"
               IsVisible="False"
               HorizontalAlignment="Right"
               VerticalAlignment="Top"
               Margin="22,18,22,0"
               Padding="10,8"
-              MinWidth="210"
-              Background="{StaticResource Bg1Brush}"
-              BorderBrush="{StaticResource BorderSubtleBrush}"
-              BorderThickness="1"
-              CornerRadius="{StaticResource RadiusMD}"
-              BoxShadow="{StaticResource PanelShadow}">
+              MinWidth="210">
         <StackPanel Spacing="6">
           <TextBlock x:Name="GoToLineLabel"
                      Text="Ir para linha"
                      FontSize="{StaticResource FontSizeCaption}"
                      Foreground="{StaticResource TextSecondaryBrush}"/>
           <TextBox x:Name="GoToLineInput"
+                   Classes="field"
                    KeyDown="GoToLineInput_OnKeyDown"
                    MinWidth="140"
                    HorizontalAlignment="Stretch"
@@ -165,20 +142,19 @@
                 VerticalAlignment="Stretch"/>
 
         <Border Width="1040"
+                Classes="surface-floating"
                 MaxWidth="1040"
                 Height="640"
                 MaxHeight="700"
                 MinHeight="340"
-                Background="{StaticResource Bg1Brush}"
-                BorderBrush="{StaticResource BorderSubtleBrush}"
-                BorderThickness="1"
-                CornerRadius="{StaticResource RadiusLG}"
-                BoxShadow="{StaticResource PanelShadow}"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
                 ClipToBounds="True">
           <Grid RowDefinitions="Auto,*">
-            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="14,12,14,8">
+            <Grid Grid.Row="0"
+                  Classes="surface-floating-header"
+                  ColumnDefinitions="*,Auto"
+                  Margin="14,12,14,8">
               <StackPanel Orientation="Horizontal" Spacing="8">
                 <mi:MaterialIcon Kind="Table" Width="16" Height="16" VerticalAlignment="Center" Foreground="{StaticResource AccentBlueBrush}"/>
                 <TextBlock Text="{Binding [sqlEditor.results.title], Source={x:Static loc:LocalizationService.Instance}}"
@@ -190,9 +166,9 @@
               </StackPanel>
 
               <Button Grid.Column="1"
+                      Classes="icon-ghost"
                       Width="28"
                       Height="28"
-                      Padding="0"
                       Command="{Binding CloseResultsSheetCommand}">
                 <mi:MaterialIcon Kind="Close" Width="14" Height="14"/>
               </Button>
@@ -212,7 +188,7 @@
       <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
             VerticalAlignment="Center">
         <Button Grid.Column="0"
-                Classes="sql-primary-runstop"
+                Classes="secondary compact"
                 Margin="0,0,10,0"
                 Content="{Binding ExecuteOrCancelButtonText}"
                 IsEnabled="{Binding CanExecuteOrCancel}"
@@ -220,7 +196,7 @@
                 Click="ExecuteOrCancelPrimaryButton_Click"/>
 
         <Button Grid.Column="1"
-                Classes="sql-tool-action explain"
+                Classes="secondary compact sql-tool-action explain"
                 Margin="0,0,8,0"
                 IsEnabled="{Binding IsExplainRunning, Converter={x:Static BoolConverters.Not}}"
                 Click="ExplainButton_Click">
@@ -231,7 +207,7 @@
         </Button>
 
         <Button Grid.Column="2"
-                Classes="sql-tool-action benchmark"
+                Classes="secondary compact sql-tool-action benchmark"
                 Margin="0,0,10,0"
                 IsEnabled="{Binding IsBenchmarkRunning, Converter={x:Static BoolConverters.Not}}"
                 Click="BenchmarkButton_Click">
@@ -242,13 +218,13 @@
         </Button>
 
         <Button Grid.Column="3"
-                Classes="sql-primary-runstop"
+                Classes="secondary compact"
                 Margin="0,0,8,0"
                 Content="Executar tudo"
                 Click="ExecuteAllButton_Click"/>
 
         <Button Grid.Column="4"
-                Classes="sql-primary-runstop"
+                Classes="secondary compact"
                 Margin="0,0,10,0"
                 Content="Formatar SQL"
                 Click="FormatSqlButton_Click"/>
@@ -296,20 +272,15 @@
                    Text="{Binding ResultSummaryText}"/>
 
         <Button Grid.Column="10"
+                Classes="secondary compact"
                 Margin="0,0,10,0"
                 IsVisible="{Binding CanReopenResultsSheet}"
                 Command="{Binding ReopenResultsSheetCommand}"
-                Padding="10,2"
-                MinHeight="24"
-                FontSize="{StaticResource FontSizeCaption}"
                 Content="{Binding RestoreResultsButtonText}"/>
 
         <Button Grid.Column="11"
+                Classes="icon-ghost"
                 Margin="0,0,10,0"
-                Background="Transparent"
-                BorderBrush="Transparent"
-                BorderThickness="0"
-                Padding="0"
                 Click="CursorPositionButton_Click"
                 ToolTip.Tip="{Binding CursorPositionTooltipText}">
           <TextBlock VerticalAlignment="Center"
@@ -339,13 +310,10 @@
                                 Margin="0,30,0,0"/>
 
     <Border Grid.Row="3"
+            Classes="callout-subtle warning"
             IsVisible="{Binding HasPendingCloseTabConfirmation}"
             Margin="0,30,0,0"
-            Padding="10,8"
-            Background="{StaticResource Bg0Brush}"
-            BorderBrush="{StaticResource StatusWarningBrush}"
-            BorderThickness="1"
-            CornerRadius="{StaticResource RadiusMD}">
+            Padding="10,8">
       <StackPanel Spacing="6">
         <TextBlock Text="{Binding PendingCloseTabMessage}"
                    FontWeight="{StaticResource FontWeightTitle}"
@@ -355,6 +323,7 @@
                   Classes="Danger"
                   Command="{Binding ConfirmPendingCloseTabCommand}"/>
           <Button Content="{Binding [sqlEditor.tab.keepTab], Source={x:Static loc:LocalizationService.Instance}}"
+                  Classes="secondary compact"
                   Command="{Binding CancelPendingCloseTabCommand}"/>
         </StackPanel>
       </StackPanel>
