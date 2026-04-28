@@ -144,7 +144,9 @@ public abstract class BaseDbOrchestrator(
                 await using DbCommand cmd = conn.CreateCommand();
                 cmd.Transaction = tx;
                 int resolvedMaxRows = maxRows > 0 ? maxRows : _defaultPreviewMaxRows;
-                cmd.CommandText = GetDialect().WrapWithPreviewLimit(sql, resolvedMaxRows);
+                cmd.CommandText = PreviewExecutionOptions.IsUnlimitedRequested(maxRows)
+                    ? sql
+                    : GetDialect().WrapWithPreviewLimit(sql, resolvedMaxRows);
                 cmd.CommandTimeout = Config.TimeoutSeconds;
 
                 await using DbDataReader reader = await cmd.ExecuteReaderAsync(ct);

@@ -1790,7 +1790,7 @@ public sealed class SqlEditorViewModel : ViewModelBase
     {
         int normalizedRequestedMaxRows = requestedMaxRows > 0 ? requestedMaxRows : 1000;
         if (!Top1000WithoutWhereEnabled && IsSelectWithoutWhere(sql))
-            return int.MaxValue;
+            return PreviewExecutionOptions.NoLimit;
 
         if (Top1000WithoutWhereEnabled && IsSelectWithoutWhere(sql))
             return Math.Min(normalizedRequestedMaxRows, 1000);

@@ -111,6 +111,9 @@ public sealed partial class QueryExecutorService
     /// </summary>
     private static string WrapWithPreviewLimit(string query, DatabaseProvider provider, int maxRows)
     {
+        if (PreviewExecutionOptions.IsUnlimitedRequested(maxRows))
+            return query.TrimEnd().TrimEnd(';');
+
         int boundedMaxRows = Math.Clamp(maxRows, 1, 10_000);
 
         // Remove trailing semicolon if present

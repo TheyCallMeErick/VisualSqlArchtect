@@ -866,7 +866,7 @@ public sealed class SqlEditorViewModelTests
         Assert.True(sut.HasPendingMutationConfirmation);
         Assert.Contains(sut.PendingMutationIssues, i => i.Code == "NO_WHERE");
         Assert.Equal("SELECT COUNT(*) FROM orders", sut.PendingMutationCountQuery);
-        Assert.Equal(2, factory.ExecuteCount);
+        Assert.Equal(3, factory.ExecuteCount);
         Assert.Equal(1, sut.PendingMutationEstimatedRows);
         AssertLocalized(sut.PendingMutationEstimateText, "Linhas afetadas estimadas: 1", "Estimated affected rows: 1");
         Assert.True(sut.HasPendingMutationDiff);
@@ -898,7 +898,7 @@ public sealed class SqlEditorViewModelTests
 
         Assert.NotNull(confirmed);
         Assert.True(confirmed!.Success);
-        Assert.Equal(3, factory.ExecuteCount);
+        Assert.Equal(4, factory.ExecuteCount);
         Assert.False(sut.HasPendingMutationConfirmation);
         Assert.Single(sut.ExecutionHistory);
         AssertLocalized(sut.ExecutionStatusText, "Execucao concluida com sucesso.", "Execution succeeded.");
@@ -1021,7 +1021,7 @@ public sealed class SqlEditorViewModelTests
 
         _ = await sut.ExecuteSelectionOrCurrentAsync(0, 0, 0, maxRows: 250);
 
-        Assert.Equal(int.MaxValue, factory.LastRequestedMaxRows);
+        Assert.Equal(PreviewExecutionOptions.NoLimit, factory.LastRequestedMaxRows);
     }
 
     [Fact]
@@ -1171,7 +1171,7 @@ public sealed class SqlEditorViewModelTests
         IReadOnlyList<SqlEditorResultSet> results = await sut.ExecuteAllAsync();
 
         Assert.Equal(2, results.Count);
-        Assert.Equal(3, factory.ExecuteCount);
+        Assert.Equal(4, factory.ExecuteCount);
         Assert.True(sut.HasPendingMutationConfirmation);
         Assert.Contains(sut.PendingMutationIssues, i => i.Code == "NO_WHERE");
         Assert.Equal(1, sut.PendingMutationEstimatedRows);

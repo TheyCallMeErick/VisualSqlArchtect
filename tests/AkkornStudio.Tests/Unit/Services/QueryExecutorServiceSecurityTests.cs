@@ -92,6 +92,17 @@ public class QueryExecutorServiceSecurityTests
     }
 
     [Fact]
+    public void WrapWithPreviewLimit_WhenNoLimitRequested_ReturnsOriginalQueryWithoutWrapper()
+    {
+        MethodInfo wrap = typeof(QueryExecutorService)
+            .GetMethod("WrapWithPreviewLimit", BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        string sql = (string)wrap.Invoke(null, ["SELECT * FROM users;", DatabaseProvider.Postgres, PreviewExecutionOptions.NoLimit])!;
+
+        Assert.Equal("SELECT * FROM users", sql);
+    }
+
+    [Fact]
     public void QueryExecutorService_ExposesConfigurableCommandTimeout()
     {
         var executor = new QueryExecutorService();
