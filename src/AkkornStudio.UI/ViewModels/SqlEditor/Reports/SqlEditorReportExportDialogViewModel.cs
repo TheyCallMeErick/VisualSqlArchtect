@@ -1,6 +1,6 @@
 using System.Collections.ObjectModel;
 using System.IO;
-using System.Linq;
+using AkkornStudio.UI.Extensions;
 using AkkornStudio.UI.Services.Localization;
 
 namespace AkkornStudio.UI.ViewModels;
@@ -73,7 +73,7 @@ public sealed class SqlEditorReportExportDialogViewModel : ViewModelBase
                 return;
 
             string previousExtension = _lastSelectedType?.DefaultExtension ?? value.DefaultExtension;
-            FileName = EnsureExtension(FileName, previousExtension, value.DefaultExtension);
+            FileName = FileName.EnsureExtension(previousExtension, value.DefaultExtension);
             _lastSelectedType = value;
 
             ApplyTypeDefaults(value.Type);
@@ -190,35 +190,32 @@ public sealed class SqlEditorReportExportDialogViewModel : ViewModelBase
 
     public string SuggestedExtension => SelectedType?.DefaultExtension ?? "html";
 
+    public void SlugifyTitleIntoFileName()
+    {
+        string extension = SuggestedExtension;
+        string slug = Title.ToSlugCase();
+        FileName = (string.IsNullOrWhiteSpace(slug) ? "report" : slug).EnsureExtension(extension);
+    }
+
+    public void ApplyTitleTransform(string mode)
+    {
+        Title = Title.TransformText(mode);
+    }
+
+    public void ApplyFileNameTransform(string mode)
+    {
+        string extension = Path.GetExtension(FileName);
+        string baseName = Path.GetFileNameWithoutExtension(FileName);
+        string transformed = baseName.TransformText(mode);
+        string nextBase = string.IsNullOrWhiteSpace(transformed) ? "report" : transformed;
+        FileName = string.IsNullOrWhiteSpace(extension)
+            ? nextBase
+            : nextBase + extension.ToLowerInvariant();
+    }
+
     private static string BuildSuggestedFileName(string title, string extension)
     {
-        string safeBase = string.Concat(title.Select(ch =>
-            char.IsLetterOrDigit(ch) || ch is '-' or '_' ? ch : '_'));
-
-        if (string.IsNullOrWhiteSpace(safeBase))
-            safeBase = "report";
-
-        return EnsureExtension(safeBase, extension);
-    }
-
-    private static string EnsureExtension(string fileName, string extension)
-    {
-        return EnsureExtension(fileName, extension, extension);
-    }
-
-    private static string EnsureExtension(string fileName, string previousExtension, string nextExtension)
-    {
-        string normalizedFileName = string.IsNullOrWhiteSpace(fileName) ? "report" : fileName.Trim();
-        string normalizedPreviousExtension = previousExtension.TrimStart('.');
-        string normalizedExtension = nextExtension.TrimStart('.');
-
-        if (normalizedFileName.EndsWith($".{normalizedExtension}", StringComparison.OrdinalIgnoreCase))
-            return normalizedFileName;
-
-        if (normalizedFileName.EndsWith($".{normalizedPreviousExtension}", StringComparison.OrdinalIgnoreCase))
-            return normalizedFileName[..^(normalizedPreviousExtension.Length)] + normalizedExtension;
-
-        return Path.GetFileNameWithoutExtension(normalizedFileName) + "." + normalizedExtension;
+        return title.ToSafeFileBase().EnsureExtension(extension);
     }
 
     private void ApplyTypeDefaults(SqlEditorReportType reportType)

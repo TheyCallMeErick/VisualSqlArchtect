@@ -80,4 +80,29 @@ public sealed class SqlEditorReportExportDialogViewModelTests
         sut.Title = " ";
         Assert.False(sut.CanConfirm);
     }
+
+    [Fact]
+    public void SlugifyTitleIntoFileName_UsesTitleAndExtension()
+    {
+        var sut = new SqlEditorReportExportDialogViewModel("Relatorio Inicial");
+        sut.Title = "Mapa de Cobranca 2026";
+
+        sut.SlugifyTitleIntoFileName();
+
+        Assert.Equal("mapa-de-cobranca-2026.html", sut.FileName);
+    }
+
+    [Fact]
+    public void ApplyTransforms_UpdatesTitleAndFileName()
+    {
+        var sut = new SqlEditorReportExportDialogViewModel("Relatorio Inicial");
+        sut.Title = "relatorio final";
+        sut.FileName = "Meu Arquivo.HTML";
+
+        sut.ApplyTitleTransform("upper");
+        sut.ApplyFileNameTransform("slug");
+
+        Assert.Equal("RELATORIO FINAL", sut.Title);
+        Assert.Equal("meu-arquivo.html", sut.FileName);
+    }
 }

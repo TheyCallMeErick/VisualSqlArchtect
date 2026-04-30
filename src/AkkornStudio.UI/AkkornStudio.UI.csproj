@@ -33,6 +33,8 @@
   <!-- ── AXAML files handled by Avalonia SDK auto-discovery ── -->
   <ItemGroup>
     <AvaloniaResource Include="Assets\Syntax\*.xshd" />
+    <EmbeddedResource Include="Assets\ReportFrontend\dist\report-app.css" />
+    <EmbeddedResource Include="Assets\ReportFrontend\dist\report-app.js" />
     <None Update="Assets\Localization\*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>

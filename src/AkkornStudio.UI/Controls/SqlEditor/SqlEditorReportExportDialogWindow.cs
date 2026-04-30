@@ -125,6 +125,12 @@ public sealed class SqlEditorReportExportDialogWindow : Window
                 _vm.Title = titleBox.Text ?? string.Empty;
         };
 
+        string selectedTitleTransform = "title";
+        string selectedFileNameTransform = "slug";
+
+        void SyncTitleBox() => titleBox.Text = _vm.Title;
+        void SyncFileNameBox() => fileNameBox.Text = _vm.FileName;
+
         var descriptionBox = new TextBox
         {
             Text = _vm.Description,
@@ -137,6 +143,80 @@ public sealed class SqlEditorReportExportDialogWindow : Window
         {
             if (e.Property.Name == nameof(TextBox.Text))
                 _vm.Description = descriptionBox.Text ?? string.Empty;
+        };
+
+        var textTransformItems = new[]
+        {
+            new KeyValuePair<string, string>(L("sqlEditor.export.transform.titleCase", "Title Case"), "title"),
+            new KeyValuePair<string, string>(L("sqlEditor.export.transform.upper", "UPPERCASE"), "upper"),
+            new KeyValuePair<string, string>(L("sqlEditor.export.transform.lower", "lowercase"), "lower"),
+            new KeyValuePair<string, string>(L("sqlEditor.export.transform.sentence", "Sentence case"), "sentence"),
+            new KeyValuePair<string, string>(L("sqlEditor.export.transform.slug", "slug-case"), "slug"),
+        };
+
+        var titleTransformCombo = MakeComboBox(
+            textTransformItems,
+            textTransformItems[0],
+            item => { if (item is KeyValuePair<string, string> pair) selectedTitleTransform = pair.Value; },
+            item => item.Key);
+
+        var fileNameTransformCombo = MakeComboBox(
+            textTransformItems,
+            textTransformItems.Single(item => item.Value == "slug"),
+            item => { if (item is KeyValuePair<string, string> pair) selectedFileNameTransform = pair.Value; },
+            item => item.Key);
+
+        var titleActionsPanel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            Children =
+            {
+                titleTransformCombo,
+                new Button
+                {
+                    Content = L("sqlEditor.export.transform.applyToTitle", "Aplicar no titulo"),
+                    Padding = new Thickness(12, 8),
+                    MinWidth = 140,
+                }
+            }
+        };
+        ((Button)titleActionsPanel.Children[1]!).Click += (_, _) =>
+        {
+            _vm.ApplyTitleTransform(selectedTitleTransform);
+            SyncTitleBox();
+        };
+
+        var fileNameActionsPanel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            Children =
+            {
+                fileNameTransformCombo,
+                new Button
+                {
+                    Content = L("sqlEditor.export.transform.applyToFile", "Aplicar no arquivo"),
+                    Padding = new Thickness(12, 8),
+                    MinWidth = 140,
+                },
+                new Button
+                {
+                    Content = L("sqlEditor.export.transform.slugFromTitle", "Slug do titulo"),
+                    Padding = new Thickness(12, 8),
+                    MinWidth = 132,
+                }
+            }
+        };
+        ((Button)fileNameActionsPanel.Children[1]!).Click += (_, _) =>
+        {
+            _vm.ApplyFileNameTransform(selectedFileNameTransform);
+            SyncFileNameBox();
+        };
+        ((Button)fileNameActionsPanel.Children[2]!).Click += (_, _) =>
+        {
+            _vm.SlugifyTitleIntoFileName();
+            SyncFileNameBox();
         };
 
         var includeSchemaCheck = new CheckBox
@@ -394,8 +474,16 @@ public sealed class SqlEditorReportExportDialogWindow : Window
             Children =
             {
                 section(L("sqlEditor.export.dialog.section.reportType", "TIPO DE RELATORIO"), typeInfoPanel),
-                section(L("sqlEditor.export.dialog.section.fileName", "NOME DO ARQUIVO"), fileNameBox),
-                section(L("sqlEditor.export.dialog.section.reportTitle", "TITULO"), titleBox),
+                section(L("sqlEditor.export.dialog.section.fileName", "NOME DO ARQUIVO"), new StackPanel
+                {
+                    Spacing = 8,
+                    Children = { fileNameBox, fileNameActionsPanel },
+                }),
+                section(L("sqlEditor.export.dialog.section.reportTitle", "TITULO"), new StackPanel
+                {
+                    Spacing = 8,
+                    Children = { titleBox, titleActionsPanel },
+                }),
                 descriptionSection,
                 section(L("sqlEditor.export.dialog.section.metadataLevel", "METADADOS"), metadataPanel),
                 section(L("sqlEditor.export.dialog.section.emptyValueMode", "CAMPOS VAZIOS"), emptyValuePanel),

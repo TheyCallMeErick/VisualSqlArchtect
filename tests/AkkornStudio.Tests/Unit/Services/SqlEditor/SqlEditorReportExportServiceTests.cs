@@ -31,19 +31,15 @@ public sealed class SqlEditorReportExportServiceTests
             string exportedPath = await sut.ExportAsync(context, request);
             string html = await File.ReadAllTextAsync(exportedPath);
 
-            Assert.Contains("id=\"overview\"", html, StringComparison.Ordinal);
-            Assert.Contains("id=\"results\"", html, StringComparison.Ordinal);
-            Assert.Contains("id=\"schema\"", html, StringComparison.Ordinal);
-            Assert.Contains("id=\"metadata\"", html, StringComparison.Ordinal);
-            Assert.Contains("id=\"resultsFilterCol\"", html, StringComparison.Ordinal);
-            Assert.Contains("id=\"schemaFilterCol\"", html, StringComparison.Ordinal);
-            Assert.Contains("const META=", html, StringComparison.Ordinal);
-            Assert.Contains("const SCHEMA=", html, StringComparison.Ordinal);
-            Assert.Contains("const MROWS=", html, StringComparison.Ordinal);
-            Assert.Contains("id=\"sqlBtn\"", html, StringComparison.Ordinal);
-            Assert.Contains("id=\"csvBtn\"", html, StringComparison.Ordinal);
-            Assert.DoesNotContain("id=\"lineageNodes\"", html, StringComparison.Ordinal);
-            Assert.DoesNotContain("id=\"lineageConnections\"", html, StringComparison.Ordinal);
+            Assert.Contains("id=\"app\"", html, StringComparison.Ordinal);
+            Assert.Contains("window.__AKKORN_REPORT__=", html, StringComparison.Ordinal);
+            Assert.Contains("\"rows\":[", html, StringComparison.Ordinal);
+            Assert.Contains("\"schema\":[", html, StringComparison.Ordinal);
+            Assert.Contains("\"metadata\":[", html, StringComparison.Ordinal);
+            Assert.Contains("\"lineageNodes\":[]", html, StringComparison.Ordinal);
+            Assert.Contains("\"lineageConnections\":[]", html, StringComparison.Ordinal);
+            Assert.Contains(".report-shell", html, StringComparison.Ordinal);
+            Assert.Contains(".mount(\"#app\")", html, StringComparison.Ordinal);
         }
         finally
         {
@@ -80,9 +76,10 @@ public sealed class SqlEditorReportExportServiceTests
 
             Assert.Contains("&lt;img src=x onerror=alert(1)&gt;", html, StringComparison.Ordinal);
             Assert.Contains("&lt;b&gt;unsafe&lt;/b&gt;", html, StringComparison.Ordinal);
-            Assert.Contains("const SQL=", html, StringComparison.Ordinal);
-            Assert.DoesNotContain("<h1><img src=x onerror=alert(1)></h1>", html, StringComparison.Ordinal);
+            Assert.Contains("window.__AKKORN_REPORT__=", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("<title><img src=x onerror=alert(1)></title>", html, StringComparison.Ordinal);
             Assert.DoesNotContain("</script><script>alert(1)</script>", html, StringComparison.Ordinal);
+            Assert.Contains("<\\/script><script>alert(1)<\\/script>", html, StringComparison.Ordinal);
         }
         finally
         {

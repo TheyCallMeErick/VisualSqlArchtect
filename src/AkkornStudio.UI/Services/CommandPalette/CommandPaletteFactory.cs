@@ -6,6 +6,7 @@ using AkkornStudio.UI.Controls;
 using AkkornStudio.UI.Controls.Shell;
 using AkkornStudio.UI.Services.Input.ShortcutRegistry;
 using AkkornStudio.UI.Services.Localization;
+using AkkornStudio.UI.Extensions;
 using AkkornStudio.UI.Services.Workspace.Models;
 using AkkornStudio.UI.Services.Workspace.Preview;
 using AkkornStudio.UI.ViewModels;
@@ -707,13 +708,13 @@ public class CommandPaletteFactory(
     }
 
     private static string LN(string fallback) =>
-        L($"commandPalette.name.{Slugify(fallback)}", fallback);
+        L($"commandPalette.name.{fallback.ToSlugToken('_', "empty")}", fallback);
 
     private static string LD(string fallback) =>
-        L($"commandPalette.description.{Slugify(fallback)}", fallback);
+        L($"commandPalette.description.{fallback.ToSlugToken('_', "empty")}", fallback);
 
     private static string LTg(string fallback) =>
-        L($"commandPalette.tags.{Slugify(fallback)}", fallback);
+        L($"commandPalette.tags.{fallback.ToSlugToken('_', "empty")}", fallback);
 
     private string ShortcutText(string actionId, string fallback)
     {
@@ -731,31 +732,4 @@ public class CommandPaletteFactory(
         && liveDdl.IsValid
         && !string.IsNullOrWhiteSpace(liveDdl.RawSql);
 
-    private static string Slugify(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-            return "empty";
-
-        char[] buffer = new char[text.Length];
-        int idx = 0;
-        bool lastWasUnderscore = false;
-        foreach (char ch in text.ToLowerInvariant())
-        {
-            if (char.IsLetterOrDigit(ch))
-            {
-                buffer[idx++] = ch;
-                lastWasUnderscore = false;
-                continue;
-            }
-
-            if (!lastWasUnderscore)
-            {
-                buffer[idx++] = '_';
-                lastWasUnderscore = true;
-            }
-        }
-
-        string raw = new string(buffer, 0, idx).Trim('_');
-        return string.IsNullOrWhiteSpace(raw) ? "value" : raw;
-    }
 }
