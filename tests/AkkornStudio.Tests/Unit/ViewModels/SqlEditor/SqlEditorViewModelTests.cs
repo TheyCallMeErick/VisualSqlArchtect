@@ -1025,6 +1025,28 @@ public sealed class SqlEditorViewModelTests
     }
 
     [Fact]
+    public async Task ExecuteSelectionOrCurrent_WhenTop1000LimiterDisabledForSelectWithWhere_UsesUnlimitedMaxRows()
+    {
+        ConnectionConfig config = new(
+            DatabaseProvider.Postgres,
+            "localhost",
+            5432,
+            "db",
+            "user",
+            "pass");
+        var factory = new MaxRowsCapturingOrchestratorFactory();
+        var sut = new SqlEditorViewModel(
+            executionService: new SqlEditorExecutionService(factory),
+            connectionConfigResolver: () => config);
+        sut.SetExecutionSafetyOptions(top1000WithoutWhereEnabled: false, protectMutationWithoutWhereEnabled: true);
+        sut.ActiveTab.SqlText = "SELECT * FROM orders WHERE id > 10;";
+
+        _ = await sut.ExecuteSelectionOrCurrentAsync(0, 0, 0, maxRows: 250);
+
+        Assert.Equal(PreviewExecutionOptions.NoLimit, factory.LastRequestedMaxRows);
+    }
+
+    [Fact]
     public async Task ExecuteAllAsync_ExecutesStatementsSequentially()
     {
         ConnectionConfig config = new(

@@ -976,11 +976,11 @@
                           Padding="12">
                     <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
                       <StackPanel Grid.Column="0" Spacing="2">
-                        <TextBlock Text="Limitar SELECT sem WHERE em TOP 1000"
+                        <TextBlock Text="Limitar consultas em 1000 linhas"
                                    FontSize="{StaticResource FontSizeTitle}"
                                    FontWeight="{StaticResource FontWeightTitle}"
                                    Foreground="{StaticResource TextPrimaryBrush}"/>
-                        <TextBlock Text="Quando ativo, consultas sem filtro WHERE executam com limite de 1000 linhas para reduzir risco de carga pesada."
+                        <TextBlock Text="Quando ativo, consultas de leitura no editor usam limite padrao de 1000 linhas. Quando inativo, executam sem esse teto padrao."
                                    FontSize="{StaticResource FontSizeCaption}"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    TextWrapping="Wrap"/>

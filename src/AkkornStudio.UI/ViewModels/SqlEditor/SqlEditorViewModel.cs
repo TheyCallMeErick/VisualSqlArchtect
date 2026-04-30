@@ -1789,7 +1789,7 @@ public sealed class SqlEditorViewModel : ViewModelBase
     private int ResolveEffectiveMaxRows(string? sql, int requestedMaxRows)
     {
         int normalizedRequestedMaxRows = requestedMaxRows > 0 ? requestedMaxRows : 1000;
-        if (!Top1000WithoutWhereEnabled && IsSelectWithoutWhere(sql))
+        if (!Top1000WithoutWhereEnabled && IsSelectLikeQuery(sql))
             return PreviewExecutionOptions.NoLimit;
 
         if (Top1000WithoutWhereEnabled && IsSelectWithoutWhere(sql))
@@ -1798,16 +1798,21 @@ public sealed class SqlEditorViewModel : ViewModelBase
         return normalizedRequestedMaxRows;
     }
 
-    private static bool IsSelectWithoutWhere(string? sql)
+    private static bool IsSelectLikeQuery(string? sql)
     {
         if (string.IsNullOrWhiteSpace(sql))
             return false;
 
         string statement = sql.TrimStart();
-        if (!Regex.IsMatch(statement, @"^(SELECT|WITH)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+        return Regex.IsMatch(statement, @"^(SELECT|WITH)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    }
+
+    private static bool IsSelectWithoutWhere(string? sql)
+    {
+        if (!IsSelectLikeQuery(sql))
             return false;
 
-        return !Regex.IsMatch(statement, @"\bWHERE\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        return !Regex.IsMatch(sql!, @"\bWHERE\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     }
 
     private void NotifyMutationCommands()
@@ -1942,6 +1947,7 @@ public sealed class SqlEditorViewModel : ViewModelBase
         context = new SqlEditorReportExportContext(
             Sql: result.StatementSql,
             SchemaColumns: columns,
+            SchemaDetails: BuildReportSchemaDetails(columns, resultRows),
             ResultRows: resultRows,
             ExecutionResult: new SqlEditorReportExecutionResult(
                 RowCount: rowCount,
@@ -1953,6 +1959,64 @@ public sealed class SqlEditorViewModel : ViewModelBase
             TabTitle: ActiveTab.FallbackTitle);
 
         return true;
+    }
+
+    private static IReadOnlyList<SqlEditorReportSchemaDetail> BuildReportSchemaDetails(
+        IReadOnlyList<string> columns,
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> rows)
+    {
+        var details = new List<SqlEditorReportSchemaDetail>(columns.Count);
+
+        foreach (string column in columns)
+        {
+            long nullCount = 0;
+            var distinct = new HashSet<string>(StringComparer.Ordinal);
+            string? example = null;
+            string? minValue = null;
+            string? maxValue = null;
+            string kind = "null";
+
+            foreach (IReadOnlyDictionary<string, object?> row in rows)
+            {
+                row.TryGetValue(column, out object? value);
+                if (value is null)
+                {
+                    nullCount += 1;
+                    continue;
+                }
+
+                string text = value.ToString() ?? string.Empty;
+                distinct.Add(text);
+                example ??= text;
+
+                if (minValue is null || string.CompareOrdinal(text, minValue) < 0)
+                    minValue = text;
+
+                if (maxValue is null || string.CompareOrdinal(text, maxValue) > 0)
+                    maxValue = text;
+
+                string detectedKind = DetectReportValueKind(value);
+                if (kind is "null" or "text")
+                {
+                    kind = detectedKind;
+                }
+                else if (!string.Equals(kind, detectedKind, StringComparison.Ordinal))
+                {
+                    kind = "text";
+                }
+            }
+
+            details.Add(new SqlEditorReportSchemaDetail(
+                Name: column,
+                Kind: kind,
+                NullCount: nullCount,
+                DistinctCount: distinct.Count,
+                Example: example,
+                MinValue: minValue,
+                MaxValue: maxValue));
+        }
+
+        return details;
     }
 
     private static object? NormalizeReportCellValue(object? value)
@@ -1968,6 +2032,17 @@ public sealed class SqlEditorViewModel : ViewModelBase
             Guid guid => guid.ToString("D"),
             byte[] bytes => Convert.ToBase64String(bytes),
             _ => value,
+        };
+    }
+
+    private static string DetectReportValueKind(object value)
+    {
+        return value switch
+        {
+            bool => "bool",
+            byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal => "number",
+            DateTime or DateTimeOffset => "date",
+            _ => "text",
         };
     }
 

@@ -13,7 +13,7 @@ namespace AkkornStudio.UI.Services.SqlEditor.Reports;
 
 public sealed class SqlEditorReportExportService
 {
-    private const string ReportVersion = "2.3";
+    private const string ReportVersion = "3.0";
 
     public async Task<string> ExportAsync(
         SqlEditorReportExportContext context,
@@ -129,6 +129,8 @@ public sealed class SqlEditorReportExportService
 
     private static string BuildHtml(SqlEditorReportExportContext context, SqlEditorReportExportRequest request)
     {
+        return SqlEditorReportHtmlBuilder.Build(context, request);
+
         string generatedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
         string generatedAtIso = DateTimeOffset.Now.ToString("O", CultureInfo.InvariantCulture);
         object meta = BuildMeta(context, request, generatedAt, generatedAtIso);
@@ -2443,20 +2445,33 @@ const REPORT_LABELS = {{labelsJson}};
         string generatedAtIso = DateTimeOffset.Now.ToString("O", CultureInfo.InvariantCulture);
         object meta = BuildMeta(context, request, generatedAt, generatedAtIso);
         object result = BuildExecutionResultObject(context.ExecutionResult);
-        bool includeGraphSections = request.IncludeMetadata && request.IncludeNodeDetails;
-        object[]? nodes = includeGraphSections ? [] : null;
-        object[]? connections = includeGraphSections ? [] : null;
-        bool hasSql = !string.IsNullOrWhiteSpace(context.Sql);
+        bool includeGraphSections = request.IncludeLineage;
+        object[] nodes =
+            includeGraphSections && context.NodeRows is { Count: > 0 }
+                ? [.. context.NodeRows.Select(node => new { node.Category, node.Type, node.Title, node.Status })]
+                : [];
+        object[] connections =
+            includeGraphSections && context.ConnectionRows is { Count: > 0 }
+                ? [.. context.ConnectionRows.Select(connection => new { connection.FromNode, connection.FromPin, connection.ToNode, connection.ToPin, connection.DataType })]
+                : [];
+        bool hasSql = request.IncludeSql && !string.IsNullOrWhiteSpace(context.Sql);
+
+        object schema =
+            request.IncludeSchema
+                ? context.SchemaDetails is { Count: > 0 }
+                    ? context.SchemaDetails
+                    : context.SchemaColumns
+                : Array.Empty<object>();
 
         return new
         {
             version = ReportVersion,
             meta,
-            sql = context.Sql,
+            sql = request.IncludeSql ? context.Sql : string.Empty,
             hasSql,
             result,
-            schema = request.IncludeSchema ? context.SchemaColumns : [],
-          rows = context.ResultRows,
+            schema,
+            rows = context.ResultRows,
             nodes,
             connections,
         };
