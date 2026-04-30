@@ -1,9 +1,11 @@
 import { computed, proxyRefs, reactive, watch } from "vue";
 
-export const STORAGE_KEY = "akkorn-report-view-vue-v7";
+export const STORAGE_KEY = "akkorn-report-view-vue-v8";
 export const PAGE_SIZES = [10, 25, 50, 100];
 export const DEFAULT_EMPTY = "-";
 export const MIN_COLUMN_WIDTH = 140;
+const VIRTUAL_ROW_HEIGHT = 48;
+const VIRTUAL_OVERSCAN = 6;
 
 export function createReportModel() {
   const payload = window.__AKKORN_REPORT__ ?? {};
@@ -13,6 +15,7 @@ export function createReportModel() {
 
   const datasets = computed(() => buildDatasets(payload, txt));
   const state = reactive(loadState(datasets.value));
+  applyStateSnapshot(state, readStateSnapshotFromHash(), datasets.value);
   const ui = reactive({
     activeModal: "",
     modalDatasetId: "",
@@ -21,7 +24,13 @@ export function createReportModel() {
     toastTimer: 0,
     resizing: null,
     contextMenu: null,
-    scrollHints: {}
+    scrollHints: {},
+    exportOptions: {
+      datasetId: "results",
+      scope: "filtered",
+      format: "csv",
+      visibleOnly: true
+    }
   });
 
   const pageJobs = new Map();
@@ -34,6 +43,7 @@ export function createReportModel() {
 
     return entries;
   });
+  const getExportRows = getExportRowsFactory(state, datasetViews);
 
   const overviewCards = computed(() => buildOverviewCards(meta, payload, txt));
   const themeIcon = computed(() => (state.theme === "dark" ? "moon" : "sun"));
@@ -120,6 +130,22 @@ export function createReportModel() {
     openModal("columns", id);
   }
 
+  function openGroupModal(id) {
+    openModal("group", id);
+  }
+
+  function openStatsModal(id) {
+    if (!state.datasets[id].statsColumnKey) {
+      state.datasets[id].statsColumnKey = datasetViews.value[id]?.visibleColumns[0]?.key ?? "";
+    }
+    openModal("stats", id);
+  }
+
+  function openExportModal(id = "results") {
+    ui.exportOptions.datasetId = id;
+    openModal("export", id);
+  }
+
   function addFilter() {
     const dataset = activeDataset();
     const datasetState = activeDatasetState();
@@ -131,6 +157,16 @@ export function createReportModel() {
     datasetState.page = 1;
     const currentKey = datasetState.pendingFilter.key;
     datasetState.pendingFilter = normalizePendingFilter(dataset, { key: currentKey });
+  }
+
+  function applyGrouping() {
+    const datasetState = activeDatasetState();
+    if (!datasetState) {
+      return;
+    }
+
+    datasetState.page = 1;
+    closeModal();
   }
 
   function applySort() {
@@ -499,6 +535,14 @@ export function createReportModel() {
     copyText([headers.join("\t"), ...body].join("\n"), txt("Linhas copiadas", "Rows copied"), ui);
   }
 
+  function exportSelectedRows(id = "results") {
+    exportDatasetData(id, "selected", "csv", true);
+  }
+
+  function exportFilteredRows(id = "results") {
+    exportDatasetData(id, "filtered", "csv", true);
+  }
+
   function openCellMenu(event, id, rowId, key) {
     event.preventDefault();
     selectCell(id, rowId, key);
@@ -584,12 +628,15 @@ export function createReportModel() {
     }
 
     const datasetState = state.datasets[menu.datasetId];
-    datasetState.pinnedColumnKey = datasetState.pinnedColumnKey === menu.key ? "" : menu.key;
+    const current = [...datasetState.pinnedColumnKeys];
+    datasetState.pinnedColumnKeys = current.includes(menu.key)
+      ? current.filter((item) => item !== menu.key)
+      : [...current, menu.key];
     closeContextMenu();
   }
 
   function isPinnedColumn(id, key) {
-    return state.datasets[id]?.pinnedColumnKey === key;
+    return state.datasets[id]?.pinnedColumnKeys?.includes(key);
   }
 
   function contextSort(direction, mode = "primary") {
@@ -627,7 +674,23 @@ export function createReportModel() {
   }
 
   function columnStickyStyle(id, key) {
-    return isPinnedColumn(id, key) ? { left: "28px" } : {};
+    if (!isPinnedColumn(id, key)) {
+      return {};
+    }
+
+    const datasetState = state.datasets[id];
+    const pinnedKeys = (datasetState?.pinnedColumnKeys ?? []).filter((item) => datasetState.visibleKeys.includes(item));
+    const targetIndex = pinnedKeys.indexOf(key);
+    if (targetIndex < 0) {
+      return {};
+    }
+
+    let left = 28;
+    for (let index = 0; index < targetIndex; index += 1) {
+      left += getColumnWidth(id, pinnedKeys[index]);
+    }
+
+    return { left: `${left}px` };
   }
 
   function startResize(event, id, key) {
@@ -694,8 +757,9 @@ export function createReportModel() {
       sorts: datasetState.sorts.map((item) => ({ ...item })),
       size: datasetState.size,
       columnWidths: { ...datasetState.columnWidths },
-      pinnedColumnKey: datasetState.pinnedColumnKey || "",
-      filters: [...datasetState.filters]
+      pinnedColumnKeys: [...datasetState.pinnedColumnKeys],
+      filters: [...datasetState.filters],
+      groupBy: datasetState.groupBy || ""
     };
 
     datasetState.customPresets = [...datasetState.customPresets.filter((item) => item.name !== name), preset];
@@ -716,8 +780,9 @@ export function createReportModel() {
     syncPrimarySort(datasetState);
     datasetState.size = normalized.size;
     datasetState.columnWidths = { ...datasetState.columnWidths, ...normalized.columnWidths };
-    datasetState.pinnedColumnKey = normalized.pinnedColumnKey || "";
+    datasetState.pinnedColumnKeys = [...normalized.pinnedColumnKeys];
     datasetState.filters = [...normalized.filters];
+    datasetState.groupBy = normalized.groupBy || "";
     datasetState.page = 1;
     datasetState.activeCustomPreset = normalized.name;
   }
@@ -782,7 +847,7 @@ export function createReportModel() {
       return [];
     }
 
-    const activeKey = datasetState.selectedCell?.key || datasetState.pinnedColumnKey || view.visibleColumns[0]?.key;
+    const activeKey = datasetState.selectedCell?.key || datasetState.pinnedColumnKeys?.[0] || view.visibleColumns[0]?.key;
     const column = view.visibleColumns.find((item) => item.key === activeKey);
     if (!column) {
       return [];
@@ -879,6 +944,75 @@ export function createReportModel() {
 
   function isPageBusy(id) {
     return !!state.datasets[id]?.pageBusy;
+  }
+
+  function groupedByLabel(id) {
+    const datasetState = state.datasets[id];
+    const dataset = datasets.value.find((item) => item.id === id);
+    const column = dataset?.columns.find((item) => item.key === datasetState?.groupBy);
+    return column?.label ?? column?.key ?? "";
+  }
+
+  function currentColumnStats(id) {
+    const datasetState = state.datasets[id];
+    const key = datasetState?.statsColumnKey || datasetViews.value[id]?.visibleColumns[0]?.key;
+    if (!key) {
+      return null;
+    }
+
+    return computeColumnStats(datasetViews.value[id], key);
+  }
+
+  function copyViewLink() {
+    try {
+      const snapshot = buildStateSnapshot(state);
+      const encoded = encodeURIComponent(JSON.stringify(snapshot));
+      const url = `${window.location.href.split("#")[0]}#view=${encoded}`;
+      copyText(url, txt("Link da visao copiado", "View link copied"), ui);
+    } catch {
+      showToast(txt("Nao foi possivel gerar o link", "Could not generate the link"), ui);
+    }
+  }
+
+  function exportDatasetFromModal() {
+    exportDatasetData(
+      ui.exportOptions.datasetId,
+      ui.exportOptions.scope,
+      ui.exportOptions.format,
+      ui.exportOptions.visibleOnly
+    );
+    closeModal();
+  }
+
+  function exportDatasetData(id, scope, format, visibleOnly) {
+    const view = datasetViews.value[id];
+    if (!view) {
+      return;
+    }
+
+    const rows = getExportRows(id, scope);
+    const columns = visibleOnly ? view.visibleColumns : view.dataset.columns;
+    const fileBase = slugify(`${meta.title ?? "report"}-${id}-${scope}`) || `report-${id}`;
+    if (format === "json") {
+      const payload = rows.map((entry) => projectRow(entry.raw ?? entry, columns));
+      downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8;" }), `${fileBase}.json`);
+      return;
+    }
+
+    const headers = columns.map((column) => csvEscape(column.label));
+    const body = rows.map((entry) => columns.map((column) => csvEscape(getValue(entry.raw ?? entry, column.key))).join(","));
+    downloadBlob(new Blob([[headers.join(","), ...body].join("\r\n")], { type: "text/csv;charset=utf-8;" }), `${fileBase}.csv`);
+  }
+
+  function handleTableScroll(id, event) {
+    updateScrollHint(id, event);
+    const target = event?.currentTarget ?? event?.target;
+    if (!target) {
+      return;
+    }
+
+    state.datasets[id].scrollTop = target.scrollTop;
+    state.datasets[id].viewportHeight = target.clientHeight;
   }
 
   function activePendingColumn() {
@@ -979,10 +1113,21 @@ export function createReportModel() {
     updateScrollHint,
     scrollClass,
     activeSortSummary,
+    groupedByLabel,
+    currentColumnStats,
     activePendingColumn,
     filterUsesRange,
     filterInputType,
     isPageBusy,
+    copyViewLink,
+    openGroupModal,
+    openStatsModal,
+    openExportModal,
+    applyGrouping,
+    exportSelectedRows,
+    exportFilteredRows,
+    exportDatasetFromModal,
+    handleTableScroll,
     addSortRule,
     removeSortRule,
     updateSortRuleKey,
@@ -1092,6 +1237,19 @@ function readStoredState() {
   }
 }
 
+function readStateSnapshotFromHash() {
+  try {
+    const hash = window.location.hash ?? "";
+    if (!hash.startsWith("#view=")) {
+      return null;
+    }
+
+    return JSON.parse(decodeURIComponent(hash.slice(6)));
+  } catch {
+    return null;
+  }
+}
+
 function saveState(appState) {
   const serializable = {
     theme: appState.theme,
@@ -1118,6 +1276,8 @@ function normalizeDatasetState(dataset, input) {
     visibleKeys: visibleKeys.length > 0 ? visibleKeys : [...availableKeys],
     page: normalizePositiveInt(input.page, 1),
     pageBusy: false,
+    scrollTop: normalizePositiveInt(input.scrollTop, 0),
+    viewportHeight: normalizePositiveInt(input.viewportHeight, 560),
     size: normalizePageSize(input.size),
     inlineFiltersOpen: !!input.inlineFiltersOpen,
     inlineColumnsOpen: !!input.inlineColumnsOpen,
@@ -1135,7 +1295,9 @@ function normalizeDatasetState(dataset, input) {
     activePreset: typeof input.activePreset === "string" ? input.activePreset : "",
     activeCustomPreset: typeof input.activeCustomPreset === "string" ? input.activeCustomPreset : "",
     lastRowSelection: typeof input.lastRowSelection === "string" ? input.lastRowSelection : "",
-    pinnedColumnKey: typeof input.pinnedColumnKey === "string" ? input.pinnedColumnKey : "",
+    pinnedColumnKeys: normalizePinnedColumns(input, availableKeys),
+    groupBy: typeof input.groupBy === "string" && availableKeys.includes(input.groupBy) ? input.groupBy : "",
+    statsColumnKey: typeof input.statsColumnKey === "string" && availableKeys.includes(input.statsColumnKey) ? input.statsColumnKey : (availableKeys[0] ?? ""),
     customPresets: Array.isArray(input.customPresets) ? input.customPresets.filter((item) => item && typeof item.name === "string").map((item) => normalizePreset(dataset, item)) : [],
     pickSelection: {
       available: Array.isArray(input.pickSelection?.available) ? input.pickSelection.available.filter((key) => availableKeys.includes(key)) : [],
@@ -1220,6 +1382,18 @@ function normalizePageSize(value) {
   return PAGE_SIZES.includes(size) ? size : 10;
 }
 
+function normalizePinnedColumns(input, availableKeys) {
+  if (Array.isArray(input.pinnedColumnKeys)) {
+    return input.pinnedColumnKeys.filter((key) => availableKeys.includes(key));
+  }
+
+  if (typeof input.pinnedColumnKey === "string" && availableKeys.includes(input.pinnedColumnKey)) {
+    return [input.pinnedColumnKey];
+  }
+
+  return [];
+}
+
 function normalizePreset(dataset, input) {
   const availableKeys = sanitizeColumns(dataset.columns).map((column) => column.key);
   return {
@@ -1229,7 +1403,8 @@ function normalizePreset(dataset, input) {
     sorts: normalizeSorts(input.sorts, availableKeys, input.sort),
     size: normalizePageSize(input.size),
     columnWidths: normalizeColumnWidths(input.columnWidths, dataset.columns),
-    pinnedColumnKey: typeof input.pinnedColumnKey === "string" && availableKeys.includes(input.pinnedColumnKey) ? input.pinnedColumnKey : "",
+    pinnedColumnKeys: normalizePinnedColumns(input, availableKeys),
+    groupBy: typeof input.groupBy === "string" && availableKeys.includes(input.groupBy) ? input.groupBy : "",
     filters: Array.isArray(input.filters) ? input.filters.filter((item) => availableKeys.includes(item.key)).map((item) => ({ ...item, valueTo: item.valueTo ?? "" })) : []
   };
 }
@@ -1346,23 +1521,30 @@ function buildDatasetView(dataset, datasetState) {
 
   const filteredRows = allRows.filter((entry) => matchesDataset(entry, dataset, datasetState));
   const sortedRows = sortRows(filteredRows, dataset, datasetState.sorts);
+  const displayRows = buildDisplayRows(sortedRows, dataset, datasetState.groupBy);
   const size = normalizePageSize(datasetState.size);
-  const pageCount = Math.max(1, Math.ceil(sortedRows.length / size));
+  const pageCount = Math.max(1, Math.ceil(displayRows.length / size));
   const page = Math.min(Math.max(1, normalizePositiveInt(datasetState.page, 1)), pageCount);
   datasetState.page = page;
   datasetState.size = size;
   const start = (page - 1) * size;
-  const pageRows = sortedRows.slice(start, start + size);
+  const pageRows = displayRows.slice(start, start + size);
   const sortColumn = safeColumns.find((column) => column.key === datasetState.sorts[0]?.key) ?? null;
   if (effectiveVisibleColumns.length > 0 && !datasetState.visibleKeys.some((key) => effectiveVisibleColumns.some((column) => column.key === key))) {
     datasetState.visibleKeys = effectiveVisibleColumns.map((column) => column.key);
   }
 
+  const virtual = computeVirtualRows(pageRows, datasetState);
+
   return {
     dataset,
     visibleColumns: effectiveVisibleColumns,
     rows: sortedRows,
+    displayRows,
     pageRows,
+    virtualRows: virtual.rows,
+    virtualTopSpacer: virtual.topSpacer,
+    virtualBottomSpacer: virtual.bottomSpacer,
     page,
     pageCount,
     totalRows: allRows.length,
@@ -1370,6 +1552,7 @@ function buildDatasetView(dataset, datasetState) {
     size,
     sortColumn,
     sortRules: datasetState.sorts,
+    groupBy: datasetState.groupBy,
     availableColumns: safeColumns.filter((column) => !datasetState.visibleKeys.includes(column.key) && (column.label || column.key).toLowerCase().includes(datasetState.columnSearch.toLowerCase())),
     shownColumns: safeColumns.filter((column) => datasetState.visibleKeys.includes(column.key)),
     hasRows: sortedRows.length > 0
@@ -1419,6 +1602,83 @@ function prepareDatasetRows(rows, columns) {
     rowId: buildRowId(row, index),
     searchText: safeColumns.map((column) => stringifyValue(getValue(row, column.key))).join(" ").toLowerCase()
   }));
+}
+
+function buildDisplayRows(rows, dataset, groupBy) {
+  if (!groupBy) {
+    return rows;
+  }
+
+  const column = dataset.columns.find((item) => item.key === groupBy);
+  if (!column) {
+    return rows;
+  }
+
+  const groups = new Map();
+  for (const entry of rows) {
+    const rawValue = getValue(entry.raw, groupBy);
+    const value = displayValue(rawValue);
+    if (!groups.has(value)) {
+      groups.set(value, []);
+    }
+    groups.get(value).push(entry);
+  }
+
+  const display = [];
+  let index = 0;
+  for (const [value, items] of groups.entries()) {
+    const stats = computeGroupSummary(items, dataset.columns);
+    display.push({
+      kind: "group",
+      rowId: `group:${groupBy}:${index}`,
+      label: value,
+      columnLabel: column.label,
+      count: items.length
+    });
+    display.push(...items);
+    display.push({
+      kind: "subtotal",
+      rowId: `subtotal:${groupBy}:${index}`,
+      label: value,
+      summary: stats
+    });
+    index += 1;
+  }
+
+  return display;
+}
+
+function computeGroupSummary(items, columns) {
+  const numericColumns = columns.filter((column) => column.kind === "number");
+  return numericColumns.slice(0, 3).map((column) => {
+    const values = items
+      .map((entry) => parseNumeric(getValue(entry.raw, column.key)))
+      .filter((value) => Number.isFinite(value));
+    const total = values.reduce((sum, value) => sum + value, 0);
+    return {
+      key: column.key,
+      label: column.label,
+      total
+    };
+  });
+}
+
+function computeVirtualRows(rows, datasetState) {
+  const viewportHeight = Math.max(240, normalizePositiveInt(datasetState.viewportHeight, 560));
+  const scrollTop = Math.max(0, normalizePositiveInt(datasetState.scrollTop, 0));
+  const total = rows.length;
+  if (total <= 24) {
+    return { rows, topSpacer: 0, bottomSpacer: 0 };
+  }
+
+  const visibleCount = Math.ceil(viewportHeight / VIRTUAL_ROW_HEIGHT) + VIRTUAL_OVERSCAN;
+  const start = Math.max(0, Math.floor(scrollTop / VIRTUAL_ROW_HEIGHT) - Math.floor(VIRTUAL_OVERSCAN / 2));
+  const end = Math.min(total, start + visibleCount);
+  return {
+    rows: rows.slice(start, end),
+    topSpacer: start * VIRTUAL_ROW_HEIGHT,
+    bottomSpacer: Math.max(0, (total - end) * VIRTUAL_ROW_HEIGHT)
+  };
 }
 
 function matchesDataset(entry, dataset, datasetState) {
@@ -1685,6 +1945,43 @@ function slugify(value) {
     .replace(/^-+|-+$/g, "");
 }
 
+function buildStateSnapshot(appState) {
+  return {
+    theme: appState.theme,
+    sections: appState.sections,
+    datasets: Object.fromEntries(Object.entries(appState.datasets).map(([key, value]) => [key, {
+      search: value.search,
+      filters: value.filters,
+      sorts: value.sorts,
+      visibleKeys: value.visibleKeys,
+      size: value.size,
+      page: value.page,
+      groupBy: value.groupBy,
+      pinnedColumnKeys: value.pinnedColumnKeys,
+      activeCustomPreset: value.activeCustomPreset
+    }]))
+  };
+}
+
+function applyStateSnapshot(state, snapshot, datasets) {
+  if (!snapshot || typeof snapshot !== "object") {
+    return;
+  }
+
+  if (snapshot.theme === "light" || snapshot.theme === "dark") {
+    state.theme = snapshot.theme;
+  }
+
+  for (const dataset of datasets) {
+    const saved = snapshot.datasets?.[dataset.id];
+    if (!saved) {
+      continue;
+    }
+
+    state.datasets[dataset.id] = normalizeDatasetState(dataset, { ...state.datasets[dataset.id], ...saved });
+  }
+}
+
 function buildOverviewCards(meta, payload, txt) {
   const warnings = meta.warnings ?? [];
   return [
@@ -1720,6 +2017,90 @@ export function columnTone(kind, value) {
   }
 
   return "is-text";
+}
+
+function projectRow(row, columns) {
+  const output = {};
+  for (const column of columns) {
+    output[column.key] = getValue(row, column.key);
+  }
+  return output;
+}
+
+function getExportRowsFactory(state, datasetViews) {
+  return function getExportRows(id, scope) {
+    const view = datasetViews.value[id];
+    if (!view) {
+      return [];
+    }
+
+    if (scope === "selected") {
+      const selected = state.datasets[id]?.selectedRows ?? [];
+      return view.rows.filter((entry) => selected.includes(entry.rowId));
+    }
+
+    if (scope === "page") {
+      return view.pageRows.filter((entry) => !entry.kind);
+    }
+
+    if (scope === "all") {
+      return (view.dataset.preparedRows ?? []).filter((entry) => !entry.kind);
+    }
+
+    return view.rows;
+  };
+}
+
+function computeColumnStats(view, key) {
+  if (!view) {
+    return null;
+  }
+
+  const column = view.dataset.columns.find((item) => item.key === key);
+  if (!column) {
+    return null;
+  }
+
+  const values = view.rows.map((entry) => getValue(entry.raw, key));
+  const nonEmpty = values.filter((value) => value !== null && value !== undefined && value !== "");
+  const distinct = new Set(nonEmpty.map((value) => stringifyValue(value)));
+  const topValues = [...nonEmpty.reduce((map, value) => {
+    const text = displayValue(value);
+    map.set(text, (map.get(text) ?? 0) + 1);
+    return map;
+  }, new Map()).entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+  let min = "";
+  let max = "";
+  let avg = "";
+  if (column.kind === "number") {
+    const numeric = nonEmpty.map((value) => parseNumeric(value)).filter((value) => Number.isFinite(value));
+    if (numeric.length > 0) {
+      min = String(Math.min(...numeric));
+      max = String(Math.max(...numeric));
+      avg = String((numeric.reduce((sum, value) => sum + value, 0) / numeric.length).toFixed(2));
+    }
+  } else if (column.kind === "date") {
+    const dates = nonEmpty.map((value) => parseDate(value)).filter((value) => Number.isFinite(value) && value > 0);
+    if (dates.length > 0) {
+      min = new Date(Math.min(...dates)).toISOString();
+      max = new Date(Math.max(...dates)).toISOString();
+    }
+  }
+
+  return {
+    key,
+    label: column.label,
+    kind: column.kind,
+    total: values.length,
+    nonEmpty: nonEmpty.length,
+    nullCount: values.length - nonEmpty.length,
+    distinctCount: distinct.size,
+    min,
+    max,
+    avg,
+    topValues
+  };
 }
 
 function formatSummaryChip(filter) {

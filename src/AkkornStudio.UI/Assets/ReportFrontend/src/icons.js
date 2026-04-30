@@ -20,7 +20,9 @@ import {
   Expand,
   FileJson2,
   Funnel,
+  Group,
   GripVertical,
+  Link2,
   ListFilter,
   Moon,
   Pin,
@@ -29,6 +31,7 @@ import {
   RotateCcw,
   Search,
   Save,
+  Sigma,
   Sun,
   TextCursorInput,
   Trash2,
@@ -72,7 +75,10 @@ const iconMap = {
   save: Save,
   trash: Trash2,
   uploadPreset: Upload,
-  downloadPreset: FileJson2
+  downloadPreset: FileJson2,
+  group: Group,
+  stats: Sigma,
+  link: Link2
 };
 
 export const IconGlyph = {

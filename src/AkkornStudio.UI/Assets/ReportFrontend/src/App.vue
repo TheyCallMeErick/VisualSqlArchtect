@@ -22,9 +22,11 @@ const report = createReportModel();
       <div class="toolbar">
         <button class="ghost-btn" type="button" @click="report.toggleTheme"><IconGlyph :name="report.themeIcon" /><span>{{ report.txt("Tema", "Theme") }}</span></button>
         <button class="ghost-btn" type="button" @click="report.copySummary"><IconGlyph name="clipboard" /><span>{{ report.txt("Copiar resumo", "Copy summary") }}</span></button>
+        <button class="ghost-btn" type="button" @click="report.copyViewLink"><IconGlyph name="link" /><span>{{ report.txt("Copiar link da visao", "Copy view link") }}</span></button>
         <button class="ghost-btn" type="button" @click="report.copySql" :disabled="!(report.payload.sql ?? '').trim()"><IconGlyph name="code" /><span>{{ report.txt("Copiar SQL", "Copy SQL") }}</span></button>
         <button class="ghost-btn" type="button" @click="report.exportCsv" :disabled="!report.datasetViews.results"><IconGlyph name="download" /><span>{{ report.txt("Exportar visivel CSV", "Export visible CSV") }}</span></button>
         <button class="ghost-btn" type="button" @click="report.exportJson"><IconGlyph name="json" /><span>{{ report.txt("Exportar JSON", "Export JSON") }}</span></button>
+        <button class="ghost-btn" type="button" @click="report.openExportModal('results')"><IconGlyph name="downloadPreset" /><span>{{ report.txt("Exportar dados", "Export data") }}</span></button>
       </div>
     </header>
 
@@ -61,6 +63,8 @@ const report = createReportModel();
             </label>
             <button class="ghost-btn" type="button" @click="report.openFilterModal(dataset.id)"><IconGlyph name="filter" /><span>{{ report.txt("Filtros", "Filters") }}</span></button>
             <button class="ghost-btn" type="button" @click="report.openSortModal(dataset.id)"><IconGlyph name="sort" /><span>{{ report.txt("Ordenacao", "Sorting") }}</span></button>
+            <button class="ghost-btn" type="button" @click="report.openGroupModal(dataset.id)"><IconGlyph name="group" /><span>{{ report.txt("Agrupar", "Group") }}</span></button>
+            <button class="ghost-btn" type="button" @click="report.openStatsModal(dataset.id)"><IconGlyph name="stats" /><span>{{ report.txt("Estatisticas", "Stats") }}</span></button>
             <button class="ghost-btn" type="button" @click="report.openColumnsModal(dataset.id)"><IconGlyph name="columns" /><span>{{ report.txt("Colunas", "Columns") }}</span></button>
             <button class="ghost-btn" type="button" @click="report.resetDataset(dataset.id)"><IconGlyph name="rotate" /><span>{{ report.txt("Resetar visao", "Reset view") }}</span></button>
             <button class="collapse-btn" type="button" @click="report.toggleSection(dataset.id)"><IconGlyph name="chevronDown" /><span>{{ report.state.sections[dataset.id] ? report.txt("Expandir", "Expand") : report.txt("Recolher", "Collapse") }}</span></button>
@@ -104,6 +108,7 @@ const report = createReportModel();
                 <div class="mini-panel-title">{{ report.txt("Ordenacao ativa", "Active sorting") }}</div>
               </div>
               <div class="chips">
+                <div v-if="report.groupedByLabel(dataset.id)" class="chip">{{ report.txt("Agrupado por", "Grouped by") }} • {{ report.groupedByLabel(dataset.id) }}</div>
                 <div v-for="item in report.activeSortSummary(dataset.id)" :key="`${item.key}-${item.index}`" class="chip">
                   {{ item.index + 1 }} • {{ item.label ?? item.key ?? report.DEFAULT_EMPTY }} • {{ item.dir === 'desc' ? report.txt("Decrescente", "Descending") : report.txt("Crescente", "Ascending") }}
                 </div>
@@ -144,6 +149,8 @@ const report = createReportModel();
               <div v-if="dataset.id === 'results'" class="table-quick-actions">
                 <button class="ghost-btn small" type="button" :disabled="!report.state.datasets[dataset.id].selectedCell" @click="report.copySelectedCell(dataset.id)"><IconGlyph name="clipboard" /><span>{{ report.txt("Copiar celula", "Copy cell") }}</span></button>
                 <button class="ghost-btn small" type="button" :disabled="report.selectedRowsCount(dataset.id) === 0" @click="report.copySelectedRows(dataset.id)"><IconGlyph name="rows" /><span>{{ report.txt("Copiar linhas", "Copy rows") }}</span></button>
+                <button class="ghost-btn small" type="button" :disabled="report.selectedRowsCount(dataset.id) === 0" @click="report.exportSelectedRows(dataset.id)"><IconGlyph name="download" /><span>{{ report.txt("Exportar selecionadas", "Export selected") }}</span></button>
+                <button class="ghost-btn small" type="button" :disabled="report.datasetViews[dataset.id].filteredCount === 0" @click="report.exportFilteredRows(dataset.id)"><IconGlyph name="download" /><span>{{ report.txt("Exportar filtradas", "Export filtered") }}</span></button>
               </div>
             </div>
 
@@ -157,7 +164,7 @@ const report = createReportModel();
             </div>
             </div>
 
-            <div class="table-scroll" :class="report.scrollClass(dataset.id)" @scroll="report.updateScrollHint(dataset.id, $event)" @mouseenter="report.updateScrollHint(dataset.id, $event)">
+            <div class="table-scroll" :class="report.scrollClass(dataset.id)" @scroll="report.handleTableScroll(dataset.id, $event)" @mouseenter="report.handleTableScroll(dataset.id, $event)">
               <table class="report-table">
                 <colgroup>
                   <col class="select-col-width" />
@@ -180,7 +187,19 @@ const report = createReportModel();
                   </tr>
                 </thead>
                 <tbody v-if="report.datasetViews[dataset.id].pageRows.length > 0">
-                  <tr v-for="entry in report.datasetViews[dataset.id].pageRows" :key="entry.rowId" :class="{ 'is-row-selected': report.isRowSelected(dataset.id, entry.rowId) }">
+                  <tr v-if="report.datasetViews[dataset.id].virtualTopSpacer > 0" class="virtual-spacer"><td :colspan="Math.max(1, report.datasetViews[dataset.id].visibleColumns.length + 1)" :style="{ height: `${report.datasetViews[dataset.id].virtualTopSpacer}px` }"></td></tr>
+                  <template v-for="entry in report.datasetViews[dataset.id].virtualRows" :key="entry.rowId">
+                  <tr v-if="entry.kind === 'group'" class="group-row">
+                    <td :colspan="Math.max(1, report.datasetViews[dataset.id].visibleColumns.length + 1)">
+                      <div class="group-row-content">{{ entry.columnLabel }}: <strong>{{ entry.label }}</strong> <small>({{ entry.count }})</small></div>
+                    </td>
+                  </tr>
+                  <tr v-else-if="entry.kind === 'subtotal'" class="subtotal-row">
+                    <td :colspan="Math.max(1, report.datasetViews[dataset.id].visibleColumns.length + 1)">
+                      <div class="group-row-content">{{ report.txt("Subtotal", "Subtotal") }} <span v-for="item in entry.summary" :key="item.key" class="subtotal-chip">{{ item.label }}: {{ item.total }}</span></div>
+                    </td>
+                  </tr>
+                  <tr v-else :class="{ 'is-row-selected': report.isRowSelected(dataset.id, entry.rowId) }">
                     <td class="select-col sticky-select"><button class="row-selector" type="button" @click="report.toggleRow(dataset.id, entry.rowId, $event)"><IconGlyph name="rowSelect" :size="14" :stroke-width="2.1" /></button></td>
                     <td v-for="column in (report.datasetViews[dataset.id].visibleColumns ?? []).filter(Boolean)" :key="`${entry.rowId}-${column.key}`" :style="[report.columnStyle(dataset.id, column.key), report.columnStickyStyle(dataset.id, column.key)]" :class="['cell', report.columnTone(column.kind, report.getValue(entry.raw, column.key)), report.columnStickyClass(dataset.id, column.key), { 'is-selected-cell': report.isCellSelected(dataset.id, entry.rowId, column.key) }]" @click="report.selectCellWithEvent(dataset.id, entry.rowId, column.key, $event)" @dblclick="report.isLongText(report.getValue(entry.raw, column.key)) && report.openCell(report.getValue(entry.raw, column.key))" @contextmenu="report.openCellMenu($event, dataset.id, entry.rowId, column.key)">
                       <div class="cell-body">
@@ -189,6 +208,8 @@ const report = createReportModel();
                       </div>
                     </td>
                   </tr>
+                  </template>
+                  <tr v-if="report.datasetViews[dataset.id].virtualBottomSpacer > 0" class="virtual-spacer"><td :colspan="Math.max(1, report.datasetViews[dataset.id].visibleColumns.length + 1)" :style="{ height: `${report.datasetViews[dataset.id].virtualBottomSpacer}px` }"></td></tr>
                 </tbody>
                 <tbody v-else>
                   <tr><td :colspan="Math.max(1, report.datasetViews[dataset.id].visibleColumns.length + 1)" class="empty-state">{{ report.txt("Nenhuma linha disponivel", "No rows available") }}</td></tr>
@@ -277,6 +298,60 @@ const report = createReportModel();
           <button class="ghost-btn" type="button" @click="report.applySort"><IconGlyph name="check" /><span>{{ report.txt("Aplicar ordenacao", "Apply sorting") }}</span></button>
           <button class="ghost-btn" type="button" @click="report.clearSort"><IconGlyph name="rotate" /><span>{{ report.txt("Resetar", "Reset") }}</span></button>
         </div>
+      </div>
+    </div>
+
+    <div v-if="report.ui.activeModal === 'group'" class="modal-shell" @click.self="report.closeModal">
+      <div class="modal-card">
+        <div class="modal-head">
+          <div><div class="modal-title">{{ report.txt("Agrupar resultados", "Group results") }}</div><div class="section-copy">{{ report.txt("Escolha uma coluna para agrupar e inserir subtotais.", "Choose a column to group and inject subtotals.") }}</div></div>
+          <button class="icon-only" type="button" @click="report.closeModal"><IconGlyph name="x" /></button>
+        </div>
+        <div v-if="report.activeDatasetState() && report.activeDataset()" class="modal-body">
+          <label class="field-stack"><span class="field-label"><IconGlyph name="group" /> {{ report.txt("Agrupar por", "Group by") }}</span><select v-model="report.activeDatasetState().groupBy" class="field-input"><option value="">{{ report.txt("Nenhum", "None") }}</option><option v-for="column in (report.activeDataset().columns ?? []).filter(Boolean)" :key="column.key" :value="column.key">{{ column.label ?? column.key ?? report.DEFAULT_EMPTY }}</option></select></label>
+        </div>
+        <div class="modal-foot"><button class="ghost-btn" type="button" @click="report.applyGrouping"><IconGlyph name="check" /><span>{{ report.txt("Aplicar agrupamento", "Apply grouping") }}</span></button></div>
+      </div>
+    </div>
+
+    <div v-if="report.ui.activeModal === 'stats'" class="modal-shell" @click.self="report.closeModal">
+      <div class="modal-card">
+        <div class="modal-head">
+          <div><div class="modal-title">{{ report.txt("Estatisticas da coluna", "Column statistics") }}</div><div class="section-copy">{{ report.txt("Resumo rapido da coluna com base nas linhas filtradas.", "Quick summary for the column based on filtered rows.") }}</div></div>
+          <button class="icon-only" type="button" @click="report.closeModal"><IconGlyph name="x" /></button>
+        </div>
+        <div v-if="report.activeDatasetState() && report.activeDataset()" class="modal-body">
+          <label class="field-stack"><span class="field-label"><IconGlyph name="stats" /> {{ report.txt("Coluna", "Column") }}</span><select v-model="report.activeDatasetState().statsColumnKey" class="field-input"><option v-for="column in (report.activeDataset().columns ?? []).filter(Boolean)" :key="column.key" :value="column.key">{{ column.label ?? column.key ?? report.DEFAULT_EMPTY }}</option></select></label>
+          <div v-if="report.currentColumnStats(report.ui.modalDatasetId)" class="stats-grid">
+            <div class="stat-card"><span>{{ report.txt("Total", "Total") }}</span><strong>{{ report.currentColumnStats(report.ui.modalDatasetId).total }}</strong></div>
+            <div class="stat-card"><span>{{ report.txt("Preenchidos", "Filled") }}</span><strong>{{ report.currentColumnStats(report.ui.modalDatasetId).nonEmpty }}</strong></div>
+            <div class="stat-card"><span>{{ report.txt("Nulos", "Nulls") }}</span><strong>{{ report.currentColumnStats(report.ui.modalDatasetId).nullCount }}</strong></div>
+            <div class="stat-card"><span>{{ report.txt("Distintos", "Distinct") }}</span><strong>{{ report.currentColumnStats(report.ui.modalDatasetId).distinctCount }}</strong></div>
+            <div class="stat-card" v-if="report.currentColumnStats(report.ui.modalDatasetId).min"><span>Min</span><strong>{{ report.currentColumnStats(report.ui.modalDatasetId).min }}</strong></div>
+            <div class="stat-card" v-if="report.currentColumnStats(report.ui.modalDatasetId).max"><span>Max</span><strong>{{ report.currentColumnStats(report.ui.modalDatasetId).max }}</strong></div>
+            <div class="stat-card" v-if="report.currentColumnStats(report.ui.modalDatasetId).avg"><span>Avg</span><strong>{{ report.currentColumnStats(report.ui.modalDatasetId).avg }}</strong></div>
+          </div>
+          <div v-if="report.currentColumnStats(report.ui.modalDatasetId)?.topValues?.length > 0" class="chips">
+            <div v-for="item in report.currentColumnStats(report.ui.modalDatasetId).topValues" :key="item[0]" class="chip">{{ item[0] }} <small>{{ item[1] }}</small></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="report.ui.activeModal === 'export'" class="modal-shell" @click.self="report.closeModal">
+      <div class="modal-card">
+        <div class="modal-head">
+          <div><div class="modal-title">{{ report.txt("Exportar dados", "Export data") }}</div><div class="section-copy">{{ report.txt("Escolha escopo, formato e colunas.", "Choose scope, format and columns.") }}</div></div>
+          <button class="icon-only" type="button" @click="report.closeModal"><IconGlyph name="x" /></button>
+        </div>
+        <div class="modal-body">
+          <div class="form-grid">
+            <label class="field-stack"><span class="field-label">{{ report.txt("Escopo", "Scope") }}</span><select v-model="report.ui.exportOptions.scope" class="field-input"><option value="filtered">{{ report.txt("Filtrado", "Filtered") }}</option><option value="page">{{ report.txt("Pagina atual", "Current page") }}</option><option value="selected">{{ report.txt("Selecionadas", "Selected") }}</option><option value="all">{{ report.txt("Todas", "All") }}</option></select></label>
+            <label class="field-stack"><span class="field-label">{{ report.txt("Formato", "Format") }}</span><select v-model="report.ui.exportOptions.format" class="field-input"><option value="csv">CSV</option><option value="json">JSON</option></select></label>
+            <label class="field-stack field-span"><span class="field-label">{{ report.txt("Colunas", "Columns") }}</span><select v-model="report.ui.exportOptions.visibleOnly" class="field-input"><option :value="true">{{ report.txt("Apenas visiveis", "Visible only") }}</option><option :value="false">{{ report.txt("Todas as colunas", "All columns") }}</option></select></label>
+          </div>
+        </div>
+        <div class="modal-foot"><button class="ghost-btn" type="button" @click="report.exportDatasetFromModal"><IconGlyph name="download" /><span>{{ report.txt("Exportar", "Export") }}</span></button></div>
       </div>
     </div>
 

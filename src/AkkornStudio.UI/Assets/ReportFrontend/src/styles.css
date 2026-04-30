@@ -455,6 +455,14 @@ select:focus-visible {
   background: var(--surface);
 }
 
+.subtotal-chip {
+  display: inline-flex;
+  margin-left: 8px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--surface);
+}
+
 .result-count {
   font-weight: 700;
   color: var(--text-soft);
@@ -518,7 +526,8 @@ select:focus-visible {
 .table-scroll {
   position: relative;
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: auto;
+  max-height: 62vh;
   border-radius: 18px;
   border: 1px solid var(--border);
 }
@@ -613,6 +622,31 @@ select:focus-visible {
 .report-table tbody td {
   padding: 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.group-row td,
+.subtotal-row td {
+  padding: 0;
+  background: var(--surface-2);
+}
+
+.group-row-content {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  color: var(--text-soft);
+}
+
+.group-row strong {
+  color: var(--text);
+}
+
+.virtual-spacer td {
+  border: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
 }
 
 :root[data-theme="light"] .report-table tbody td {
@@ -852,6 +886,32 @@ select:focus-visible {
 .sort-rules {
   display: grid;
   gap: 12px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.stat-card {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.stat-card span {
+  color: var(--text-soft);
+  font-size: 0.82rem;
+}
+
+.stat-card strong {
+  color: var(--text);
+  font-size: 1rem;
 }
 
 .sort-rule {
