@@ -219,6 +219,7 @@ public partial class MainWindow
     {
         CurrentShell.ActivateDocument(WorkspaceDocumentType.QueryCanvas);
         SyncModeToggleState();
+        TrackCriticalFlow("CF-02-navigate-shell", "switch_to_query_mode", "ok");
         e.Handled = true;
     }
 
@@ -226,6 +227,7 @@ public partial class MainWindow
     {
         CurrentShell.ActivateDocument(WorkspaceDocumentType.DdlCanvas);
         SyncModeToggleState();
+        TrackCriticalFlow("CF-02-navigate-shell", "switch_to_ddl_mode", "ok");
         e.Handled = true;
     }
 
@@ -233,6 +235,7 @@ public partial class MainWindow
     {
         CurrentShell.ActivateDocument(WorkspaceDocumentType.SqlEditor);
         SyncModeToggleState();
+        TrackCriticalFlow("CF-02-navigate-shell", "switch_to_sql_editor_mode", "ok");
         e.Handled = true;
     }
 
@@ -240,6 +243,7 @@ public partial class MainWindow
     {
         CurrentShell.ActivateDocument(WorkspaceDocumentType.ErDiagram);
         SyncModeToggleState();
+        TrackCriticalFlow("CF-02-navigate-shell", "switch_to_er_diagram_mode", "ok");
         e.Handled = true;
     }
 
@@ -340,7 +344,7 @@ public partial class MainWindow
             NewItem(L("menu.fileHistory", "Histórico de arquivos"), MaterialIconKind.History, () =>
             {
                 EnterCanvasMode();
-                CurrentVm.FileHistory.Open();
+                ResolveActiveDiagramCanvasStrict().FileHistory.Open();
             }),
             NewSeparator(),
             NewGroupHeader(L("menu.group.currentMode", "Modo Atual")),
@@ -356,6 +360,18 @@ public partial class MainWindow
             }),
             NewSeparator(),
             NewGroupHeader(L("menu.group.tools", "Ferramentas")),
+            NewItem("Exportar baseline de observabilidade (7 dias)", MaterialIconKind.FileOutline, () =>
+            {
+                ExportObservabilityBaselineSafe(7);
+            }),
+            NewItem("Exportar baseline de observabilidade (14 dias)", MaterialIconKind.FileOutline, () =>
+            {
+                ExportObservabilityBaselineSafe(14);
+            }),
+            NewItem("Exportar baseline de observabilidade (30 dias)", MaterialIconKind.FileOutline, () =>
+            {
+                ExportObservabilityBaselineSafe(30);
+            }),
         };
 
         if (isDdlModeActive)
@@ -387,8 +403,8 @@ public partial class MainWindow
                 return;
 
             CurrentShell.StartMenu.RefreshData(
-                CurrentVm.ConnectionManager.Profiles,
-                CurrentVm.ConnectionManager.ActiveProfileId
+                ResolveDiagramCanvasForConnectionSidebar().ConnectionManager.Profiles,
+                ResolveDiagramCanvasForConnectionSidebar().ConnectionManager.ActiveProfileId
             );
             CurrentShell.ReturnToStart();
             Title = AppConstants.AppDisplayName;
@@ -458,9 +474,7 @@ public partial class MainWindow
         }
 
         CanvasViewModel queryCanvas = CurrentShell.ActiveQueryCanvasDocument
-            ?? CurrentShell.EnsureCanvas(
-                isDdlModeActiveResolver: () => CurrentShell.IsDdlDocumentPageActive,
-                importDdlTableAction: (table, position) => ImportSingleTableToDdl(table, position));
+            ?? CurrentShell.EnsureCanvas();
 
         queryCanvas.SqlImporter.Open();
         return Task.CompletedTask;
@@ -474,7 +488,7 @@ public partial class MainWindow
             return Task.CompletedTask;
         }
 
-        DbMetadata? metadata = CurrentVm.DatabaseMetadata;
+        DbMetadata? metadata = ResolveMetadataForActiveWorkspace();
         if (metadata is null)
         {
             CurrentShell.Toasts.ShowWarning(L("toast.ddlConnectToImportSchema", "Conecte-se a um banco para importar schema no canvas DDL."));
@@ -487,7 +501,7 @@ public partial class MainWindow
     private async Task ImportDdlSchemaAsyncCore(DbMetadata metadata)
     {
         CanvasViewModel ddlCanvas = CurrentShell.EnsureDdlCanvas();
-        DatabaseProvider activeProvider = CurrentVm.ActiveConnectionConfig?.Provider ?? ddlCanvas.Provider;
+        DatabaseProvider activeProvider = ResolveActiveConnectionConfigForWorkspace()?.Provider ?? ddlCanvas.Provider;
 
         // Build import graph off the visible canvas to keep UI responsive on large schemas.
         DdlSchemaImportPayload payload = await Task.Run(() =>
@@ -549,7 +563,7 @@ public partial class MainWindow
 
     private void ImportSingleTableToDdl(TableMetadata table, Point position)
     {
-        DbMetadata? metadata = CurrentVm.DatabaseMetadata;
+        DbMetadata? metadata = ResolveMetadataForActiveWorkspace();
         if (metadata is null)
         {
             CurrentShell.Toasts.ShowWarning(L("toast.ddlConnectToImportTable", "Conecte-se a um banco para importar tabelas no canvas DDL."));
@@ -577,7 +591,7 @@ public partial class MainWindow
 
     private async Task ExecuteDdlAsync()
     {
-        ConnectionConfig? config = CurrentVm.ActiveConnectionConfig;
+        ConnectionConfig? config = ResolveActiveConnectionConfigForWorkspace();
         if (config is null)
         {
             CurrentShell.Toasts.ShowWarning(L("toast.ddlNoActiveConnection", "Nenhuma conexão ativa para executar DDL."));
@@ -624,7 +638,7 @@ public partial class MainWindow
     private CanvasViewModel PrepareDdlPreviewCanvas()
     {
         CanvasViewModel ddlCanvas = CurrentShell.EnsureDdlCanvas();
-        DatabaseProvider provider = CurrentVm.ActiveConnectionConfig?.Provider ?? ddlCanvas.Provider;
+        DatabaseProvider provider = ResolveActiveConnectionConfigForWorkspace()?.Provider ?? ddlCanvas.Provider;
         ddlCanvas.Provider = provider;
         LiveDdlBarViewModel liveDdl = ddlCanvas.LiveDdl
             ?? throw new InvalidOperationException(
@@ -645,7 +659,7 @@ public partial class MainWindow
             return false;
         }
 
-        DatabaseProvider provider = CurrentVm.ActiveConnectionConfig?.Provider ?? ddlCanvas.Provider;
+        DatabaseProvider provider = ResolveActiveConnectionConfigForWorkspace()?.Provider ?? ddlCanvas.Provider;
         ddlCanvas.Provider = provider;
         LiveDdlBarViewModel liveDdl = ddlCanvas.LiveDdl
             ?? throw new InvalidOperationException(
@@ -700,7 +714,7 @@ public partial class MainWindow
         B("FileHistoryBtn", () =>
         {
             EnterCanvasMode();
-            CurrentVm.FileHistory.Open();
+            ResolveActiveDiagramCanvasStrict().FileHistory.Open();
         });
         B("OpenBtn", () =>
         {
@@ -711,11 +725,12 @@ public partial class MainWindow
         {
             if (!_canvasInitialized)
                 return;
-            CurrentVm.ConnectionManager.IsVisible = false;
+            CanvasViewModel canvas = ResolveDiagramCanvasForConnectionSidebar();
+            canvas.ConnectionManager.IsVisible = false;
 
             CurrentShell.StartMenu.RefreshData(
-                CurrentVm.ConnectionManager.Profiles,
-                CurrentVm.ConnectionManager.ActiveProfileId
+                canvas.ConnectionManager.Profiles,
+                canvas.ConnectionManager.ActiveProfileId
             );
             CurrentShell.ReturnToStart();
             Title = AppConstants.AppDisplayName;
@@ -724,17 +739,17 @@ public partial class MainWindow
         B("ZoomInBtn", () =>
         {
             EnterCanvasMode();
-            CurrentVm.ZoomInCommand.Execute(null);
+            ResolveActiveDiagramCanvasStrict().ZoomInCommand.Execute(null);
         });
         B("ZoomOutBtn", () =>
         {
             EnterCanvasMode();
-            CurrentVm.ZoomOutCommand.Execute(null);
+            ResolveActiveDiagramCanvasStrict().ZoomOutCommand.Execute(null);
         });
         B("FitBtn", () =>
         {
             EnterCanvasMode();
-            CurrentVm.FitToScreenCommand.Execute(null);
+            ResolveActiveDiagramCanvasStrict().FitToScreenCommand.Execute(null);
         });
     }
 
@@ -764,6 +779,7 @@ public partial class MainWindow
                         L("error.mainWindow.queryPreviewUnavailable", "Preview SQL indisponivel para o canvas Query atual."));
                 liveSql.Recompile();
                 CurrentShell.OutputPreview.OpenForQuery(queryCanvas, liveSql, liveSql.ProviderLabel);
+                TrackCriticalFlow("CF-07-sql-preview", "open_query_preview", "ok");
                 await Task.CompletedTask;
                 return;
             }
@@ -771,6 +787,7 @@ public partial class MainWindow
             case WorkspaceDocumentPreviewKind.Ddl:
             {
                 await ViewDdlSqlAsync();
+                TrackCriticalFlow("CF-07-sql-preview", "open_ddl_preview", "ok");
                 return;
             }
 
@@ -784,3 +801,4 @@ public partial class MainWindow
         }
     }
 }
+

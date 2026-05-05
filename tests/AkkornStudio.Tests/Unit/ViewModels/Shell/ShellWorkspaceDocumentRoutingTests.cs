@@ -587,6 +587,28 @@ public class ShellWorkspaceDocumentRoutingTests
     }
 
     [Fact]
+    public void ConnectionManagerVisibility_IsExclusiveBetweenQueryAndDdlManagers()
+    {
+        var shell = new ShellViewModel(connectionManagerViewModelFactory: global::AkkornStudio.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
+        shell.EnterCanvas();
+
+        CanvasViewModel queryCanvas = shell.EnsureCanvas();
+        CanvasViewModel ddlCanvas = shell.EnsureDdlCanvas();
+
+        queryCanvas.ConnectionManager.Open();
+        Assert.True(queryCanvas.ConnectionManager.IsVisible);
+        Assert.False(ddlCanvas.ConnectionManager.IsVisible);
+
+        ddlCanvas.ConnectionManager.Open();
+        Assert.False(queryCanvas.ConnectionManager.IsVisible);
+        Assert.True(ddlCanvas.ConnectionManager.IsVisible);
+
+        queryCanvas.ConnectionManager.Open();
+        Assert.True(queryCanvas.ConnectionManager.IsVisible);
+        Assert.False(ddlCanvas.ConnectionManager.IsVisible);
+    }
+
+    [Fact]
     public void SqlEditorMode_ExplainPreview_DoesNotRequireSwitchingToCanvas()
     {
         var shell = new ShellViewModel(connectionManagerViewModelFactory: global::AkkornStudio.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());

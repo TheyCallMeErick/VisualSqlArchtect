@@ -6,6 +6,7 @@ using AkkornStudio.UI.Services.ConnectionManager;
 using AkkornStudio.UI.Services.ConnectionManager.Contracts;
 using AkkornStudio.UI.Services.Localization;
 using AkkornStudio.UI.Services.Modal;
+using AkkornStudio.UI.Services.Observability;
 using AkkornStudio.UI.Services.Settings;
 using AkkornStudio.UI.Services.Theming;
 using AkkornStudio.UI.ViewModels.Validation.Conventions;
@@ -29,6 +30,16 @@ public partial class App : Application
         ApplyUserThemeIfPresent();
 
         _services = BuildServices();
+        ICriticalFlowTelemetryService telemetry = _services.GetRequiredService<ICriticalFlowTelemetryService>();
+        telemetry.Track(
+            flowId: "CF-01-open-app-load-project",
+            step: "app_bootstrap",
+            outcome: "ok",
+            properties: new Dictionary<string, object?>
+            {
+                ["app"] = AppConstants.AppDisplayName,
+                ["version"] = AppConstants.AppVersion,
+            });
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             desktop.MainWindow = _services.GetRequiredService<MainWindow>();
@@ -65,6 +76,9 @@ public partial class App : Application
         services.AddSingleton<IConnectionTestService, ConnectionTestService>();
         services.AddSingleton<IConnectionSessionService, ConnectionSessionService>();
         services.AddSingleton<IConnectionManagerViewModelFactory, ConnectionManagerViewModelFactory>();
+        services.AddSingleton<ICriticalFlowTelemetryService, LocalCriticalFlowTelemetryService>();
+        services.AddSingleton<ICriticalFlowBaselineReportService, LocalCriticalFlowBaselineReportService>();
+        services.AddSingleton<ICriticalFlowRegressionAlertService, CriticalFlowRegressionAlertService>();
         services.AddSingleton<IAliasConvention, SnakeCaseConvention>();
         services.AddSingleton<IAliasConvention, CamelCaseConvention>();
         services.AddSingleton<IAliasConvention, PascalCaseConvention>();

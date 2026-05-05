@@ -796,6 +796,9 @@ public sealed class ShellViewModel : ViewModelBase
         {
             if (e.PropertyName == nameof(ConnectionManagerViewModel.IsVisible))
             {
+                if (_ is ConnectionManagerViewModel manager && manager.IsVisible)
+                    EnsureExclusiveVisibleConnectionManager(manager);
+
                 RaisePropertyChanged(nameof(ActiveConnectionManager));
                 RaisePropertyChanged(nameof(IsConnectionManagerVisible));
                 RaisePropertyChanged(nameof(IsConnectionManagerOverlayVisible));
@@ -831,6 +834,21 @@ public sealed class ShellViewModel : ViewModelBase
         RaisePropertyChanged(nameof(ActiveConnectionManager));
         RaisePropertyChanged(nameof(IsConnectionManagerVisible));
         RaisePropertyChanged(nameof(IsConnectionManagerOverlayVisible));
+    }
+
+    private void EnsureExclusiveVisibleConnectionManager(ConnectionManagerViewModel visibleManager)
+    {
+        if (Canvas?.ConnectionManager is ConnectionManagerViewModel queryManager
+            && !ReferenceEquals(queryManager, visibleManager))
+        {
+            queryManager.IsVisible = false;
+        }
+
+        if (DdlCanvas?.ConnectionManager is ConnectionManagerViewModel ddlManager
+            && !ReferenceEquals(ddlManager, visibleManager))
+        {
+            ddlManager.IsVisible = false;
+        }
     }
 
     private void RefreshCanvasMetadataObservers()
@@ -894,9 +912,7 @@ public sealed class ShellViewModel : ViewModelBase
             Canvas.Sidebar.ConnectionManagerOverride = null;
 
         if (DdlCanvas is not null)
-        {
-            DdlCanvas.Sidebar.ConnectionManagerOverride = Canvas?.ConnectionManager;
-        }
+            DdlCanvas.Sidebar.ConnectionManagerOverride = null;
 
         if (ActivePageContract.ShowsDiagramSidebar)
         {

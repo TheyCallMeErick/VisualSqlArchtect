@@ -843,6 +843,65 @@ public sealed class SqlEditorViewModelTests
     }
 
     [Fact]
+    public async Task CancelExecution_DuringExecuteAll_StopsSafelyAndClassifiesAsCancelled()
+    {
+        ConnectionConfig config = new(
+            DatabaseProvider.Postgres,
+            "localhost",
+            5432,
+            "db",
+            "user",
+            "pass");
+
+        var sut = new SqlEditorViewModel(
+            executionService: new SqlEditorExecutionService(new CancelAwareOrchestratorFactory()),
+            connectionConfigResolver: () => config);
+        sut.ActiveTab.SqlText = "SELECT 1; SELECT 2; SELECT 3;";
+
+        Task<IReadOnlyList<SqlEditorResultSet>> run = sut.ExecuteAllAsync();
+        Assert.True(await WaitUntilAsync(() => sut.IsExecuting, 1000));
+
+        sut.CancelExecution();
+        IReadOnlyList<SqlEditorResultSet> results = await run;
+
+        Assert.Single(results);
+        Assert.False(results[0].Success);
+        Assert.Equal(SqlExecutionErrorCategory.Cancelled, results[0].ErrorCategory);
+        Assert.False(sut.IsExecuting);
+        Assert.False(sut.IsCancellationPending);
+        Assert.Equal(1, sut.ExecutionTelemetry.FailureCount);
+        Assert.Equal(1, sut.ExecutionTelemetry.FailureByCategory["Cancelled"]);
+    }
+
+    [Fact]
+    public async Task CancelExecution_WhenRunInProgress_StoresCancelledCategoryInResultTelemetry()
+    {
+        ConnectionConfig config = new(
+            DatabaseProvider.Postgres,
+            "localhost",
+            5432,
+            "db",
+            "user",
+            "pass");
+
+        var sut = new SqlEditorViewModel(
+            executionService: new SqlEditorExecutionService(new CancelAwareOrchestratorFactory()),
+            connectionConfigResolver: () => config);
+        sut.ActiveTab.SqlText = "SELECT 1;";
+
+        Task<SqlEditorResultSet> run = sut.ExecuteSelectionOrCurrentAsync(0, 0, 0);
+        Assert.True(await WaitUntilAsync(() => sut.IsExecuting, 1000));
+        sut.CancelExecution();
+
+        SqlEditorResultSet result = await run;
+
+        Assert.Equal(SqlExecutionErrorCategory.Cancelled, result.ErrorCategory);
+        Assert.Equal(1, sut.ExecutionTelemetry.FailureCount);
+        Assert.Equal(1, sut.ExecutionTelemetry.FailureByCategory["Cancelled"]);
+        Assert.Contains("Cancelled:1", sut.ExecutionTelemetryErrorsText, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ExecuteSelectionOrCurrent_WhenMutationNeedsConfirmation_DoesNotExecuteImmediately()
     {
         ConnectionConfig config = new(

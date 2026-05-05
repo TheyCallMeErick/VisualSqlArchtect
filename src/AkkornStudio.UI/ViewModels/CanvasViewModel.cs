@@ -14,6 +14,7 @@ using AkkornStudio.UI.Controls;
 using AkkornStudio.UI.ViewModels.Canvas;
 using AkkornStudio.UI.ViewModels.Canvas.Strategies;
 using AkkornStudio.UI.Services.QueryPreview;
+using AkkornStudio.UI.Services.Ddl;
 using AkkornStudio.UI.ViewModels.UndoRedo;
 using AkkornStudio.UI.ViewModels.UndoRedo.Commands;
 using AkkornStudio.UI.ViewModels.Validation.Conventions;
@@ -503,8 +504,8 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable, ICanvasViewpor
                 _ = _domainStrategy.TryHandleSchemaTableInsert(
                     table,
                     position,
-                    null,
-                    null,
+                    isDdlModeActiveResolver: () => _domainStrategy is DdlDomainStrategy,
+                    importDdlTableAction: TryImportSchemaTableToDdlCanvas,
                     () => _nodeManager.SpawnTableNode(tableName, columns, position)
                 );
             }
@@ -1551,6 +1552,15 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable, ICanvasViewpor
 
     private void OnDataPreviewErrorNotified(string message, string? details) =>
         NotifyError(message, details);
+
+    private void TryImportSchemaTableToDdlCanvas(TableMetadata table, Point position)
+    {
+        if (DatabaseMetadata is null)
+            return;
+
+        var importer = new DdlSchemaImporter();
+        _ = importer.ImportTable(DatabaseMetadata, table.FullName, this, position);
+    }
 
     private string L(string key, string fallback)
     {

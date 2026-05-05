@@ -42,6 +42,7 @@ public partial class MainWindow
         activeCanvas.IsDirty = false;
         Title = activeCanvas.WindowTitle;
         InvalidateActiveDiagramCanvasWires();
+        TrackCriticalFlow("CF-03-canvas-core-editing", "reset_active_canvas", "ok");
     }
 
     private void CreateNewQueryTab()

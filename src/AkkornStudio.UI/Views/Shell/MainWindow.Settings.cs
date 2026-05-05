@@ -83,8 +83,9 @@ public partial class MainWindow
     private void SettingsToggleSnapBtn_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         EnsureCanvasInitialized();
-        CurrentVm.ToggleSnapCommand.Execute(null);
-        SetSettingsStatus(LF("settings.status.snapUpdated", "Snap atualizado: {0}.", CurrentVm.SnapToGridLabel), isError: false);
+        CanvasViewModel activeCanvas = ResolveActiveDiagramCanvasStrict();
+        activeCanvas.ToggleSnapCommand.Execute(null);
+        SetSettingsStatus(LF("settings.status.snapUpdated", "Snap atualizado: {0}.", activeCanvas.SnapToGridLabel), isError: false);
         e.Handled = true;
     }
 

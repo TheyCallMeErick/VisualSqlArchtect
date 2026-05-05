@@ -24,6 +24,7 @@ using AkkornStudio.UI.Services.Connection;
 using AkkornStudio.UI.Services.Input.ShortcutRegistry;
 using AkkornStudio.UI.Services.Localization;
 using AkkornStudio.UI.Services.Modal;
+using AkkornStudio.UI.Services.Observability;
 using AkkornStudio.UI.Services.Settings;
 using AkkornStudio.UI.Services.Theming;
 using AkkornStudio.UI.Services.Workspace.Models;
@@ -44,14 +45,10 @@ public partial class MainWindow : Window
             L("error.mainWindow.invalidDataContext", "MainWindow DataContext must be a ShellViewModel.")
         );
 
-    private CanvasViewModel CurrentVm => CurrentShell.ActiveCanvas ?? CurrentShell.Canvas
-        ?? throw new InvalidOperationException(
-            L("error.mainWindow.canvasNotInitialized", "CanvasViewModel was not initialized.")
-        );
 
     private bool _canvasInitialized;
     private ContextMenu? _titleMenu;
-    private bool _sidebarActionsWired;
+    private readonly HashSet<SidebarViewModel> _wiredSidebars = [];
     private readonly HashSet<ConnectionManagerViewModel> _wiredConnectionManagers = [];
     private ConnectionWorkspaceModule? _connectionModule;
     private SettingsWorkspaceModule? _settingsModule;
@@ -77,6 +74,9 @@ public partial class MainWindow : Window
     private PropertyChangedEventHandler? _toastCenterPropertyChangedHandler;
     private PropertyChangedEventHandler? _outputPreviewPropertyChangedHandler;
     private readonly ThemeJsonSettingsService _themeJsonSettings;
+    private readonly ICriticalFlowTelemetryService? _criticalFlowTelemetry;
+    private readonly ICriticalFlowBaselineReportService? _criticalFlowBaselineReportService;
+    private readonly ICriticalFlowRegressionAlertService? _criticalFlowRegressionAlertService;
     private bool _isGlobalModalManagerWired;
     private const double PreviewDockBaseBottomMargin = 44;
     private const double PreviewDockToastBottomMargin = 134;
@@ -107,6 +107,9 @@ public partial class MainWindow : Window
         _services = services;
         _themeJsonSettings = themeJsonSettings;
         _globalModalManager = globalModalManager ?? GlobalModalManager.Instance;
+        _criticalFlowTelemetry = _services.GetService<ICriticalFlowTelemetryService>();
+        _criticalFlowBaselineReportService = _services.GetService<ICriticalFlowBaselineReportService>();
+        _criticalFlowRegressionAlertService = _services.GetService<ICriticalFlowRegressionAlertService>();
 
         InitializeComponent();
         DataContext = shell;
@@ -161,9 +164,7 @@ public partial class MainWindow : Window
         if (_canvasInitialized)
             return;
 
-        CanvasViewModel vm = CurrentShell.EnsureCanvas(
-            isDdlModeActiveResolver: () => CurrentShell.IsDdlDocumentPageActive,
-            importDdlTableAction: (table, position) => ImportSingleTableToDdl(table, position));
+        CanvasViewModel vm = CurrentShell.EnsureCanvas();
         vm.SetCanvasContext(CurrentShell.ActiveCanvasContext);
         vm.ConnectionManager.IsVisible = false;
 
@@ -177,6 +178,7 @@ public partial class MainWindow : Window
         Title = vm.WindowTitle;
         SyncModeToggleState();
         _canvasInitialized = true;
+        TrackCriticalFlow("CF-02-navigate-shell", "canvas_initialized", "ok");
     }
 
     private void SyncCanvasContext()
@@ -199,7 +201,7 @@ public partial class MainWindow : Window
 
     private void WireSidebarActions(SidebarViewModel sidebar)
     {
-        if (_sidebarActionsWired)
+        if (!_wiredSidebars.Add(sidebar))
             return;
 
         sidebar.AddNodeRequested += () =>
@@ -217,7 +219,6 @@ public partial class MainWindow : Window
             _ = OpenModeAwareOutputPreviewSafeAsync();
         };
 
-        _sidebarActionsWired = true;
     }
 
     private void WirePreviewDock()
@@ -325,49 +326,55 @@ public partial class MainWindow : Window
                 if (sidebarManager is not null)
                 {
                     WireConnectionActivation(sidebarManager);
+                    EnsureExclusiveConnectionManager(sidebarManager);
                     return sidebarManager;
                 }
 
-                if (CurrentShell.ActiveCanvas is not null)
-                {
-                    WireConnectionActivation(CurrentShell.ActiveCanvas.ConnectionManager);
-                    return CurrentShell.ActiveCanvas.ConnectionManager;
-                }
-
-                if (CurrentShell.IsDdlDocumentPageActive)
-                {
-                    CanvasViewModel ddlCanvas = CurrentShell.EnsureDdlCanvas();
-                    WireConnectionActivation(ddlCanvas.ConnectionManager);
-                    return ddlCanvas.ConnectionManager;
-                }
-
-                CanvasViewModel queryCanvas = CurrentShell.EnsureCanvas(
-                    isDdlModeActiveResolver: () => CurrentShell.IsDdlDocumentPageActive,
-                    importDdlTableAction: (table, position) => ImportSingleTableToDdl(table, position));
-                WireConnectionActivation(queryCanvas.ConnectionManager);
-                return queryCanvas.ConnectionManager;
+                ConnectionManagerViewModel manager = ResolveConnectionManagerForActiveSubscreen();
+                WireConnectionActivation(manager);
+                EnsureExclusiveConnectionManager(manager);
+                return manager;
             },
             activateConnectionSidebar: () =>
             {
-                if (CurrentShell.ActiveCanvas is not null)
-                {
-                    CurrentShell.ActiveCanvas.Sidebar.ActiveTab = SidebarTab.Connection;
-                    return;
-                }
-
-                if (CurrentShell.DdlCanvas is not null)
-                {
-                    CurrentShell.DdlCanvas.Sidebar.ActiveTab = SidebarTab.Connection;
-                    return;
-                }
-
-                if (CurrentShell.Canvas is not null)
-                    CurrentShell.Canvas.Sidebar.ActiveTab = SidebarTab.Connection;
+                CanvasViewModel canvas = ResolveDiagramCanvasForConnectionSidebar();
+                canvas.Sidebar.ActiveTab = SidebarTab.Connection;
             },
             enterCanvas: EnterCanvasMode
         );
 
         return _connectionModule;
+    }
+
+    private void EnsureExclusiveConnectionManager(ConnectionManagerViewModel targetManager)
+    {
+        CanvasViewModel? queryCanvas = CurrentShell.Canvas;
+        if (queryCanvas is not null && !ReferenceEquals(queryCanvas.ConnectionManager, targetManager))
+            queryCanvas.ConnectionManager.IsVisible = false;
+
+        CanvasViewModel? ddlCanvas = CurrentShell.DdlCanvas;
+        if (ddlCanvas is not null && !ReferenceEquals(ddlCanvas.ConnectionManager, targetManager))
+            ddlCanvas.ConnectionManager.IsVisible = false;
+    }
+
+    private ConnectionManagerViewModel ResolveConnectionManagerForActiveSubscreen()
+    {
+        return CurrentShell.ActiveWorkspaceDocumentType switch
+        {
+            WorkspaceDocumentType.DdlCanvas => GetDdlCanvasForInteraction().ConnectionManager,
+            WorkspaceDocumentType.QueryCanvas => GetQueryCanvasForInteraction().ConnectionManager,
+            _ => GetQueryCanvasForInteraction().ConnectionManager,
+        };
+    }
+
+    private CanvasViewModel ResolveDiagramCanvasForConnectionSidebar()
+    {
+        return CurrentShell.ActiveWorkspaceDocumentType switch
+        {
+            WorkspaceDocumentType.DdlCanvas => GetDdlCanvasForInteraction(),
+            WorkspaceDocumentType.QueryCanvas => GetQueryCanvasForInteraction(),
+            _ => CurrentShell.DdlCanvas ?? CurrentShell.Canvas ?? GetQueryCanvasForInteraction(),
+        };
     }
 
     private void WireConnectionActivation(ConnectionManagerViewModel connectionManager)
@@ -412,6 +419,7 @@ public partial class MainWindow : Window
 
     private async void OnStartOpenFromDiskRequested()
     {
+        TrackCriticalFlow("CF-01-open-app-load-project", "open_from_disk_started", "ok");
         IReadOnlyList<IStorageFile> files = await StorageProvider.OpenFilePickerAsync(
             new FilePickerOpenOptions
             {
@@ -430,16 +438,31 @@ public partial class MainWindow : Window
 
         string? selectedPath = files.FirstOrDefault()?.TryGetLocalPath();
         if (selectedPath is null)
+        {
+            TrackCriticalFlow("CF-01-open-app-load-project", "open_from_disk_picker", "cancelled");
             return;
+        }
 
         EnterCanvasMode();
         if (_fileOps is not null)
+        {
             await _fileOps.OpenPathAsync(selectedPath);
+            TrackCriticalFlow(
+                "CF-01-open-app-load-project",
+                "open_from_disk_completed",
+                "ok",
+                new Dictionary<string, object?> { ["path"] = selectedPath });
+        }
     }
 
     private void OnStartOpenRecentProjectRequested(StartRecentProjectItem recent)
     {
         EnterCanvasMode();
+        TrackCriticalFlow(
+            "CF-01-open-app-load-project",
+            "open_recent_requested",
+            "ok",
+            new Dictionary<string, object?> { ["hasPath"] = !string.IsNullOrWhiteSpace(recent.FilePath) });
         if (!string.IsNullOrWhiteSpace(recent.FilePath))
         {
             _ = _fileOps?.OpenPathAsync(recent.FilePath);
@@ -449,6 +472,15 @@ public partial class MainWindow : Window
         _ = _fileOps?.OpenAsync();
     }
 
+    private void TrackCriticalFlow(
+        string flowId,
+        string step,
+        string outcome,
+        IReadOnlyDictionary<string, object?>? properties = null)
+    {
+        _criticalFlowTelemetry?.Track(flowId, step, outcome, properties);
+    }
+
     private void OnStartOpenTemplateRequested(StartTemplateItem item)
     {
         QueryTemplate? template = QueryTemplateCatalog.Find(item.TemplateId ?? item.Name);
@@ -456,7 +488,7 @@ public partial class MainWindow : Window
             return;
 
         EnterCanvasMode();
-        CurrentVm.LoadTemplate(template);
+        GetQueryCanvasForInteraction().LoadTemplate(template);
         InvalidateActiveDiagramCanvasWires();
     }
 
@@ -541,7 +573,7 @@ public partial class MainWindow : Window
         _shortcutRegistry ??= new global::AkkornStudio.UI.Services.Input.ShortcutRegistry.ShortcutRegistry();
         _commandFactory = new CommandPaletteFactory(
             this,
-            () => CurrentShell.ActiveCanvas ?? CurrentVm,
+            () => ResolveActiveDiagramCanvasStrict(),
             () => CurrentShell,
             _fileOps,
             _export,
@@ -552,9 +584,7 @@ public partial class MainWindow : Window
         _commandPaletteService = new CommandPaletteService(_commandFactory);
         _commandPaletteService.Refresh();
         CurrentShell.SetCommandPalette(_commandPaletteService.ViewModel);
-        var canvasProvider = new ActiveCanvasProvider(
-            () => CurrentShell.ActiveCanvas ?? vm
-        );
+        var canvasProvider = new ActiveCanvasProvider(() => ResolveActiveDiagramCanvasStrict());
         _keyboardHandler = new KeyboardInputHandler(
             this,
             canvasProvider,
@@ -648,7 +678,7 @@ public partial class MainWindow : Window
 
     private void ClearCanvasPromptBackdrop_PointerPressed(object? s, PointerPressedEventArgs e)
     {
-        CurrentVm.ConnectionManager.CloseClearCanvasPromptCommand.Execute(null);
+        ResolveActiveDiagramCanvasStrict().ConnectionManager.CloseClearCanvasPromptCommand.Execute(null);
         e.Handled = true;
     }
 
@@ -659,67 +689,169 @@ public partial class MainWindow : Window
 
     private void WireSearchMenu()
     {
-        WireSearchOverlay(this.FindControl<DiagramDocumentPageControl>("QueryDocumentPage"));
-        WireSearchOverlay(this.FindControl<DiagramDocumentPageControl>("DdlDocumentPage"));
+        WireQuerySearchOverlay(this.FindControl<DiagramDocumentPageControl>("QueryDocumentPage")?.SearchOverlayControl);
+        WireDdlSearchOverlay(this.FindControl<DiagramDocumentPageControl>("DdlDocumentPage")?.SearchOverlayControl);
     }
 
-    private void WireSearchOverlay(DiagramDocumentPageControl? pageControl)
+    private void WireQuerySearchOverlay(SearchMenuControl? overlay)
     {
-        SearchMenuControl? overlay = pageControl?.SearchOverlayControl;
         if (overlay is null)
             return;
 
         overlay.SpawnRequested += (_, def) =>
         {
-            CanvasViewModel activeCanvas = CurrentShell.ActiveCanvas ?? CurrentVm;
-            activeCanvas.SpawnNode(def, activeCanvas.SearchMenu.SpawnPosition);
+            CanvasViewModel queryCanvas = GetQueryCanvasForInteraction();
+            queryCanvas.SpawnNode(def, queryCanvas.SearchMenu.SpawnPosition);
             InvalidateActiveDiagramCanvasWires();
         };
 
         overlay.SpawnTableRequested += (_, args) =>
         {
-            CanvasViewModel activeCanvas = CurrentShell.ActiveCanvas ?? CurrentVm;
-            activeCanvas.SpawnTableNode(
+            CanvasViewModel queryCanvas = GetQueryCanvasForInteraction();
+            queryCanvas.SpawnTableNode(
                 args.FullName,
                 args.Cols.Select(c => (c.Name, c.Type)),
-                activeCanvas.SearchMenu.SpawnPosition
+                queryCanvas.SearchMenu.SpawnPosition
             );
             InvalidateActiveDiagramCanvasWires();
-            // Trigger join analysis after the node is added
-            activeCanvas.TriggerAutoJoinAnalysis(args.FullName);
+            queryCanvas.TriggerAutoJoinAnalysis(args.FullName);
         };
 
         overlay.SnippetRequested += (_, snippet) =>
         {
-            CanvasViewModel activeCanvas = CurrentShell.ActiveCanvas ?? CurrentVm;
-            activeCanvas.InsertSnippet(snippet, activeCanvas.SearchMenu.SpawnPosition);
+            CanvasViewModel queryCanvas = GetQueryCanvasForInteraction();
+            queryCanvas.InsertSnippet(snippet, queryCanvas.SearchMenu.SpawnPosition);
+            InvalidateActiveDiagramCanvasWires();
+        };
+    }
+
+    private void WireDdlSearchOverlay(SearchMenuControl? overlay)
+    {
+        if (overlay is null)
+            return;
+
+        overlay.SpawnRequested += (_, def) =>
+        {
+            CanvasViewModel ddlCanvas = GetDdlCanvasForInteraction();
+            ddlCanvas.SpawnNode(def, ddlCanvas.SearchMenu.SpawnPosition);
+            InvalidateActiveDiagramCanvasWires();
+        };
+
+        overlay.SpawnTableRequested += (_, args) =>
+        {
+            CanvasViewModel ddlCanvas = GetDdlCanvasForInteraction();
+            TableMetadata? table = ResolveTableMetadataForDdl(args.FullName, ddlCanvas);
+            if (table is null)
+            {
+                CurrentShell.Toasts.ShowWarning(
+                    L("toast.ddlTableMetadataUnavailable", "Nao foi possivel resolver metadados da tabela para importar no DDL."));
+                return;
+            }
+
+            ImportSingleTableToDdl(table, ddlCanvas.SearchMenu.SpawnPosition);
             InvalidateActiveDiagramCanvasWires();
         };
     }
 
     private void OpenSearch()
     {
-        CanvasViewModel activeCanvas = CurrentShell.ActiveCanvas ?? CurrentVm;
-        InfiniteCanvas? canvas = GetActiveDocumentCanvasControl();
-        Point ctr = canvas is not null
-            ? activeCanvas.ScreenToCanvas(new Point(canvas.Bounds.Width / 2, canvas.Bounds.Height / 2))
-            : new Point(400, 300);
-        activeCanvas.SearchMenu.Open(ctr);
+        Action openSearch = CurrentShell.ActiveWorkspaceDocumentType switch
+        {
+            WorkspaceDocumentType.DdlCanvas => OpenSearchInDdl,
+            WorkspaceDocumentType.QueryCanvas => OpenSearchInQuery,
+            _ => OpenSearchInQuery,
+        };
+        openSearch();
     }
 
-    private InfiniteCanvas? GetActiveDocumentCanvasControl()
+    private void OpenSearchInQuery()
     {
-        if (CurrentShell.IsDdlDocumentPageActive)
-            return this.FindControl<DiagramDocumentPageControl>("DdlDocumentPage")?.CanvasControl;
+        CanvasViewModel queryCanvas = GetQueryCanvasForInteraction();
+        InfiniteCanvas? canvas = this.FindControl<DiagramDocumentPageControl>("QueryDocumentPage")?.CanvasControl;
+        Point center = canvas is not null
+            ? queryCanvas.ScreenToCanvas(new Point(canvas.Bounds.Width / 2, canvas.Bounds.Height / 2))
+            : new Point(400, 300);
+        queryCanvas.SearchMenu.Open(center);
+    }
 
-        return this.FindControl<DiagramDocumentPageControl>("QueryDocumentPage")?.CanvasControl;
+    private void OpenSearchInDdl()
+    {
+        CanvasViewModel ddlCanvas = GetDdlCanvasForInteraction();
+        InfiniteCanvas? canvas = this.FindControl<DiagramDocumentPageControl>("DdlDocumentPage")?.CanvasControl;
+        Point center = canvas is not null
+            ? ddlCanvas.ScreenToCanvas(new Point(canvas.Bounds.Width / 2, canvas.Bounds.Height / 2))
+            : new Point(400, 300);
+        ddlCanvas.SearchMenu.Open(center);
+    }
+
+    private CanvasViewModel GetQueryCanvasForInteraction() =>
+        WireSidebarAndReturn(
+            CurrentShell.ActiveQueryCanvasDocument
+            ?? CurrentShell.Canvas
+            ?? CurrentShell.EnsureCanvas());
+
+    private CanvasViewModel GetDdlCanvasForInteraction() =>
+        WireSidebarAndReturn(
+            CurrentShell.ActiveDdlCanvasDocument
+            ?? CurrentShell.DdlCanvas
+            ?? CurrentShell.EnsureDdlCanvas());
+
+    private CanvasViewModel WireSidebarAndReturn(CanvasViewModel canvas)
+    {
+        WireSidebarActions(canvas.Sidebar);
+        return canvas;
+    }
+
+    private CanvasViewModel ResolveActiveDiagramCanvasStrict()
+    {
+        return CurrentShell.ActiveWorkspaceDocumentType switch
+        {
+            WorkspaceDocumentType.QueryCanvas => GetQueryCanvasForInteraction(),
+            WorkspaceDocumentType.DdlCanvas => GetDdlCanvasForInteraction(),
+            _ => throw new InvalidOperationException(
+                L("error.mainWindow.canvasNotInitialized", "CanvasViewModel was not initialized.")),
+        };
+    }
+
+    private ConnectionConfig? ResolveActiveConnectionConfigForWorkspace()
+    {
+        return CurrentShell.ActiveWorkspaceDocumentType switch
+        {
+            WorkspaceDocumentType.DdlCanvas => GetDdlCanvasForInteraction().ActiveConnectionConfig,
+            WorkspaceDocumentType.QueryCanvas => GetQueryCanvasForInteraction().ActiveConnectionConfig,
+            _ => GetQueryCanvasForInteraction().ActiveConnectionConfig
+                ?? CurrentShell.DdlCanvas?.ActiveConnectionConfig,
+        };
+    }
+
+    private DbMetadata? ResolveMetadataForActiveWorkspace()
+    {
+        return CurrentShell.ActiveWorkspaceDocumentType switch
+        {
+            WorkspaceDocumentType.DdlCanvas => GetDdlCanvasForInteraction().DatabaseMetadata,
+            WorkspaceDocumentType.QueryCanvas => GetQueryCanvasForInteraction().DatabaseMetadata,
+            _ => GetQueryCanvasForInteraction().DatabaseMetadata
+                ?? CurrentShell.DdlCanvas?.DatabaseMetadata,
+        };
+    }
+
+    private static TableMetadata? ResolveTableMetadataForDdl(string fullName, CanvasViewModel ddlCanvas)
+    {
+        DbMetadata? metadata = ddlCanvas.DatabaseMetadata;
+        if (metadata is null)
+            return null;
+
+        return metadata.Schemas
+            .SelectMany(schema => schema.Tables)
+            .FirstOrDefault(table => string.Equals(table.FullName, fullName, StringComparison.OrdinalIgnoreCase));
     }
 
     private bool TryCloseTopModalOnEscape()
     {
-        if (CurrentVm.ConnectionManager.IsClearCanvasPromptVisible)
+        CanvasViewModel activeCanvas = ResolveActiveDiagramCanvasStrict();
+        if (activeCanvas.ConnectionManager.IsClearCanvasPromptVisible)
         {
-            CurrentVm.ConnectionManager.CloseClearCanvasPromptCommand.Execute(null);
+            activeCanvas.ConnectionManager.CloseClearCanvasPromptCommand.Execute(null);
             return true;
         }
 

@@ -786,7 +786,7 @@ public sealed class SqlEditorViewModel : ViewModelBase
     public string ExecutionTelemetryErrorsText =>
         ExecutionTelemetry.ErrorMessages.Count == 0
             ? L("sqlEditor.telemetry.errors.none", "Sem erros agregados.")
-            : string.Join(Environment.NewLine, ExecutionTelemetry.ErrorMessages);
+            : BuildExecutionTelemetryErrorsText();
     public MutationGuardResult? PendingMutationGuard
     {
         get => _pendingMutationGuard;
@@ -843,6 +843,20 @@ public sealed class SqlEditorViewModel : ViewModelBase
         CurrentResult is null
             ? L("sqlEditor.message.empty", "Execute uma instrucao para ver mensagens.")
             : CurrentResult.ErrorMessage ?? L("sqlEditor.message.success", "Execucao concluida com sucesso.");
+    private string BuildExecutionTelemetryErrorsText()
+    {
+        string errors = string.Join(Environment.NewLine, ExecutionTelemetry.ErrorMessages);
+        if (ExecutionTelemetry.FailureByCategory.Count == 0)
+            return errors;
+
+        string categorySummary = string.Join(
+            ", ",
+            ExecutionTelemetry.FailureByCategory
+                .OrderByDescending(pair => pair.Value)
+                .Select(pair => $"{pair.Key}:{pair.Value}"));
+
+        return $"{errors}{Environment.NewLine}{L("sqlEditor.telemetry.errors.categories", "Categorias")}: {categorySummary}";
+    }
     public bool CanExportReport => CurrentResult is not null;
     public string ResultSummaryText
     {
