@@ -96,6 +96,9 @@ public sealed class SqlEditorViewModel : ViewModelBase
     private bool _hasPendingDraftAutoSave;
     private bool _draftAutoSaveTimersStarted;
     private string? _sidebarSelectedConnectionProfileId;
+    private bool _isConnectionSwitcherOpen;
+    private string? _connectionSwitcherSelectedProfileId;
+    private string? _connectionSwitcherSelectedDatabase;
     private DbMetadata? _cachedSchemaMetadata;
     private IReadOnlyList<SqlEditorSchemaTableItem> _schemaTablesCache = [];
     private IReadOnlyList<SqlEditorSchemaTableItem> _filteredSchemaTablesCache = [];
@@ -185,6 +188,12 @@ public sealed class SqlEditorViewModel : ViewModelBase
         OpenConnectionSwitcherCommand = new RelayCommand(
             OpenConnectionSwitcher,
             () => AvailableConnectionProfiles.Count > 0);
+        CloseConnectionSwitcherCommand = new RelayCommand(
+            CloseConnectionSwitcher,
+            () => IsConnectionSwitcherOpen);
+        ApplyConnectionSwitcherCommand = new RelayCommand(
+            ApplyConnectionSwitcher,
+            () => IsConnectionSwitcherOpen);
         ApplySidebarConnectionToTabCommand = new RelayCommand(
             ApplySidebarConnectionToTab,
             () => SidebarSelectedConnectionProfile is not null);
@@ -234,6 +243,8 @@ public sealed class SqlEditorViewModel : ViewModelBase
     public ICommand ConfirmPendingMutationCommand { get; }
     public ICommand CancelPendingMutationCommand { get; }
     public ICommand OpenConnectionSwitcherCommand { get; }
+    public ICommand CloseConnectionSwitcherCommand { get; }
+    public ICommand ApplyConnectionSwitcherCommand { get; }
     public ICommand ApplySidebarConnectionToTabCommand { get; }
     public ICommand ApplySidebarConnectionToApplicationCommand { get; }
     public ICommand ExecuteHistoryEntryCommand { get; }
@@ -310,6 +321,12 @@ public sealed class SqlEditorViewModel : ViewModelBase
             HistorySearchText = string.Empty;
             TryHydrateExecutionHistoryForTab(ActiveTab, force: true);
             SyncSidebarConnectionSelectionToActiveTab();
+            if (IsConnectionSwitcherOpen)
+            {
+                ConnectionSwitcherSelectedProfileId = ActiveTab.ConnectionProfileId;
+                ConnectionSwitcherSelectedDatabase = SharedConnectionManager?.SelectedDatabase
+                    ?? ResolveConnectionConfigForActiveTab()?.Database;
+            }
             RaiseSqlPanelPropertiesChanged();
         }
     }
@@ -372,6 +389,116 @@ public sealed class SqlEditorViewModel : ViewModelBase
                 return L("sqlEditor.connection.required", "Conecte-se a um banco para executar e inspecionar o schema.");
 
             return $"{config.Provider}  •  {config.Username}";
+        }
+    }
+    public bool IsConnectionSwitcherOpen
+    {
+        get => _isConnectionSwitcherOpen;
+        private set
+        {
+            if (!Set(ref _isConnectionSwitcherOpen, value))
+                return;
+
+            RaisePropertyChanged(nameof(ConnectionSwitcherProfiles));
+            RaisePropertyChanged(nameof(ConnectionSwitcherDatabases));
+            RaisePropertyChanged(nameof(CurrentConnectionProfileLabel));
+            RaisePropertyChanged(nameof(CurrentConnectionProviderLabel));
+            RaisePropertyChanged(nameof(CurrentConnectionDatabaseLabel));
+            RaisePropertyChanged(nameof(CurrentConnectionHostLabel));
+            RaisePropertyChanged(nameof(CurrentConnectionUserLabel));
+            RaisePropertyChanged(nameof(CurrentConnectionUrlLabel));
+            NotifyCommands();
+        }
+    }
+    public IReadOnlyList<SqlEditorConnectionProfileOption> ConnectionSwitcherProfiles => AvailableConnectionProfiles;
+    public string? ConnectionSwitcherSelectedProfileId
+    {
+        get => _connectionSwitcherSelectedProfileId;
+        set
+        {
+            if (!string.IsNullOrWhiteSpace(value)
+                && !AvailableConnectionProfiles.Any(profile => string.Equals(profile.Id, value, StringComparison.Ordinal)))
+            {
+                value = null;
+            }
+
+            if (!Set(ref _connectionSwitcherSelectedProfileId, value))
+                return;
+
+            RaisePropertyChanged(nameof(ConnectionSwitcherSelectedProfile));
+            RaisePropertyChanged(nameof(CurrentConnectionProfileLabel));
+            RaisePropertyChanged(nameof(CurrentConnectionProviderLabel));
+            RaisePropertyChanged(nameof(CurrentConnectionDatabaseLabel));
+            RaisePropertyChanged(nameof(CurrentConnectionHostLabel));
+            RaisePropertyChanged(nameof(CurrentConnectionUserLabel));
+            RaisePropertyChanged(nameof(CurrentConnectionUrlLabel));
+        }
+    }
+    public SqlEditorConnectionProfileOption? ConnectionSwitcherSelectedProfile
+    {
+        get => AvailableConnectionProfiles.FirstOrDefault(profile =>
+            string.Equals(profile.Id, ConnectionSwitcherSelectedProfileId, StringComparison.Ordinal));
+        set => ConnectionSwitcherSelectedProfileId = value?.Id;
+    }
+    public string? ConnectionSwitcherSelectedDatabase
+    {
+        get => _connectionSwitcherSelectedDatabase;
+        set => Set(ref _connectionSwitcherSelectedDatabase, value);
+    }
+    public IReadOnlyList<string> ConnectionSwitcherDatabases =>
+        SharedConnectionManager?.AvailableDatabases.ToList() ?? [];
+    public bool CanChangeDatabaseInSwitcher =>
+        SharedConnectionManager?.IsDatabaseSelectionVisible == true;
+    public string CurrentConnectionProfileLabel =>
+        ConnectionSwitcherSelectedProfile?.DisplayName
+        ?? ActiveConnectionDisplayName;
+    public string CurrentConnectionProviderLabel
+    {
+        get
+        {
+            ConnectionConfig? config = ResolveConnectionConfigForProfile(ConnectionSwitcherSelectedProfileId)
+                ?? ResolveConnectionConfigForActiveTab();
+            return config is null ? "-" : GetProviderDisplayName(config.Provider);
+        }
+    }
+    public string CurrentConnectionDatabaseLabel
+    {
+        get
+        {
+            ConnectionConfig? config = ResolveConnectionConfigForProfile(ConnectionSwitcherSelectedProfileId)
+                ?? ResolveConnectionConfigForActiveTab();
+            return config?.Database ?? "-";
+        }
+    }
+    public string CurrentConnectionHostLabel
+    {
+        get
+        {
+            ConnectionConfig? config = ResolveConnectionConfigForProfile(ConnectionSwitcherSelectedProfileId)
+                ?? ResolveConnectionConfigForActiveTab();
+            return config is null ? "-" : $"{config.Host}:{config.Port}";
+        }
+    }
+    public string CurrentConnectionUserLabel
+    {
+        get
+        {
+            ConnectionConfig? config = ResolveConnectionConfigForProfile(ConnectionSwitcherSelectedProfileId)
+                ?? ResolveConnectionConfigForActiveTab();
+            return config?.Username ?? "-";
+        }
+    }
+    public string CurrentConnectionUrlLabel
+    {
+        get
+        {
+            ConnectionConfig? config = ResolveConnectionConfigForProfile(ConnectionSwitcherSelectedProfileId)
+                ?? ResolveConnectionConfigForActiveTab();
+            if (config is null)
+                return "-";
+
+            string provider = config.Provider.ToString().ToLowerInvariant();
+            return $"{provider}://{config.Host}:{config.Port}/{config.Database}";
         }
     }
     public bool ShowDialectSelector => !HasResolvedConnection;
@@ -1860,6 +1987,8 @@ public sealed class SqlEditorViewModel : ViewModelBase
         (CloseResultsSheetCommand as RelayCommand)?.NotifyCanExecuteChanged();
         (ReopenResultsSheetCommand as RelayCommand)?.NotifyCanExecuteChanged();
         (OpenConnectionSwitcherCommand as RelayCommand)?.NotifyCanExecuteChanged();
+        (CloseConnectionSwitcherCommand as RelayCommand)?.NotifyCanExecuteChanged();
+        (ApplyConnectionSwitcherCommand as RelayCommand)?.NotifyCanExecuteChanged();
         (ApplySidebarConnectionToTabCommand as RelayCommand)?.NotifyCanExecuteChanged();
         (ApplySidebarConnectionToApplicationCommand as RelayCommand)?.NotifyCanExecuteChanged();
         (ExecuteHistoryEntryCommand as RelayCommand<SqlEditorHistoryEntry>)?.NotifyCanExecuteChanged();
@@ -1876,10 +2005,25 @@ public sealed class SqlEditorViewModel : ViewModelBase
 
     public void NotifyConnectionContextChanged()
     {
+        ConnectionManagerViewModel? manager = SharedConnectionManager;
+        if (manager is not null
+            && string.IsNullOrWhiteSpace(ActiveTabConnectionProfileId)
+            && !string.IsNullOrWhiteSpace(manager.ActiveProfileId))
+        {
+            ActiveTabConnectionProfileId = manager.ActiveProfileId;
+        }
+
         RaisePropertyChanged(nameof(SharedConnectionManager));
         RaisePropertyChanged(nameof(HasSharedConnectionManager));
+        RaisePropertyChanged(nameof(ConnectionSwitcherDatabases));
+        RaisePropertyChanged(nameof(CanChangeDatabaseInSwitcher));
         InvalidateSchemaTableCaches();
         SyncSidebarConnectionSelectionToActiveTab();
+        if (IsConnectionSwitcherOpen)
+        {
+            ConnectionSwitcherSelectedDatabase = SharedConnectionManager?.SelectedDatabase
+                ?? ResolveConnectionConfigForActiveTab()?.Database;
+        }
         RaiseSqlPanelPropertiesChanged();
         RaiseSchemaPropertiesChanged();
     }
@@ -2265,23 +2409,87 @@ public sealed class SqlEditorViewModel : ViewModelBase
         return profileConfig ?? _connectionConfigResolver();
     }
 
+    private ConnectionConfig? ResolveConnectionConfigForProfile(string? profileId)
+    {
+        if (string.IsNullOrWhiteSpace(profileId))
+            return null;
+
+        return _connectionConfigByProfileIdResolver(profileId);
+    }
+
     private void OpenConnectionSwitcher()
     {
         IReadOnlyList<SqlEditorConnectionProfileOption> profiles = AvailableConnectionProfiles;
         if (profiles.Count == 0)
             return;
 
-        int currentIndex = profiles
-            .Select((profile, index) => new { profile, index })
-            .FirstOrDefault(x => string.Equals(x.profile.Id, ActiveTabConnectionProfileId, StringComparison.Ordinal))
-            ?.index ?? -1;
+        ConnectionManagerViewModel? manager = SharedConnectionManager;
+        string? activeProfileId = ActiveTabConnectionProfileId;
+        if (string.IsNullOrWhiteSpace(activeProfileId))
+            activeProfileId = manager?.ActiveProfileId;
 
-        int nextIndex = (currentIndex + 1) % profiles.Count;
-        SqlEditorConnectionProfileOption next = profiles[nextIndex];
-        if (string.IsNullOrWhiteSpace(next.Id))
+        ConnectionSwitcherSelectedProfileId = activeProfileId;
+
+        string? selectedDatabase = manager?.SelectedDatabase;
+        if (string.IsNullOrWhiteSpace(selectedDatabase))
+            selectedDatabase = ResolveConnectionConfigForActiveTab()?.Database;
+        ConnectionSwitcherSelectedDatabase = selectedDatabase;
+
+        IsConnectionSwitcherOpen = true;
+    }
+
+    private void CloseConnectionSwitcher()
+    {
+        if (!IsConnectionSwitcherOpen)
             return;
 
-        ActiveTabConnectionProfileId = next.Id;
+        IsConnectionSwitcherOpen = false;
+    }
+
+    private void ApplyConnectionSwitcher()
+    {
+        try
+        {
+            ConnectionManagerViewModel? manager = SharedConnectionManager;
+            string? selectedProfileId = ConnectionSwitcherSelectedProfileId;
+            bool switchedConnection = false;
+
+            if (!string.IsNullOrWhiteSpace(selectedProfileId))
+            {
+                ActiveTabConnectionProfileId = selectedProfileId;
+
+                if (manager is not null)
+                {
+                    ConnectionProfile? target = manager.Profiles
+                        .FirstOrDefault(profile => string.Equals(profile.Id, selectedProfileId, StringComparison.Ordinal));
+                    if (target is not null && manager.SwitchConnectionCommand.CanExecute(target))
+                    {
+                        manager.SwitchConnectionCommand.Execute(target);
+                        switchedConnection = true;
+                    }
+                }
+            }
+
+            if (manager is not null
+                && !string.IsNullOrWhiteSpace(ConnectionSwitcherSelectedDatabase)
+                && !string.Equals(ConnectionSwitcherSelectedDatabase, manager.SelectedDatabase, StringComparison.OrdinalIgnoreCase)
+                && manager.SwitchDatabaseCommand.CanExecute(ConnectionSwitcherSelectedDatabase))
+            {
+                manager.SwitchDatabaseCommand.Execute(ConnectionSwitcherSelectedDatabase);
+            }
+
+            if (!switchedConnection
+                && !string.IsNullOrWhiteSpace(selectedProfileId)
+                && string.IsNullOrWhiteSpace(ActiveTabConnectionProfileId))
+            {
+                ActiveTabConnectionProfileId = selectedProfileId;
+            }
+        }
+        finally
+        {
+            CloseConnectionSwitcher();
+            NotifyConnectionContextChanged();
+        }
     }
 
     private void ApplySidebarConnectionToTab()
@@ -2291,6 +2499,15 @@ public sealed class SqlEditorViewModel : ViewModelBase
             return;
 
         ActiveTabConnectionProfileId = selected.Id;
+        ConnectionManagerViewModel? manager = SharedConnectionManager;
+        if (manager is not null)
+        {
+            ConnectionProfile? profile = manager.Profiles
+                .FirstOrDefault(candidate => string.Equals(candidate.Id, selected.Id, StringComparison.Ordinal));
+            if (profile is not null && manager.SwitchConnectionCommand.CanExecute(profile))
+                manager.SwitchConnectionCommand.Execute(profile);
+        }
+
         PublishStatus(
             string.Format(
                 L("sqlEditor.connection.sidebar.tabApplied", "Conexao aplicada para a aba atual: {0}."),

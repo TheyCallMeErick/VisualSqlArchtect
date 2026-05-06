@@ -372,6 +372,15 @@ public partial class SqlEditorControl : UserControl
 
         if (isCancel)
         {
+            if (_vm.IsConnectionSwitcherOpen)
+            {
+                if (_vm.CloseConnectionSwitcherCommand.CanExecute(null))
+                    _vm.CloseConnectionSwitcherCommand.Execute(null);
+
+                e.Handled = true;
+                return;
+            }
+
             if (_vm.ShouldShowResultsSheet)
             {
                 if (_vm.CloseResultsSheetCommand.CanExecute(null))
@@ -1148,6 +1157,21 @@ public partial class SqlEditorControl : UserControl
 
         if (_vm.CloseResultsSheetCommand.CanExecute(null))
             _vm.CloseResultsSheetCommand.Execute(null);
+
+        e.Handled = true;
+    }
+
+    private void ConnectionSwitcherBackdrop_OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (_vm is null)
+            return;
+
+        PointerPointProperties properties = e.GetCurrentPoint(this).Properties;
+        if (!properties.IsLeftButtonPressed)
+            return;
+
+        if (_vm.CloseConnectionSwitcherCommand.CanExecute(null))
+            _vm.CloseConnectionSwitcherCommand.Execute(null);
 
         e.Handled = true;
     }

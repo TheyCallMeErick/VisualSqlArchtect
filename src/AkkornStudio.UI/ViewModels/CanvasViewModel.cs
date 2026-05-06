@@ -19,6 +19,8 @@ using AkkornStudio.UI.ViewModels.UndoRedo;
 using AkkornStudio.UI.ViewModels.UndoRedo.Commands;
 using AkkornStudio.UI.ViewModels.Validation.Conventions;
 using AkkornStudio.UI.Services.ConnectionManager;
+using AkkornStudio.UI.Services.Settings;
+using AkkornStudio.UI.Services.Validation;
 
 namespace AkkornStudio.UI.ViewModels;
 
@@ -100,6 +102,7 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable, ICanvasViewpor
     private readonly HashSet<string> _pendingTableSourceReplacementConfirmations = [];
     private bool _isReplacingTableSourceNode;
     private string? _primaryFromSourceOverrideNodeId;
+    private ProjectConventionSettings _projectConventionSettings = AppSettingsStore.LoadProjectConventionSettings();
 
     // â”€â”€ Canvas state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -316,6 +319,7 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable, ICanvasViewpor
             () => DatabaseMetadata,
             OnPropertyPanelParametersCommitted,
             TrySetPrimaryFromSourceNode);
+        ApplyProjectConventionSettings(_projectConventionSettings);
         PropertyPanel.SelectedWireCurveMode = WireCurveMode;
         _localizationService = localizationService ?? LocalizationService.Instance;
         _domainStrategy = domainStrategy ?? new QueryDomainStrategy();
@@ -522,8 +526,6 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable, ICanvasViewpor
         };
         LiveSql.PropertyChanged += _liveSqlPropertyChangedHandler;
         DataPreview.ErrorNotified += OnDataPreviewErrorNotified;
-        _propertyPanelNamingChangedHandler = () => _validationManager.ScheduleValidation();
-        PropertyPanel.NamingSettingsChanged += _propertyPanelNamingChangedHandler;
         _propertyPanelWireStyleChangedHandler = () =>
         {
             if (SelectedConnection is not null)
@@ -581,7 +583,7 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable, ICanvasViewpor
                 DetachNodeTracking(node);
         }
 
-        _validationManager.ScheduleValidation();
+        _validationManager?.ScheduleValidation();
         RaisePropertyChanged(nameof(HasTwoSelectedTableSources));
         RunSelectedAutoJoinCommand.NotifyCanExecuteChanged();
         ApplyExplainNodeHighlight(ExplainPlan.HighlightedTableName);
@@ -608,7 +610,7 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable, ICanvasViewpor
 
     private void OnTrackedNodePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        _validationManager.ScheduleValidation();
+        _validationManager?.ScheduleValidation();
 
         if (sender is NodeViewModel changedNode
             && !string.IsNullOrWhiteSpace(e.PropertyName)
@@ -636,7 +638,7 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable, ICanvasViewpor
             ClearConnectionSelection();
 
         IsDirty = true;
-        _validationManager.ScheduleValidation();
+        _validationManager?.ScheduleValidation();
         NotifyLayerCommandsCanExecuteChanged();
         NotifyCteEditorCommandsCanExecuteChanged();
 
@@ -740,7 +742,7 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable, ICanvasViewpor
 
         _primaryFromSourceOverrideNodeId = node!.Id;
         RefreshPrimaryFromSourceMarkers();
-        _validationManager.ScheduleValidation();
+        _validationManager?.ScheduleValidation();
         return true;
     }
 
@@ -1050,11 +1052,55 @@ public sealed class CanvasViewModel : ViewModelBase, IDisposable, ICanvasViewpor
     /// <summary>Converts all alias violations to snake_case (undoable).</summary>
     public void AutoFixNaming()
     {
-        NamingConventionPolicy policy = PropertyPanel.BuildNamingConventionPolicy();
+        NamingConventionPolicy policy = BuildNamingConventionPolicy();
         var cmd = new AutoFixNamingCommand(Nodes, policy, _aliasConventionRegistry);
         if (!cmd.HasChanges)
             return;
         UndoRedo.Execute(cmd);
+    }
+
+    public void ApplyProjectConventionSettings(ProjectConventionSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        _projectConventionSettings = new ProjectConventionSettings
+        {
+            NamingConvention = settings.NamingConvention,
+            EnforceAliasNaming = settings.EnforceAliasNaming,
+            WarnOnReservedKeywords = settings.WarnOnReservedKeywords,
+            MaxAliasLength = Math.Max(0, settings.MaxAliasLength),
+            DefaultWireCurveMode = settings.DefaultWireCurveMode,
+        };
+
+        if (Enum.TryParse(_projectConventionSettings.DefaultWireCurveMode, ignoreCase: true, out CanvasWireCurveMode defaultWireCurveMode))
+        {
+            WireCurveMode = defaultWireCurveMode;
+            if (SelectedConnection is null)
+                PropertyPanel.SelectedWireCurveMode = defaultWireCurveMode;
+        }
+
+        _validationManager?.ScheduleValidation();
+    }
+
+    public NamingConventionPolicy BuildNamingConventionPolicy()
+    {
+        string conventionName = _projectConventionSettings.NamingConvention switch
+        {
+            "snake_case" => "snake_case",
+            "camelCase" => "camelCase",
+            "PascalCase" => "PascalCase",
+            "SCREAMING_SNAKE_CASE" => "SCREAMING_SNAKE_CASE",
+            _ => "snake_case",
+        };
+
+        return new NamingConventionPolicy
+        {
+            EnforceSnakeCase = _projectConventionSettings.EnforceAliasNaming
+                && string.Equals(conventionName, "snake_case", StringComparison.OrdinalIgnoreCase),
+            MaxLength = Math.Max(0, _projectConventionSettings.MaxAliasLength),
+            NoLeadingDigit = true,
+            NoSpaces = true,
+            ConventionName = _projectConventionSettings.EnforceAliasNaming ? conventionName : null,
+        };
     }
 
     public IAliasConventionRegistry AliasConventions => _aliasConventionRegistry;

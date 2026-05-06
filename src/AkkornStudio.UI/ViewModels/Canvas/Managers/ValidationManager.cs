@@ -109,7 +109,7 @@ public sealed class ValidationManager(CanvasViewModel canvasViewModel) : ViewMod
     /// </summary>
     private void RunValidation()
     {
-        NamingConventionPolicy namingPolicy = _canvasViewModel.PropertyPanel.BuildNamingConventionPolicy();
+        NamingConventionPolicy namingPolicy = _canvasViewModel.BuildNamingConventionPolicy();
         IReadOnlyList<ValidationIssue> allIssues = GraphValidator.Validate(
             _canvasViewModel,
             namingPolicy,

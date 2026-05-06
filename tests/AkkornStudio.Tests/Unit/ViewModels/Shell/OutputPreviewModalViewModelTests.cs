@@ -27,7 +27,9 @@ public class OutputPreviewModalViewModelTests
         Assert.False(vm.HasDdlSql);
         Assert.True(vm.HasCanvasDiagnostics);
         Assert.True(vm.HasStructureDiagnostics);
+        Assert.True(vm.HasSchemaCompare);
         Assert.Same(liveDdl, vm.DdlTool);
+        Assert.Same(liveDdl.SchemaComparePanel, vm.DdlSchemaCompareTool);
     }
 
     [Fact]
@@ -52,7 +54,9 @@ public class OutputPreviewModalViewModelTests
         Assert.False(vm.HasDdlSql);
         Assert.True(vm.HasCanvasDiagnostics);
         Assert.True(vm.HasStructureDiagnostics);
+        Assert.True(vm.HasSchemaCompare);
         Assert.Same(liveDdl, vm.DdlTool);
+        Assert.Same(liveDdl.SchemaComparePanel, vm.DdlSchemaCompareTool);
     }
 
     [Fact]
@@ -67,7 +71,9 @@ public class OutputPreviewModalViewModelTests
         Assert.True(vm.ShowUnavailablePrimaryContent);
         Assert.False(vm.HasCanvasDiagnostics);
         Assert.False(vm.HasStructureDiagnostics);
+        Assert.False(vm.HasSchemaCompare);
         Assert.Null(vm.DdlTool);
+        Assert.Null(vm.DdlSchemaCompareTool);
         Assert.Equal("Preview indisponível para este documento.", vm.UnavailableMessage);
     }
 
@@ -93,6 +99,7 @@ public class OutputPreviewModalViewModelTests
         vm.OpenForQuery(queryCanvas, liveSql, "PostgreSQL");
 
         Assert.Null(vm.DdlTool);
+        Assert.Null(vm.DdlSchemaCompareTool);
         Assert.True(vm.IsQueryMode);
     }
 
@@ -117,6 +124,7 @@ public class OutputPreviewModalViewModelTests
         vm.OpenForSqlBenchmark(queryCanvas, "SELECT 1", null);
 
         Assert.Null(vm.DdlTool);
+        Assert.Null(vm.DdlSchemaCompareTool);
         Assert.True(vm.IsSqlBenchmarkMode);
     }
 
@@ -139,6 +147,7 @@ public class OutputPreviewModalViewModelTests
         vm.Close();
 
         Assert.Null(vm.DdlTool);
+        Assert.Null(vm.DdlSchemaCompareTool);
         Assert.False(vm.IsVisible);
     }
 }

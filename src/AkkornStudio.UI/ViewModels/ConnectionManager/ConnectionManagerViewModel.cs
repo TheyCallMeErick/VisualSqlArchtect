@@ -905,9 +905,10 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
     {
         try
         {
+            SearchMenuViewModel searchMenu = SearchMenu ?? new SearchMenuViewModel();
             ConnectionActivationResult result = await _activationWorkflow.ExecuteAsync(
                 profile,
-                SearchMenu,
+                searchMenu,
                 Canvas,
                 async (config, searchMenu, token) =>
                 {

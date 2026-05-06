@@ -868,6 +868,11 @@
                   Tag="Editor"
                   Content="Editor"/>
                 <Button Classes="settings-nav"
+                  Classes.active="{Binding IsProjectSectionSelected}"
+                  Click="SettingsNavBtn_Click"
+                  Tag="Project"
+                  Content="Project"/>
+                <Button Classes="settings-nav"
                   Classes.active="{Binding IsKeyboardShortcutsSectionSelected}"
                   Click="SettingsNavBtn_Click"
                   Tag="KeyboardShortcuts"
@@ -1017,6 +1022,102 @@
                 </StackPanel>
 
                 <Border Height="1" Background="{StaticResource BorderSubtleBrush}" IsVisible="{Binding IsEditorSectionSelected}"/>
+
+                <StackPanel Spacing="12" IsVisible="{Binding IsProjectSectionSelected}">
+                  <Border Classes="surface-card"
+                          Padding="12">
+                    <StackPanel Spacing="8">
+                      <TextBlock Text="Convenção de aliases"
+                                 FontSize="{StaticResource FontSizeTitle}"
+                                 FontWeight="{StaticResource FontWeightTitle}"
+                                 Foreground="{StaticResource TextPrimaryBrush}"/>
+                      <ComboBox x:Name="SettingsProjectNamingConventionCombo"
+                                Classes="field"
+                                SelectionChanged="SettingsProjectNamingConventionCombo_Changed">
+                        <ComboBoxItem Tag="snake_case" Content="snake_case"/>
+                        <ComboBoxItem Tag="camelCase" Content="camelCase"/>
+                        <ComboBoxItem Tag="PascalCase" Content="PascalCase"/>
+                        <ComboBoxItem Tag="SCREAMING_SNAKE_CASE" Content="SCREAMING_SNAKE_CASE"/>
+                      </ComboBox>
+                    </StackPanel>
+                  </Border>
+
+                  <Border Classes="surface-card"
+                          Padding="12">
+                    <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                      <StackPanel Grid.Column="0" Spacing="2">
+                        <TextBlock Text="Aplicar convenção de aliases"
+                                   FontSize="{StaticResource FontSizeTitle}"
+                                   FontWeight="{StaticResource FontWeightTitle}"
+                                   Foreground="{StaticResource TextPrimaryBrush}"/>
+                        <TextBlock Text="Quando ativo, validação e auto-fix seguem a convenção configurada."
+                                   FontSize="{StaticResource FontSizeCaption}"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   TextWrapping="Wrap"/>
+                      </StackPanel>
+                      <CheckBox Grid.Column="1"
+                                x:Name="SettingsProjectEnforceAliasToggle"
+                                Margin="10,0,0,0"
+                                VerticalAlignment="Center"
+                                IsCheckedChanged="SettingsProjectEnforceAliasToggle_Changed"/>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="surface-card"
+                          Padding="12">
+                    <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                      <StackPanel Grid.Column="0" Spacing="2">
+                        <TextBlock Text="Avisar palavras reservadas"
+                                   FontSize="{StaticResource FontSizeTitle}"
+                                   FontWeight="{StaticResource FontWeightTitle}"
+                                   Foreground="{StaticResource TextPrimaryBrush}"/>
+                        <TextBlock Text="Mantém esta opção persistida para validações de nomenclatura."
+                                   FontSize="{StaticResource FontSizeCaption}"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   TextWrapping="Wrap"/>
+                      </StackPanel>
+                      <CheckBox Grid.Column="1"
+                                x:Name="SettingsProjectWarnReservedToggle"
+                                Margin="10,0,0,0"
+                                VerticalAlignment="Center"
+                                IsCheckedChanged="SettingsProjectWarnReservedToggle_Changed"/>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="surface-card"
+                          Padding="12">
+                    <StackPanel Spacing="8">
+                      <TextBlock Text="Tamanho máximo de alias"
+                                 FontSize="{StaticResource FontSizeTitle}"
+                                 FontWeight="{StaticResource FontWeightTitle}"
+                                 Foreground="{StaticResource TextPrimaryBrush}"/>
+                      <TextBox x:Name="SettingsProjectMaxAliasLengthTextBox"
+                               Classes="field"
+                               Width="140"
+                               TextChanged="SettingsProjectMaxAliasLengthTextBox_Changed"/>
+                    </StackPanel>
+                  </Border>
+
+                  <Border Classes="surface-card"
+                          Padding="12">
+                    <StackPanel Spacing="8">
+                      <TextBlock Text="Estilo padrão de wire"
+                                 FontSize="{StaticResource FontSizeTitle}"
+                                 FontWeight="{StaticResource FontWeightTitle}"
+                                 Foreground="{StaticResource TextPrimaryBrush}"/>
+                      <ComboBox x:Name="SettingsProjectWireCurveModeCombo"
+                                Classes="field"
+                                Width="220"
+                                SelectionChanged="SettingsProjectWireCurveModeCombo_Changed">
+                        <ComboBoxItem Tag="Bezier" Content="Bezier"/>
+                        <ComboBoxItem Tag="Straight" Content="Straight"/>
+                        <ComboBoxItem Tag="Orthogonal" Content="Orthogonal"/>
+                      </ComboBox>
+                    </StackPanel>
+                  </Border>
+                </StackPanel>
+
+                <Border Height="1" Background="{StaticResource BorderSubtleBrush}" IsVisible="{Binding IsProjectSectionSelected}"/>
 
                 <StackPanel Spacing="8" IsVisible="{Binding IsLanguageRegionSectionSelected}">
                   <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">

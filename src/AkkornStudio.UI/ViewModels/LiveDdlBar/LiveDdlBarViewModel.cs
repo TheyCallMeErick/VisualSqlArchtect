@@ -46,6 +46,7 @@ public sealed class LiveDdlBarViewModel : ViewModelBase
     public DdlDiagnosticsPanelViewModel DiagnosticsPanel { get; }
 
     public SchemaAnalysisPanelViewModel SchemaAnalysisPanel { get; }
+    public DdlSchemaCompareWorkspaceViewModel SchemaComparePanel { get; }
 
     public RelayCommand RunSchemaAnalysisCommand { get; }
 
@@ -111,6 +112,7 @@ public sealed class LiveDdlBarViewModel : ViewModelBase
             copySql: sql => { /* TODO: Implement clipboard injection or platform abstraction */ },
             applyToCanvas: OnApplyFixToCanvas
         );
+        SchemaComparePanel = new DdlSchemaCompareWorkspaceViewModel(_canvas.ConnectionManager);
         RunSchemaAnalysisCommand = new RelayCommand(
             () => _ = AnalyzeSchemaStructureAsync(),
             () => !IsRunningSchemaAnalysis && _canvas.DatabaseMetadata is not null

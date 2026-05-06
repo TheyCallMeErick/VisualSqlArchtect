@@ -17,6 +17,16 @@ public sealed class AppSettings
     public List<SqlEditorSessionDraftEntry> SqlEditorSessionDrafts { get; set; } = [];
     public Dictionary<string, Dictionary<string, int>> SqlEditorCompletionFrequencyByProfile { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, List<SqlEditorHistoryEntry>> SqlEditorHistoryByProfile { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public ProjectConventionSettings ProjectConventions { get; set; } = new();
+}
+
+public sealed class ProjectConventionSettings
+{
+    public string NamingConvention { get; set; } = "snake_case";
+    public bool EnforceAliasNaming { get; set; } = true;
+    public bool WarnOnReservedKeywords { get; set; } = true;
+    public int MaxAliasLength { get; set; } = 64;
+    public string DefaultWireCurveMode { get; set; } = "Bezier";
 }
 
 public static class AppSettingsStore
@@ -54,6 +64,10 @@ public static class AppSettingsStore
             settings.SqlEditorSessionDrafts ??= [];
             settings.SqlEditorCompletionFrequencyByProfile ??= new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
             settings.SqlEditorHistoryByProfile ??= new Dictionary<string, List<SqlEditorHistoryEntry>>(StringComparer.OrdinalIgnoreCase);
+            settings.ProjectConventions ??= new ProjectConventionSettings();
+            settings.ProjectConventions.NamingConvention = NormalizeNamingConvention(settings.ProjectConventions.NamingConvention);
+            settings.ProjectConventions.MaxAliasLength = Math.Max(0, settings.ProjectConventions.MaxAliasLength);
+            settings.ProjectConventions.DefaultWireCurveMode = NormalizeWireCurveMode(settings.ProjectConventions.DefaultWireCurveMode);
             return settings;
         }
         catch (Exception ex) when (ex is IOException or JsonException or InvalidOperationException)
@@ -240,5 +254,57 @@ public static class AppSettingsStore
         AppSettings settings = Load();
         if (settings.SqlEditorHistoryByProfile.Remove(profileId))
             Save(settings);
+    }
+
+    public static ProjectConventionSettings LoadProjectConventionSettings()
+    {
+        AppSettings settings = Load();
+        ProjectConventionSettings source = settings.ProjectConventions ?? new ProjectConventionSettings();
+        return new ProjectConventionSettings
+        {
+            NamingConvention = NormalizeNamingConvention(source.NamingConvention),
+            EnforceAliasNaming = source.EnforceAliasNaming,
+            WarnOnReservedKeywords = source.WarnOnReservedKeywords,
+            MaxAliasLength = Math.Max(0, source.MaxAliasLength),
+            DefaultWireCurveMode = NormalizeWireCurveMode(source.DefaultWireCurveMode),
+        };
+    }
+
+    public static void SaveProjectConventionSettings(ProjectConventionSettings projectSettings)
+    {
+        ArgumentNullException.ThrowIfNull(projectSettings);
+        AppSettings settings = Load();
+        settings.ProjectConventions = new ProjectConventionSettings
+        {
+            NamingConvention = NormalizeNamingConvention(projectSettings.NamingConvention),
+            EnforceAliasNaming = projectSettings.EnforceAliasNaming,
+            WarnOnReservedKeywords = projectSettings.WarnOnReservedKeywords,
+            MaxAliasLength = Math.Max(0, projectSettings.MaxAliasLength),
+            DefaultWireCurveMode = NormalizeWireCurveMode(projectSettings.DefaultWireCurveMode),
+        };
+        Save(settings);
+    }
+
+    private static string NormalizeNamingConvention(string? value)
+    {
+        return value switch
+        {
+            "snake_case" => "snake_case",
+            "camelCase" => "camelCase",
+            "PascalCase" => "PascalCase",
+            "SCREAMING_SNAKE_CASE" => "SCREAMING_SNAKE_CASE",
+            _ => "snake_case",
+        };
+    }
+
+    private static string NormalizeWireCurveMode(string? value)
+    {
+        return value switch
+        {
+            "Bezier" => "Bezier",
+            "Straight" => "Straight",
+            "Orthogonal" => "Orthogonal",
+            _ => "Bezier",
+        };
     }
 }

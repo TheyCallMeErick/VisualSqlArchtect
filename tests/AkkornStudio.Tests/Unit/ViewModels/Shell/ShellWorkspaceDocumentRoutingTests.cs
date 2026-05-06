@@ -572,16 +572,19 @@ public class ShellWorkspaceDocumentRoutingTests
     }
 
     [Fact]
-    public void IsConnectionManagerOverlayVisible_InSqlEditorModeFollowsSharedQueryManager()
+    public void IsConnectionManagerOverlayVisible_InSqlEditorModeFollowsSqlEditorManager()
     {
         var shell = new ShellViewModel(connectionManagerViewModelFactory: global::AkkornStudio.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
         shell.EnterCanvas();
         shell.ActivateDocument(WorkspaceDocumentType.SqlEditor);
 
         CanvasViewModel queryCanvas = shell.EnsureCanvas();
-        queryCanvas.ConnectionManager.Open();
+        var sqlManager = shell.ActiveConnectionManager;
+        Assert.NotNull(sqlManager);
+        sqlManager.Open();
 
-        Assert.Same(queryCanvas.ConnectionManager, shell.ActiveConnectionManager);
+        Assert.NotSame(queryCanvas.ConnectionManager, sqlManager);
+        Assert.Same(shell.SqlEditor.SharedConnectionManager, sqlManager);
         Assert.True(shell.IsConnectionManagerVisible);
         Assert.True(shell.IsConnectionManagerOverlayVisible);
     }

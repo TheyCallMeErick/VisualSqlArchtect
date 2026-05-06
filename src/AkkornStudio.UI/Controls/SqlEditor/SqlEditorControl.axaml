@@ -17,6 +17,16 @@
     <Style Selector="Border.sql-connection-badge">
       <Setter Property="MaxWidth" Value="300"/>
     </Style>
+    <Style Selector="Button.sql-connection-launch">
+      <Setter Property="Padding" Value="2,0"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Background" Value="Transparent"/>
+    </Style>
+    <Style Selector="Button.sql-connection-launch:pointerover">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="RenderTransform" Value="scale(1.01)"/>
+    </Style>
     <Style Selector="Button.sql-tool-action">
       <Setter Property="RenderTransformOrigin" Value="50%,50%"/>
       <Setter Property="Transitions">
@@ -57,7 +67,7 @@
           Margin="10,8,10,0"
           ColumnDefinitions="Auto,*">
       <Button Grid.Column="0"
-              Classes="icon-ghost"
+              Classes="icon-ghost sql-connection-launch"
               Command="{Binding OpenConnectionSwitcherCommand}">
         <Grid>
           <Border Classes="badge sql-connection-badge"
@@ -175,6 +185,134 @@
             </Grid>
 
             <ctrl:SqlEditorResultPanel Grid.Row="1" Margin="12,0,12,12"/>
+          </Grid>
+        </Border>
+      </Panel>
+
+      <Panel IsVisible="{Binding IsConnectionSwitcherOpen}"
+             ZIndex="60">
+        <Border Background="{StaticResource MacroScrimBrush}"
+                PointerPressed="ConnectionSwitcherBackdrop_OnPointerPressed"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"/>
+
+        <Border Width="560"
+                Classes="surface-floating"
+                MaxWidth="620"
+                MinHeight="360"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                ClipToBounds="True">
+          <Grid RowDefinitions="Auto,*,Auto">
+            <Grid Grid.Row="0"
+                  Classes="surface-floating-header"
+                  ColumnDefinitions="*,Auto"
+                  Margin="14,12,14,8">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <mi:MaterialIcon Kind="DatabaseCogOutline"
+                                 Width="16"
+                                 Height="16"
+                                 VerticalAlignment="Center"
+                                 Foreground="{StaticResource AccentBlueBrush}"/>
+                <TextBlock Text="Trocar conexão SQL"
+                           FontSize="{StaticResource FontSizeBody}"
+                           FontWeight="{StaticResource FontWeightTitle}"
+                           VerticalAlignment="Center"/>
+              </StackPanel>
+
+              <Button Grid.Column="1"
+                      Classes="icon-ghost"
+                      Command="{Binding CloseConnectionSwitcherCommand}">
+                <mi:MaterialIcon Kind="Close" Width="14" Height="14"/>
+              </Button>
+            </Grid>
+
+            <ScrollViewer Grid.Row="1"
+                          Margin="14,6,14,0"
+                          HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Auto">
+              <StackPanel Spacing="10">
+                <Border Classes="callout-subtle">
+                  <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+                    <TextBlock Grid.Row="0"
+                               Text="Conexão"
+                               Classes="section-label"/>
+                    <TextBlock Grid.Column="1"
+                               Grid.Row="0"
+                               Text="{Binding CurrentConnectionProfileLabel}"
+                               FontWeight="{StaticResource FontWeightStrong}"/>
+
+                    <TextBlock Grid.Row="1" Text="Provider" Classes="section-label"/>
+                    <TextBlock Grid.Column="1" Grid.Row="1" Text="{Binding CurrentConnectionProviderLabel}"/>
+
+                    <TextBlock Grid.Row="2" Text="Banco" Classes="section-label"/>
+                    <TextBlock Grid.Column="1" Grid.Row="2" Text="{Binding CurrentConnectionDatabaseLabel}"/>
+
+                    <TextBlock Grid.Row="3" Text="Host" Classes="section-label"/>
+                    <TextBlock Grid.Column="1" Grid.Row="3" Text="{Binding CurrentConnectionHostLabel}"/>
+
+                    <TextBlock Grid.Row="4" Text="Usuário / URL" Classes="section-label"/>
+                    <StackPanel Grid.Column="1" Grid.Row="4" Spacing="2">
+                      <TextBlock Text="{Binding CurrentConnectionUserLabel}"/>
+                      <TextBlock Text="{Binding CurrentConnectionUrlLabel}"
+                                 FontFamily="{StaticResource MonoFont}"
+                                 FontSize="{StaticResource FontSizeCaption}"
+                                 Foreground="{StaticResource TextMutedBrush}"
+                                 TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                  </Grid>
+                </Border>
+
+                <TextBlock Text="Conexão" Classes="section-label"/>
+                <ComboBox ItemsSource="{Binding ConnectionSwitcherProfiles}"
+                          SelectedItem="{Binding ConnectionSwitcherSelectedProfile}"
+                          HorizontalAlignment="Stretch">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:SqlEditorConnectionProfileOption">
+                      <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
+                        <mi:MaterialIcon Kind="DatabaseOutline"
+                                         Width="14"
+                                         Height="14"
+                                         Margin="0,0,8,0"
+                                         VerticalAlignment="Center"
+                                         Foreground="{StaticResource AccentPrimaryBrush}"/>
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding DisplayName}"
+                                   FontWeight="{StaticResource FontWeightStrong}"
+                                   TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Grid.Column="1"
+                                   Grid.Row="1"
+                                   Text="{Binding Provider}"
+                                   Foreground="{StaticResource TextMutedBrush}"
+                                   FontSize="{StaticResource FontSizeCaption}"/>
+                      </Grid>
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+
+                <StackPanel IsVisible="{Binding CanChangeDatabaseInSwitcher}" Spacing="6">
+                  <TextBlock Text="Banco/Catalog" Classes="section-label"/>
+                  <ComboBox ItemsSource="{Binding ConnectionSwitcherDatabases}"
+                            SelectedItem="{Binding ConnectionSwitcherSelectedDatabase}"
+                            HorizontalAlignment="Stretch"/>
+                </StackPanel>
+              </StackPanel>
+            </ScrollViewer>
+
+            <Border Grid.Row="2"
+                    Classes="surface-floating-footer"
+                    Padding="14,10">
+              <StackPanel Orientation="Horizontal"
+                          HorizontalAlignment="Right"
+                          Spacing="8">
+                <Button Classes="secondary compact"
+                        Command="{Binding CloseConnectionSwitcherCommand}"
+                        Content="Cancelar"/>
+                <Button Classes="primary compact"
+                        Command="{Binding ApplyConnectionSwitcherCommand}"
+                        Content="Aplicar"/>
+              </StackPanel>
+            </Border>
           </Grid>
         </Border>
       </Panel>

@@ -99,6 +99,43 @@ public sealed class SqlEditorViewModelTests
     }
 
     [Fact]
+    public void NotifyConnectionContextChanged_WhenTabHasNoProfile_UsesSharedManagerActiveProfile()
+    {
+        var manager = new ConnectionManagerViewModel();
+        var profile = new ConnectionProfile
+        {
+            Id = "profile-a",
+            Name = "Profile A",
+            Provider = DatabaseProvider.Postgres,
+            Host = "localhost",
+            Port = 5432,
+            Database = "db_a",
+            Username = "u",
+            Password = "p",
+            TimeoutSeconds = 30,
+        };
+        manager.Profiles.Add(profile);
+        manager.ActiveProfileId = profile.Id;
+
+        var sut = new SqlEditorViewModel(
+            sharedConnectionManagerResolver: () => manager,
+            connectionProfilesResolver: () =>
+            [
+                new SqlEditorConnectionProfileOption
+                {
+                    Id = profile.Id,
+                    DisplayName = profile.Name,
+                    Provider = profile.Provider,
+                },
+            ]);
+
+        sut.ActiveTabConnectionProfileId = null;
+        sut.NotifyConnectionContextChanged();
+
+        Assert.Equal(profile.Id, sut.ActiveTabConnectionProfileId);
+    }
+
+    [Fact]
     public void ReceiveFromCanvas_DelegatesToTabManagerAndKeepsActiveTabInSync()
     {
         var sut = new SqlEditorViewModel();

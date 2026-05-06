@@ -14,6 +14,7 @@ namespace AkkornStudio.UI;
 public partial class MainWindow
 {
     private bool _isSyncingEditorSafetySettings;
+    private bool _isSyncingProjectConventionSettings;
 
     private void SettingsBackdrop_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
@@ -41,6 +42,7 @@ public partial class MainWindow
         GetSettingsModule().OpenSettings(keepStartVisible);
         SyncLanguageComboSelection();
         SyncEditorSafetySettingsToggles();
+        SyncProjectConventionSettingsControls();
         EnsureKeyboardShortcutsSettingsPanel();
     }
 
@@ -221,6 +223,110 @@ public partial class MainWindow
             top1000WithoutWhereEnabled ? "ON" : "OFF",
             protectMutationWithoutWhereEnabled ? "ON" : "OFF");
         SetSettingsStatus(status, isError: false);
+    }
+
+    private void SyncProjectConventionSettingsControls()
+    {
+        ComboBox? namingCombo = this.FindControl<ComboBox>("SettingsProjectNamingConventionCombo");
+        ComboBox? wireCombo = this.FindControl<ComboBox>("SettingsProjectWireCurveModeCombo");
+        CheckBox? enforceToggle = this.FindControl<CheckBox>("SettingsProjectEnforceAliasToggle");
+        CheckBox? warnReservedToggle = this.FindControl<CheckBox>("SettingsProjectWarnReservedToggle");
+        TextBox? maxAliasTextBox = this.FindControl<TextBox>("SettingsProjectMaxAliasLengthTextBox");
+        if (namingCombo is null || wireCombo is null || enforceToggle is null || warnReservedToggle is null || maxAliasTextBox is null)
+            return;
+
+        ProjectConventionSettings settings = CurrentShell.CurrentProjectConventionSettings;
+        _isSyncingProjectConventionSettings = true;
+        SelectComboBoxItemByTag(namingCombo, settings.NamingConvention);
+        SelectComboBoxItemByTag(wireCombo, settings.DefaultWireCurveMode);
+        enforceToggle.IsChecked = settings.EnforceAliasNaming;
+        warnReservedToggle.IsChecked = settings.WarnOnReservedKeywords;
+        maxAliasTextBox.Text = settings.MaxAliasLength.ToString();
+        _isSyncingProjectConventionSettings = false;
+
+        CurrentShell.ApplyProjectConventionSettings(settings);
+    }
+
+    private void SelectComboBoxItemByTag(ComboBox comboBox, string? tagValue)
+    {
+        if (comboBox.Items is null || string.IsNullOrWhiteSpace(tagValue))
+            return;
+
+        foreach (object? option in comboBox.Items)
+        {
+            if (option is ComboBoxItem item
+                && item.Tag is string itemTag
+                && string.Equals(itemTag, tagValue, StringComparison.OrdinalIgnoreCase))
+            {
+                comboBox.SelectedItem = item;
+                return;
+            }
+        }
+    }
+
+    private void SettingsProjectNamingConventionCombo_Changed(object? sender, SelectionChangedEventArgs e)
+    {
+        ApplyProjectConventionSettingsFromControls();
+        e.Handled = true;
+    }
+
+    private void SettingsProjectWireCurveModeCombo_Changed(object? sender, SelectionChangedEventArgs e)
+    {
+        ApplyProjectConventionSettingsFromControls();
+        e.Handled = true;
+    }
+
+    private void SettingsProjectEnforceAliasToggle_Changed(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        ApplyProjectConventionSettingsFromControls();
+        e.Handled = true;
+    }
+
+    private void SettingsProjectWarnReservedToggle_Changed(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        ApplyProjectConventionSettingsFromControls();
+        e.Handled = true;
+    }
+
+    private void SettingsProjectMaxAliasLengthTextBox_Changed(object? sender, TextChangedEventArgs e)
+    {
+        ApplyProjectConventionSettingsFromControls();
+        e.Handled = true;
+    }
+
+    private void ApplyProjectConventionSettingsFromControls()
+    {
+        if (_isSyncingProjectConventionSettings)
+            return;
+
+        ComboBox? namingCombo = this.FindControl<ComboBox>("SettingsProjectNamingConventionCombo");
+        ComboBox? wireCombo = this.FindControl<ComboBox>("SettingsProjectWireCurveModeCombo");
+        CheckBox? enforceToggle = this.FindControl<CheckBox>("SettingsProjectEnforceAliasToggle");
+        CheckBox? warnReservedToggle = this.FindControl<CheckBox>("SettingsProjectWarnReservedToggle");
+        TextBox? maxAliasTextBox = this.FindControl<TextBox>("SettingsProjectMaxAliasLengthTextBox");
+        if (namingCombo is null || wireCombo is null || enforceToggle is null || warnReservedToggle is null || maxAliasTextBox is null)
+            return;
+
+        string namingConvention = (namingCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "snake_case";
+        string defaultWireCurveMode = (wireCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Bezier";
+        bool enforceAliasNaming = enforceToggle.IsChecked == true;
+        bool warnOnReservedKeywords = warnReservedToggle.IsChecked == true;
+        int maxAliasLength = int.TryParse(maxAliasTextBox.Text, out int parsedMaxAliasLength)
+            ? Math.Max(0, parsedMaxAliasLength)
+            : 64;
+
+        var settings = new ProjectConventionSettings
+        {
+            NamingConvention = namingConvention,
+            EnforceAliasNaming = enforceAliasNaming,
+            WarnOnReservedKeywords = warnOnReservedKeywords,
+            MaxAliasLength = maxAliasLength,
+            DefaultWireCurveMode = defaultWireCurveMode,
+        };
+
+        AppSettingsStore.SaveProjectConventionSettings(settings);
+        CurrentShell.ApplyProjectConventionSettings(settings);
+        SetSettingsStatus("Projeto atualizado: convenções e wire style aplicados globalmente.", isError: false);
     }
 
     private void SetSettingsStatus(string message, bool isError)

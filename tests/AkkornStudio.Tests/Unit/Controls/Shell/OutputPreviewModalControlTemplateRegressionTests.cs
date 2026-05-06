@@ -47,6 +47,16 @@ public class OutputPreviewModalControlTemplateRegressionTests
         Assert.Contains("DataContext=\"{Binding Diagnostics}\"", xaml);
     }
 
+    [Fact]
+    public void DdlOutput_SchemaCompareTabHostsCompareWorkspaceControl()
+    {
+        string xaml = ReadControlXaml();
+
+        Assert.Contains("<shell:DdlSchemaCompareWorkspaceControl", xaml);
+        Assert.Contains("ShowSchemaCompareContent", xaml);
+        Assert.Contains("DataContext=\"{Binding DdlSchemaCompareTool}\"", xaml);
+    }
+
     private static string ReadControlXaml()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

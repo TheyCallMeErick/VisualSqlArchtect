@@ -352,6 +352,48 @@
     <Setter Property="BorderBrush" Value="{StaticResource BorderActiveBrush}"/>
   </Style>
 
+  <Style Selector="ComboBox">
+    <Setter Property="Background" Value="{StaticResource Bg1Brush}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource BorderSubtleBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+    <Setter Property="FontFamily" Value="{StaticResource UIFont}"/>
+    <Setter Property="FontSize" Value="{StaticResource FontSizeBody}"/>
+    <Setter Property="CornerRadius" Value="{StaticResource RadiusSM}"/>
+    <Setter Property="Padding" Value="10,7"/>
+    <Setter Property="MinHeight" Value="34"/>
+    <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    <Setter Property="MaxDropDownHeight" Value="420"/>
+    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+  </Style>
+  <Style Selector="ComboBox:pointerover">
+    <Setter Property="Background" Value="{StaticResource Bg2Brush}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource BorderFocusBrush}"/>
+  </Style>
+  <Style Selector="ComboBox:focus-visible">
+    <Setter Property="BorderBrush" Value="{StaticResource BorderFocusBrush}"/>
+  </Style>
+  <Style Selector="ComboBox:disabled">
+    <Setter Property="Opacity" Value="0.62"/>
+    <Setter Property="Foreground" Value="{StaticResource TextDisabledBrush}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource BorderDisabledBrush}"/>
+  </Style>
+  <Style Selector="PopupRoot ComboBoxItem">
+    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="Padding" Value="10,8"/>
+    <Setter Property="FontFamily" Value="{StaticResource UIFont}"/>
+    <Setter Property="FontSize" Value="{StaticResource FontSizeBody}"/>
+    <Setter Property="MinHeight" Value="32"/>
+  </Style>
+  <Style Selector="PopupRoot ComboBoxItem:pointerover">
+    <Setter Property="Background" Value="{StaticResource Bg2Brush}"/>
+  </Style>
+  <Style Selector="PopupRoot ComboBoxItem:selected">
+    <Setter Property="Background" Value="{StaticResource PanelActiveBrush}"/>
+    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+  </Style>
+
   <Style Selector="ComboBox.field">
     <Setter Property="Background" Value="{StaticResource CanvasBgBrush}"/>
     <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
@@ -645,29 +687,48 @@
   </Style>
 
   <Style Selector="Expander.app-accordion">
-    <Setter Property="Background" Value="{StaticResource Bg2Brush}"/>
+    <Setter Property="Background" Value="{StaticResource Bg1Brush}"/>
     <Setter Property="BorderBrush" Value="{StaticResource BorderSubtleBrush}"/>
     <Setter Property="BorderThickness" Value="1"/>
     <Setter Property="CornerRadius" Value="{StaticResource RadiusMD}"/>
     <Setter Property="Padding" Value="0"/>
     <Setter Property="HorizontalAlignment" Value="Stretch"/>
     <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.12"/>
+        <BrushTransition Property="BorderBrush" Duration="0:0:0.12"/>
+      </Transitions>
+    </Setter>
   </Style>
   <Style Selector="Expander.app-accordion /template/ ToggleButton">
     <Setter Property="Background" Value="{StaticResource Bg2Brush}"/>
     <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
     <Setter Property="BorderBrush" Value="{StaticResource BorderSubtleBrush}"/>
+    <Setter Property="BorderThickness" Value="0"/>
+    <Setter Property="Padding" Value="12,10"/>
+    <Setter Property="FontSize" Value="{StaticResource FontSizeBody}"/>
+    <Setter Property="FontWeight" Value="{StaticResource FontWeightStrong}"/>
+  </Style>
+  <Style Selector="Expander.app-accordion /template/ ToggleButton:pointerover">
+    <Setter Property="Background" Value="{StaticResource Bg3Brush}"/>
+    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+  </Style>
+  <Style Selector="Expander.app-accordion /template/ ToggleButton:pressed">
+    <Setter Property="Background" Value="{StaticResource PanelActiveBrush}"/>
   </Style>
   <Style Selector="Expander.app-accordion /template/ ContentPresenter">
     <Setter Property="Background" Value="{StaticResource Bg1Brush}"/>
     <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+    <Setter Property="Padding" Value="10"/>
   </Style>
   <Style Selector="Expander.app-accordion:pointerover">
     <Setter Property="BorderBrush" Value="{StaticResource BorderFocusBrush}"/>
+    <Setter Property="Background" Value="{StaticResource Bg2Brush}"/>
   </Style>
   <Style Selector="Expander.app-accordion:focus-visible">
     <Setter Property="BorderBrush" Value="{StaticResource BorderFocusBrush}"/>
-    <Setter Property="BorderThickness" Value="2"/>
+    <Setter Property="BorderThickness" Value="1"/>
   </Style>
 
   <!-- ── ScrollBar (minimal) ─────────────────────────────────────────────── -->

@@ -1,0 +1,293 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:AkkornStudio.UI.ViewModels"
+             xmlns:conn="using:AkkornStudio.UI.Services.ConnectionManager.Models"
+             xmlns:mi="using:Material.Icons.Avalonia"
+             x:Class="AkkornStudio.UI.Controls.Shell.DdlSchemaCompareWorkspaceControl"
+             x:DataType="vm:DdlSchemaCompareWorkspaceViewModel">
+
+  <UserControl.Styles>
+    <Style Selector="TextBlock.compare-section-label">
+      <Setter Property="FontSize" Value="{StaticResource FontSizeCaption}"/>
+      <Setter Property="FontWeight" Value="{StaticResource FontWeightHeading}"/>
+      <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+      <Setter Property="LetterSpacing" Value="0.5"/>
+    </Style>
+
+    <Style Selector="Border.compare-toolbar">
+      <Setter Property="Background" Value="{StaticResource Bg1Brush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderSubtleBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="{StaticResource RadiusMD}"/>
+      <Setter Property="BoxShadow" Value="{StaticResource ShadowSM}"/>
+    </Style>
+
+    <Style Selector="Border.compare-side-card">
+      <Setter Property="Background" Value="{StaticResource Bg1Brush}"/>
+      <Setter Property="BorderBrush" Value="{StaticResource BorderSubtleBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="{StaticResource RadiusMD}"/>
+      <Setter Property="BoxShadow" Value="{StaticResource ShadowSM}"/>
+    </Style>
+
+    <Style Selector="ComboBox.compare-select">
+      <Setter Property="FontSize" Value="{StaticResource FontSizeBody}"/>
+      <Setter Property="Padding" Value="10,7"/>
+      <Setter Property="MinHeight" Value="36"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*" Margin="8">
+    <Border Grid.Row="0" Classes="compare-toolbar" Padding="10" Margin="0,0,0,8">
+      <Grid RowDefinitions="Auto,Auto,Auto">
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto">
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10">
+            <mi:MaterialIcon Kind="TableSync" Width="18" Height="18" VerticalAlignment="Center" Foreground="{StaticResource AccentPrimaryBrush}"/>
+            <StackPanel Spacing="1">
+              <TextBlock Text="Comparar tabelas entre conexoes"
+                         FontSize="{StaticResource FontSizeTitle}"
+                         FontWeight="{StaticResource FontWeightTitle}"
+                         Foreground="{StaticResource TextPrimaryBrush}"/>
+              <TextBlock Text="Selecione origem e destino para gerar diff e SQL de sincronizacao."
+                         FontSize="{StaticResource FontSizeCaption}"
+                         Foreground="{StaticResource TextMutedBrush}"/>
+            </StackPanel>
+          </StackPanel>
+
+          <ComboBox Grid.Column="1"
+                    Classes="compare-select"
+                    Width="220"
+                    Margin="10,0,0,0"
+                    SelectedIndex="{Binding SelectedDirectionIndex, Mode=TwoWay}">
+            <ComboBoxItem>
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <mi:MaterialIcon Kind="ArrowRightBoldCircleOutline" Width="16" Height="16" Foreground="{StaticResource AccentPrimaryBrush}"/>
+                <TextBlock Text="Esquerda -> Direita"/>
+              </StackPanel>
+            </ComboBoxItem>
+            <ComboBoxItem>
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <mi:MaterialIcon Kind="ArrowLeftBoldCircleOutline" Width="16" Height="16" Foreground="{StaticResource AccentPrimaryBrush}"/>
+                <TextBlock Text="Direita -> Esquerda"/>
+              </StackPanel>
+            </ComboBoxItem>
+          </ComboBox>
+
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" Margin="8,0,0,0">
+            <Button Classes="secondary" Command="{Binding RefreshBothCommand}" Content="Atualizar"/>
+            <Button Classes="primary" Command="{Binding CompareCommand}" Content="Comparar"/>
+          </StackPanel>
+        </Grid>
+
+        <Border Grid.Row="1" Classes="callout-subtle" Margin="0,8,0,0" Padding="8,6">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <mi:MaterialIcon Kind="ShieldCheckOutline" Width="14" Height="14" Foreground="{StaticResource StatusInfoBrush}" VerticalAlignment="Center"/>
+            <TextBlock Text="{Binding CompatibilityMessage}"
+                       Foreground="{StaticResource TextSecondaryBrush}"
+                       TextWrapping="Wrap"
+                       VerticalAlignment="Center"/>
+          </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="2" ColumnDefinitions="Auto,Auto,*" Margin="0,6,0,0">
+          <Border Classes="badge info" Padding="8,3">
+            <TextBlock Text="{Binding LeftProviderLabel}" FontSize="{StaticResource FontSizeCaption}"/>
+          </Border>
+          <Border Grid.Column="1" Classes="badge info" Padding="8,3" Margin="8,0,0,0">
+            <TextBlock Text="{Binding RightProviderLabel}" FontSize="{StaticResource FontSizeCaption}"/>
+          </Border>
+        </Grid>
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="1" RowDefinitions="Auto,*">
+      <Expander Grid.Row="0"
+                Classes="app-accordion"
+                IsExpanded="False"
+                Margin="0,0,0,8">
+        <Expander.Header>
+          <Grid ColumnDefinitions="Auto,*">
+            <mi:MaterialIcon Kind="TuneVariant"
+                             Width="14"
+                             Height="14"
+                             VerticalAlignment="Center"
+                             Foreground="{StaticResource AccentPrimaryBrush}"/>
+            <StackPanel Grid.Column="1" Spacing="2" Margin="8,0,0,0">
+              <TextBlock Text="Configuracao da comparacao"
+                         FontWeight="{StaticResource FontWeightStrong}"/>
+              <TextBlock Text="Abra para ajustar conexao, banco, schema e tabela."
+                         FontSize="{StaticResource FontSizeCaption}"
+                         Foreground="{StaticResource TextMutedBrush}"/>
+            </StackPanel>
+          </Grid>
+        </Expander.Header>
+
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto"
+                      MaxHeight="260">
+          <Grid ColumnDefinitions="*,*" Margin="0,8,0,0">
+            <Border Grid.Column="0" Classes="compare-side-card" Padding="10">
+              <StackPanel Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <mi:MaterialIcon Kind="ArrowLeftBoldCircleOutline" Width="16" Height="16" Foreground="{StaticResource AccentPrimaryBrush}" VerticalAlignment="Center"/>
+                  <TextBlock Text="Origem (esquerda)" FontWeight="{StaticResource FontWeightTitle}" Foreground="{StaticResource TextPrimaryBrush}"/>
+                </StackPanel>
+
+                <TextBlock Classes="compare-section-label" Text="Conexao"/>
+                <ComboBox Classes="compare-select" ItemsSource="{Binding Profiles}" SelectedItem="{Binding LeftSelectedProfile, Mode=TwoWay}" IsEnabled="{Binding IsBusy, Converter={x:Static BoolConverters.Not}}">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="conn:ConnectionProfile">
+                      <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
+                        <mi:MaterialIcon Kind="DatabaseOutline" Width="15" Height="15" Margin="0,0,8,0" VerticalAlignment="Center" Foreground="{StaticResource AccentPrimaryBrush}"/>
+                        <TextBlock Grid.Column="1" Text="{Binding Name}" Foreground="{StaticResource TextPrimaryBrush}" FontWeight="{StaticResource FontWeightStrong}" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Grid.Column="1" Grid.Row="1" Text="{Binding Provider}" Foreground="{StaticResource TextMutedBrush}" FontSize="{StaticResource FontSizeCaption}"/>
+                      </Grid>
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+
+                <TextBlock Classes="compare-section-label" Text="Banco"/>
+                <ComboBox Classes="compare-select" ItemsSource="{Binding LeftDatabases}" SelectedItem="{Binding LeftSelectedDatabase, Mode=TwoWay}" IsEnabled="{Binding IsBusy, Converter={x:Static BoolConverters.Not}}"/>
+
+                <TextBlock Classes="compare-section-label" Text="Schema"/>
+                <ComboBox Classes="compare-select" ItemsSource="{Binding LeftSchemas}" SelectedItem="{Binding LeftSelectedSchema, Mode=TwoWay}" IsEnabled="{Binding IsBusy, Converter={x:Static BoolConverters.Not}}"/>
+
+                <TextBlock Classes="compare-section-label" Text="Tabela"/>
+                <ComboBox Classes="compare-select" ItemsSource="{Binding LeftTables}" SelectedItem="{Binding LeftSelectedTable, Mode=TwoWay}" IsEnabled="{Binding IsBusy, Converter={x:Static BoolConverters.Not}}"/>
+
+                <Border Classes="callout-subtle" Padding="8,6" Margin="0,4,0,0">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <mi:MaterialIcon Kind="InformationOutline" Width="14" Height="14" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding LeftStatus}" FontSize="{StaticResource FontSizeCaption}" Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </Border>
+
+            <Border Grid.Column="1" Classes="compare-side-card" Padding="10" Margin="8,0,0,0">
+              <StackPanel Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <mi:MaterialIcon Kind="ArrowRightBoldCircleOutline" Width="16" Height="16" Foreground="{StaticResource AccentPrimaryBrush}" VerticalAlignment="Center"/>
+                  <TextBlock Text="Destino (direita)" FontWeight="{StaticResource FontWeightTitle}" Foreground="{StaticResource TextPrimaryBrush}"/>
+                </StackPanel>
+
+                <TextBlock Classes="compare-section-label" Text="Conexao"/>
+                <ComboBox Classes="compare-select" ItemsSource="{Binding Profiles}" SelectedItem="{Binding RightSelectedProfile, Mode=TwoWay}" IsEnabled="{Binding IsBusy, Converter={x:Static BoolConverters.Not}}">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="conn:ConnectionProfile">
+                      <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
+                        <mi:MaterialIcon Kind="DatabaseOutline" Width="15" Height="15" Margin="0,0,8,0" VerticalAlignment="Center" Foreground="{StaticResource AccentPrimaryBrush}"/>
+                        <TextBlock Grid.Column="1" Text="{Binding Name}" Foreground="{StaticResource TextPrimaryBrush}" FontWeight="{StaticResource FontWeightStrong}" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Grid.Column="1" Grid.Row="1" Text="{Binding Provider}" Foreground="{StaticResource TextMutedBrush}" FontSize="{StaticResource FontSizeCaption}"/>
+                      </Grid>
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+
+                <TextBlock Classes="compare-section-label" Text="Banco"/>
+                <ComboBox Classes="compare-select" ItemsSource="{Binding RightDatabases}" SelectedItem="{Binding RightSelectedDatabase, Mode=TwoWay}" IsEnabled="{Binding IsBusy, Converter={x:Static BoolConverters.Not}}"/>
+
+                <TextBlock Classes="compare-section-label" Text="Schema"/>
+                <ComboBox Classes="compare-select" ItemsSource="{Binding RightSchemas}" SelectedItem="{Binding RightSelectedSchema, Mode=TwoWay}" IsEnabled="{Binding IsBusy, Converter={x:Static BoolConverters.Not}}"/>
+
+                <TextBlock Classes="compare-section-label" Text="Tabela"/>
+                <ComboBox Classes="compare-select" ItemsSource="{Binding RightTables}" SelectedItem="{Binding RightSelectedTable, Mode=TwoWay}" IsEnabled="{Binding IsBusy, Converter={x:Static BoolConverters.Not}}"/>
+
+                <Border Classes="callout-subtle" Padding="8,6" Margin="0,4,0,0">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <mi:MaterialIcon Kind="InformationOutline" Width="14" Height="14" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding RightStatus}" FontSize="{StaticResource FontSizeCaption}" Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </Border>
+          </Grid>
+        </ScrollViewer>
+      </Expander>
+
+      <Border Grid.Row="1" Classes="surface-panel" Padding="10">
+        <TabControl>
+          <TabItem Header="Resumo">
+            <StackPanel Margin="8" Spacing="8">
+              <TextBlock Text="{Binding Summary}" TextWrapping="Wrap"/>
+              <ItemsControl ItemsSource="{Binding CompareWarnings}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Classes="callout-subtle" Padding="8" Margin="0,0,0,6">
+                      <TextBlock Text="{Binding .}" TextWrapping="Wrap" Foreground="{StaticResource StatusWarningBrush}"/>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </TabItem>
+
+          <TabItem Header="Colunas">
+            <DataGrid ItemsSource="{Binding ColumnDiffs}" IsReadOnly="True" AutoGenerateColumns="False" Margin="8">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="Categoria" Binding="{Binding Category}" Width="180"/>
+                <DataGridTextColumn Header="Item" Binding="{Binding Item}" Width="160"/>
+                <DataGridTextColumn Header="Esquerda" Binding="{Binding LeftValue}" Width="*"/>
+                <DataGridTextColumn Header="Direita" Binding="{Binding RightValue}" Width="*"/>
+                <DataGridTextColumn Header="Severidade" Binding="{Binding Severity}" Width="110"/>
+                <DataGridTextColumn Header="Acao" Binding="{Binding Action}" Width="180"/>
+              </DataGrid.Columns>
+            </DataGrid>
+          </TabItem>
+
+          <TabItem Header="Constraints">
+            <DataGrid ItemsSource="{Binding ConstraintDiffs}" IsReadOnly="True" AutoGenerateColumns="False" Margin="8">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="Categoria" Binding="{Binding Category}" Width="180"/>
+                <DataGridTextColumn Header="Item" Binding="{Binding Item}" Width="160"/>
+                <DataGridTextColumn Header="Esquerda" Binding="{Binding LeftValue}" Width="*"/>
+                <DataGridTextColumn Header="Direita" Binding="{Binding RightValue}" Width="*"/>
+                <DataGridTextColumn Header="Severidade" Binding="{Binding Severity}" Width="110"/>
+                <DataGridTextColumn Header="Acao" Binding="{Binding Action}" Width="180"/>
+              </DataGrid.Columns>
+            </DataGrid>
+          </TabItem>
+
+          <TabItem Header="Relacionamentos">
+            <Grid Margin="8" RowDefinitions="*,*">
+              <DataGrid Grid.Row="0" ItemsSource="{Binding RelationshipDiffs}" IsReadOnly="True" AutoGenerateColumns="False" Margin="0,0,0,8">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="Categoria" Binding="{Binding Category}" Width="180"/>
+                  <DataGridTextColumn Header="Item" Binding="{Binding Item}" Width="160"/>
+                  <DataGridTextColumn Header="Esquerda" Binding="{Binding LeftValue}" Width="*"/>
+                  <DataGridTextColumn Header="Direita" Binding="{Binding RightValue}" Width="*"/>
+                  <DataGridTextColumn Header="Severidade" Binding="{Binding Severity}" Width="110"/>
+                  <DataGridTextColumn Header="Acao" Binding="{Binding Action}" Width="180"/>
+                </DataGrid.Columns>
+              </DataGrid>
+
+              <DataGrid Grid.Row="1" ItemsSource="{Binding ExternalImpactDiffs}" IsReadOnly="True" AutoGenerateColumns="False">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="Impacto externo" Binding="{Binding Item}" Width="170"/>
+                  <DataGridTextColumn Header="Esquerda" Binding="{Binding LeftValue}" Width="*"/>
+                  <DataGridTextColumn Header="Direita" Binding="{Binding RightValue}" Width="*"/>
+                  <DataGridTextColumn Header="Acao" Binding="{Binding Action}" Width="220"/>
+                </DataGrid.Columns>
+              </DataGrid>
+            </Grid>
+          </TabItem>
+
+          <TabItem Header="SQL">
+            <Grid Margin="8" RowDefinitions="Auto,*">
+              <Button Grid.Row="0" HorizontalAlignment="Right" Classes="secondary compact" Click="CopySqlButton_OnClick" Content="Copiar SQL"/>
+              <TextBox Grid.Row="1"
+                       Text="{Binding GeneratedSql}"
+                       FontFamily="{StaticResource MonoFont}"
+                       AcceptsReturn="True"
+                       IsReadOnly="True"
+                       TextWrapping="NoWrap"
+                       ScrollViewer.VerticalScrollBarVisibility="Auto"
+                       ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
+            </Grid>
+          </TabItem>
+        </TabControl>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

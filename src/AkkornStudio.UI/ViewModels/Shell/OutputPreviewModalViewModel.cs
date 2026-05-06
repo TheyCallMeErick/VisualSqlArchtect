@@ -21,6 +21,7 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
         Primary,
         CanvasDiagnostics,
         StructureDiagnostics,
+        SchemaCompare,
     }
 
     private bool _isVisible;
@@ -37,6 +38,7 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
     private BenchmarkViewModel? _benchmarkTool;
     private ExplainPlanViewModel? _explainPlanTool;
     private LiveDdlBarViewModel? _ddlTool;
+    private DdlSchemaCompareWorkspaceViewModel? _ddlSchemaCompareTool;
     private PropertyChangedEventHandler? _benchmarkToolPropertyChanged;
     private PropertyChangedEventHandler? _explainPlanToolPropertyChanged;
 
@@ -46,6 +48,7 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
         ShowPrimaryTabCommand = new RelayCommand(() => ActiveTab = EOutputPreviewTab.Primary);
         ShowCanvasDiagnosticsTabCommand = new RelayCommand(() => ActiveTab = EOutputPreviewTab.CanvasDiagnostics);
         ShowStructureDiagnosticsTabCommand = new RelayCommand(() => ActiveTab = EOutputPreviewTab.StructureDiagnostics);
+        ShowSchemaCompareTabCommand = new RelayCommand(() => ActiveTab = EOutputPreviewTab.SchemaCompare);
         ShowDiagnosticsTabCommand = new RelayCommand(() => ActiveTab = EOutputPreviewTab.CanvasDiagnostics);
     }
 
@@ -53,6 +56,7 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
     public RelayCommand ShowPrimaryTabCommand { get; }
     public RelayCommand ShowCanvasDiagnosticsTabCommand { get; }
     public RelayCommand ShowStructureDiagnosticsTabCommand { get; }
+    public RelayCommand ShowSchemaCompareTabCommand { get; }
     public RelayCommand ShowDiagnosticsTabCommand { get; }
 
     public bool IsVisible
@@ -78,11 +82,14 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
             RaisePropertyChanged(nameof(PrimaryTabLabel));
             RaisePropertyChanged(nameof(CanvasDiagnosticsTabLabel));
             RaisePropertyChanged(nameof(StructureDiagnosticsTabLabel));
+            RaisePropertyChanged(nameof(SchemaCompareTabLabel));
             RaisePropertyChanged(nameof(HasCanvasDiagnostics));
             RaisePropertyChanged(nameof(HasStructureDiagnostics));
+            RaisePropertyChanged(nameof(HasSchemaCompare));
             RaisePropertyChanged(nameof(ShowPrimaryContent));
             RaisePropertyChanged(nameof(ShowCanvasDiagnosticsContent));
             RaisePropertyChanged(nameof(ShowStructureDiagnosticsContent));
+            RaisePropertyChanged(nameof(ShowSchemaCompareContent));
             RaisePropertyChanged(nameof(ShowQueryPrimaryContent));
             RaisePropertyChanged(nameof(ShowDdlPrimaryContent));
             RaisePropertyChanged(nameof(ShowSqlBenchmarkPrimaryContent));
@@ -109,6 +116,7 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
             RaisePropertyChanged(nameof(ShowPrimaryContent));
             RaisePropertyChanged(nameof(ShowCanvasDiagnosticsContent));
             RaisePropertyChanged(nameof(ShowStructureDiagnosticsContent));
+            RaisePropertyChanged(nameof(ShowSchemaCompareContent));
             RaisePropertyChanged(nameof(ShowQueryPrimaryContent));
             RaisePropertyChanged(nameof(ShowDdlPrimaryContent));
             RaisePropertyChanged(nameof(ShowSqlBenchmarkPrimaryContent));
@@ -133,10 +141,12 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
     public string CanvasDiagnosticsTabLabel => "Diagnosticos do canvas";
 
     public string StructureDiagnosticsTabLabel => "Diagnosticos de estrutura";
+    public string SchemaCompareTabLabel => "Comparar tabelas";
 
     public bool ShowPrimaryContent => ActiveTab == EOutputPreviewTab.Primary;
     public bool ShowCanvasDiagnosticsContent => HasCanvasDiagnostics && ActiveTab == EOutputPreviewTab.CanvasDiagnostics;
     public bool ShowStructureDiagnosticsContent => HasStructureDiagnostics && ActiveTab == EOutputPreviewTab.StructureDiagnostics;
+    public bool ShowSchemaCompareContent => HasSchemaCompare && ActiveTab == EOutputPreviewTab.SchemaCompare;
     public bool ShowQueryPrimaryContent => IsQueryMode && ShowPrimaryContent;
     public bool ShowDdlPrimaryContent => IsDdlMode && ShowPrimaryContent;
     public bool ShowSqlBenchmarkPrimaryContent => IsSqlBenchmarkMode && ShowPrimaryContent;
@@ -160,6 +170,7 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
     public bool HasCanvasDiagnostics => Diagnostics is not null;
 
     public bool HasStructureDiagnostics => IsDdlMode && DdlTool is not null;
+    public bool HasSchemaCompare => IsDdlMode && DdlSchemaCompareTool is not null;
 
     public string QuerySqlText
     {
@@ -222,6 +233,19 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
         }
     }
 
+    public DdlSchemaCompareWorkspaceViewModel? DdlSchemaCompareTool
+    {
+        get => _ddlSchemaCompareTool;
+        private set
+        {
+            if (!Set(ref _ddlSchemaCompareTool, value))
+                return;
+
+            RaisePropertyChanged(nameof(HasSchemaCompare));
+            RaisePropertyChanged(nameof(ShowSchemaCompareContent));
+        }
+    }
+
     public string UnavailableMessage
     {
         get => _unavailableMessage;
@@ -245,6 +269,7 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
         BenchmarkTool = null;
         ExplainPlanTool = null;
         DdlTool = null;
+        DdlSchemaCompareTool = null;
         ActiveTab = EOutputPreviewTab.Primary;
         IsVisible = true;
         Diagnostics?.RunChecksCommand.Execute(null);
@@ -264,6 +289,7 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
         BenchmarkTool = null;
         ExplainPlanTool = null;
         DdlTool = liveDdl;
+        DdlSchemaCompareTool = liveDdl.SchemaComparePanel;
         ActiveTab = EOutputPreviewTab.Primary;
         IsVisible = true;
         Diagnostics?.RunChecksCommand.Execute(null);
@@ -286,6 +312,7 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
         BenchmarkTool = null;
         ExplainPlanTool = null;
         DdlTool = null;
+        DdlSchemaCompareTool = null;
         ActiveTab = EOutputPreviewTab.Primary;
         IsVisible = true;
     }
@@ -308,6 +335,7 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
         BenchmarkTool = benchmark;
         ExplainPlanTool = null;
         DdlTool = null;
+        DdlSchemaCompareTool = null;
         ActiveTab = EOutputPreviewTab.Primary;
         IsVisible = true;
     }
@@ -334,6 +362,7 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
         BenchmarkTool = null;
         ExplainPlanTool = explain;
         DdlTool = null;
+        DdlSchemaCompareTool = null;
         ActiveTab = EOutputPreviewTab.Primary;
         IsVisible = true;
     }
@@ -350,6 +379,7 @@ public sealed class OutputPreviewModalViewModel : ViewModelBase
         BenchmarkTool = null;
         ExplainPlanTool = null;
         DdlTool = null;
+        DdlSchemaCompareTool = null;
         IsVisible = false;
     }
 

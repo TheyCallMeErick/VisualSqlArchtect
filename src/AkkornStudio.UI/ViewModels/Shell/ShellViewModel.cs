@@ -10,6 +10,7 @@ using Avalonia;
 using AkkornStudio.UI.Services.ConnectionManager.Models;
 using AkkornStudio.UI.Services.ConnectionManager;
 using AkkornStudio.UI.Services.Localization;
+using AkkornStudio.UI.Services.Settings;
 using AkkornStudio.UI.Services.SqlEditor;
 using AkkornStudio.UI.Services.Workspace;
 using AkkornStudio.UI.Services.Workspace.Diagnostics;
@@ -49,6 +50,7 @@ public sealed class ShellViewModel : ViewModelBase
     {
         Appearance,
         Editor,
+        Project,
         LanguageRegion,
         DateTime,
         KeyboardShortcuts,
@@ -74,6 +76,7 @@ public sealed class ShellViewModel : ViewModelBase
     private CanvasContext _activeCanvasContext = CanvasContext.Query;
     private ConnectionManagerViewModel? _observedQueryConnectionManager;
     private ConnectionManagerViewModel? _observedDdlConnectionManager;
+    private ConnectionManagerViewModel? _observedSqlEditorConnectionManager;
     private CanvasViewModel? _observedQueryCanvas;
     private CanvasViewModel? _observedDdlCanvas;
     private PropertyChangedEventHandler? _activeConnectionManagerPropertyChanged;
@@ -93,6 +96,7 @@ public sealed class ShellViewModel : ViewModelBase
     private Guid? _erDiagramDocumentId;
     private Guid? _connectionModalOwnerDocumentId;
     private Guid? _lastSyncedWorkspaceDocumentId;
+    private ProjectConventionSettings _projectConventionSettings = AppSettingsStore.LoadProjectConventionSettings();
 
     public ShellViewModel(
         CanvasViewModel? canvas = null,
@@ -150,7 +154,10 @@ public sealed class ShellViewModel : ViewModelBase
         };
         OutputPreview.PropertyChanged += _outputPreviewPropertyChanged;
         if (_canvas is not null)
+        {
+            _canvas.ApplyProjectConventionSettings(_projectConventionSettings);
             RegisterOrUpdateQueryDocument(_canvas);
+        }
         ActivateDocumentCore(WorkspaceDocumentType.QueryCanvas);
         SyncExtractedPanels();
     }
@@ -388,6 +395,7 @@ public sealed class ShellViewModel : ViewModelBase
 
             RaisePropertyChanged(nameof(IsAppearanceSectionSelected));
             RaisePropertyChanged(nameof(IsEditorSectionSelected));
+            RaisePropertyChanged(nameof(IsProjectSectionSelected));
             RaisePropertyChanged(nameof(IsLanguageRegionSectionSelected));
             RaisePropertyChanged(nameof(IsDateTimeSectionSelected));
             RaisePropertyChanged(nameof(IsKeyboardShortcutsSectionSelected));
@@ -403,6 +411,7 @@ public sealed class ShellViewModel : ViewModelBase
     {
         ESettingsSection.Appearance => Localize("settings.section.appearance.title", "Themes"),
         ESettingsSection.Editor => Localize("settings.section.editor.title", "Editor"),
+        ESettingsSection.Project => Localize("settings.section.project.title", "Project"),
         ESettingsSection.LanguageRegion => Localize("settings.section.languageRegion.title", "Language & Region"),
         ESettingsSection.DateTime => Localize("settings.section.dateTime.title", "Date & Time"),
         ESettingsSection.KeyboardShortcuts => Localize("settings.section.keyboard.title", "Keyboard Shortcuts"),
@@ -416,6 +425,7 @@ public sealed class ShellViewModel : ViewModelBase
     {
         ESettingsSection.Appearance => Localize("settings.section.appearance.subtitle", "Choose your style or customize your theme"),
         ESettingsSection.Editor => Localize("settings.section.editor.subtitle", "Control SQL safety defaults in editor execution."),
+        ESettingsSection.Project => Localize("settings.section.project.subtitle", "Manage naming conventions and default wire style across Query and DDL."),
         ESettingsSection.LanguageRegion => Localize("settings.section.languageRegion.subtitle", "Manage language and regional formatting"),
         ESettingsSection.DateTime => Localize("settings.section.wip.subtitle", "Work in progress."),
         ESettingsSection.KeyboardShortcuts => Localize("settings.section.keyboard.subtitle", "Customize keyboard shortcuts used by command palette and canvas execution."),
@@ -427,6 +437,7 @@ public sealed class ShellViewModel : ViewModelBase
 
     public bool IsAppearanceSectionSelected => SelectedSettingsSection == ESettingsSection.Appearance;
     public bool IsEditorSectionSelected => SelectedSettingsSection == ESettingsSection.Editor;
+    public bool IsProjectSectionSelected => SelectedSettingsSection == ESettingsSection.Project;
     public bool IsLanguageRegionSectionSelected => SelectedSettingsSection == ESettingsSection.LanguageRegion;
     public bool IsDateTimeSectionSelected => SelectedSettingsSection == ESettingsSection.DateTime;
     public bool IsKeyboardShortcutsSectionSelected => SelectedSettingsSection == ESettingsSection.KeyboardShortcuts;
@@ -452,6 +463,7 @@ public sealed class ShellViewModel : ViewModelBase
                 domainStrategy: new QueryDomainStrategy(isDdlModeActiveResolver, importDdlTableAction),
                 toastCenter: Toasts,
                 connectionManagerFactory: _connectionManagerViewModelFactory);
+            Canvas.ApplyProjectConventionSettings(_projectConventionSettings);
             BindPropertyPanelActions(Canvas);
         }
 
@@ -476,6 +488,7 @@ public sealed class ShellViewModel : ViewModelBase
                 domainStrategy: new DdlDomainStrategy(),
                 toastCenter: Toasts,
                 connectionManagerFactory: _connectionManagerViewModelFactory);
+            DdlCanvas.ApplyProjectConventionSettings(_projectConventionSettings);
             BindPropertyPanelActions(DdlCanvas);
         }
 
@@ -733,6 +746,37 @@ public sealed class ShellViewModel : ViewModelBase
 
     public void SelectSettingsSection(ESettingsSection section) => SelectedSettingsSection = section;
 
+    public ProjectConventionSettings CurrentProjectConventionSettings => new()
+    {
+        NamingConvention = _projectConventionSettings.NamingConvention,
+        EnforceAliasNaming = _projectConventionSettings.EnforceAliasNaming,
+        WarnOnReservedKeywords = _projectConventionSettings.WarnOnReservedKeywords,
+        MaxAliasLength = _projectConventionSettings.MaxAliasLength,
+        DefaultWireCurveMode = _projectConventionSettings.DefaultWireCurveMode,
+    };
+
+    public void ApplyProjectConventionSettings(ProjectConventionSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        _projectConventionSettings = new ProjectConventionSettings
+        {
+            NamingConvention = settings.NamingConvention,
+            EnforceAliasNaming = settings.EnforceAliasNaming,
+            WarnOnReservedKeywords = settings.WarnOnReservedKeywords,
+            MaxAliasLength = settings.MaxAliasLength,
+            DefaultWireCurveMode = settings.DefaultWireCurveMode,
+        };
+
+        foreach (OpenWorkspaceDocument document in _workspaceRouter.OpenDocuments)
+        {
+            if (document.DocumentViewModel is CanvasViewModel canvas)
+                canvas.ApplyProjectConventionSettings(_projectConventionSettings);
+        }
+
+        Canvas?.ApplyProjectConventionSettings(_projectConventionSettings);
+        DdlCanvas?.ApplyProjectConventionSettings(_projectConventionSettings);
+    }
+
     public void SetSqlEditorExecutionSafetyOptions(bool top1000WithoutWhereEnabled, bool protectMutationWithoutWhereEnabled)
     {
         SqlEditor.SetExecutionSafetyOptions(top1000WithoutWhereEnabled, protectMutationWithoutWhereEnabled);
@@ -859,6 +903,17 @@ public sealed class ShellViewModel : ViewModelBase
                 _observedDdlConnectionManager.PropertyChanged += _activeConnectionManagerPropertyChanged;
         }
 
+        ConnectionManagerViewModel? sqlManager = ResolveSqlEditorConnectionManager();
+        if (!ReferenceEquals(_observedSqlEditorConnectionManager, sqlManager))
+        {
+            if (_observedSqlEditorConnectionManager is not null)
+                _observedSqlEditorConnectionManager.PropertyChanged -= _activeConnectionManagerPropertyChanged;
+
+            _observedSqlEditorConnectionManager = sqlManager;
+            if (_observedSqlEditorConnectionManager is not null)
+                _observedSqlEditorConnectionManager.PropertyChanged += _activeConnectionManagerPropertyChanged;
+        }
+
         // Keep overlay bindings in sync even when managers were already visible
         // before observer wiring completed.
         RaisePropertyChanged(nameof(ActiveConnectionManager));
@@ -885,6 +940,9 @@ public sealed class ShellViewModel : ViewModelBase
         {
             ddlManager.IsVisible = false;
         }
+
+        if (!ReferenceEquals(_sqlEditorConnectionManager, visibleManager))
+            _sqlEditorConnectionManager.IsVisible = false;
     }
 
     private void RefreshCanvasMetadataObservers()
@@ -1184,6 +1242,7 @@ public sealed class ShellViewModel : ViewModelBase
             domainStrategy: new QueryDomainStrategy(),
             toastCenter: Toasts,
             connectionManagerFactory: _connectionManagerViewModelFactory);
+        canvas.ApplyProjectConventionSettings(_projectConventionSettings);
         BindPropertyPanelActions(canvas);
         Guid documentId = Guid.NewGuid();
         RegisterOrUpdateDocument(documentId, WorkspaceDocumentType.QueryCanvas, title, canvas, activate: true);
@@ -1207,6 +1266,7 @@ public sealed class ShellViewModel : ViewModelBase
             domainStrategy: new DdlDomainStrategy(),
             toastCenter: Toasts,
             connectionManagerFactory: _connectionManagerViewModelFactory);
+        ddlCanvas.ApplyProjectConventionSettings(_projectConventionSettings);
         BindPropertyPanelActions(ddlCanvas);
         Guid documentId = Guid.NewGuid();
         RegisterOrUpdateDocument(documentId, WorkspaceDocumentType.DdlCanvas, title, ddlCanvas, activate: true);
@@ -1303,6 +1363,7 @@ public sealed class ShellViewModel : ViewModelBase
             domainStrategy: isDdl ? new DdlDomainStrategy() : new QueryDomainStrategy(),
             toastCenter: Toasts,
             connectionManagerFactory: _connectionManagerViewModelFactory);
+        canvas.ApplyProjectConventionSettings(_projectConventionSettings);
         BindPropertyPanelActions(canvas);
 
         if (savedDocument.CanvasPayload is SavedCanvas payload)

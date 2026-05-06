@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using AkkornStudio.UI.Services.ConnectionManager;
 using AkkornStudio.UI.Services.ConnectionManager.Contracts;
 using AkkornStudio.UI.Services.Localization;
@@ -14,6 +15,8 @@ using AkkornStudio.UI.ViewModels.Validation.Conventions.Implementations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace AkkornStudio.UI;
 
@@ -21,11 +24,13 @@ public partial class App : Application
 {
     private static readonly ILogger<App> _logger = NullLogger<App>.Instance;
     private IServiceProvider? _services;
+    private static int _exceptionHandlersWired;
 
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
     public override void OnFrameworkInitializationCompleted()
     {
+        WireGlobalExceptionHandlers();
         ApplySavedThemeVariant();
         ApplyUserThemeIfPresent();
 
@@ -45,6 +50,64 @@ public partial class App : Application
             desktop.MainWindow = _services.GetRequiredService<MainWindow>();
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private static void WireGlobalExceptionHandlers()
+    {
+        if (Interlocked.Exchange(ref _exceptionHandlersWired, 1) == 1)
+            return;
+
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            HandleFatalException(e.ExceptionObject as Exception, "appdomain_unhandled", e.IsTerminating);
+        };
+
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            HandleFatalException(e.Exception, "task_unobserved", isTerminating: false);
+            e.SetObserved();
+        };
+
+        Dispatcher.UIThread.UnhandledException += (_, e) =>
+        {
+            HandleFatalException(e.Exception, "ui_unhandled", isTerminating: false);
+            e.Handled = true;
+        };
+    }
+
+    private static void HandleFatalException(Exception? ex, string source, bool isTerminating)
+    {
+        try
+        {
+            string baseDirectory = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (string.IsNullOrWhiteSpace(baseDirectory))
+                baseDirectory = AppContext.BaseDirectory;
+
+            string crashDirectory = Path.Combine(baseDirectory, "AkkornStudio", "crash");
+            Directory.CreateDirectory(crashDirectory);
+
+            string logPath = Path.Combine(crashDirectory, $"crash-{DateTime.UtcNow:yyyy-MM-dd}.log");
+            string body = ex is null
+                ? "<null exception>"
+                : ex.ToString();
+            string line = $"{DateTime.UtcNow:O} | source={source} | terminating={isTerminating}\n{body}\n\n";
+            File.AppendAllText(logPath, line);
+        }
+        catch
+        {
+            // Best-effort only.
+        }
+
+        if (ex is null)
+        {
+            _logger.LogError(
+                "Unhandled exception with no exception object (source={Source}, terminating={IsTerminating})",
+                source,
+                isTerminating);
+            return;
+        }
+
+        _logger.LogError(ex, "Unhandled exception (source={Source}, terminating={IsTerminating})", source, isTerminating);
     }
 
     private static IServiceProvider BuildServices()
