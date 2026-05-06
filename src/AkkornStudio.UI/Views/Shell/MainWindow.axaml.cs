@@ -314,6 +314,7 @@ public partial class MainWindow : Window
 
     private void OpenConnectionsPanel(bool beginNewProfile, bool keepStartVisible)
     {
+        CurrentShell.AttachConnectionModalToActiveDocument();
         GetConnectionModule().OpenManager(beginNewProfile, keepStartVisible);
     }
 
@@ -322,14 +323,6 @@ public partial class MainWindow : Window
         _connectionModule ??= new ConnectionWorkspaceModule(
             getConnectionManager: () =>
             {
-                ConnectionManagerViewModel? sidebarManager = CurrentShell.ActiveDiagramSidebar?.EffectiveConnectionManager;
-                if (sidebarManager is not null)
-                {
-                    WireConnectionActivation(sidebarManager);
-                    EnsureExclusiveConnectionManager(sidebarManager);
-                    return sidebarManager;
-                }
-
                 ConnectionManagerViewModel manager = ResolveConnectionManagerForActiveSubscreen();
                 WireConnectionActivation(manager);
                 EnsureExclusiveConnectionManager(manager);
@@ -359,16 +352,23 @@ public partial class MainWindow : Window
 
     private ConnectionManagerViewModel ResolveConnectionManagerForActiveSubscreen()
     {
+        if (CurrentShell.ActiveWorkspaceDocument?.DocumentViewModel is CanvasViewModel activeCanvas)
+            return activeCanvas.ConnectionManager;
+
         return CurrentShell.ActiveWorkspaceDocumentType switch
         {
             WorkspaceDocumentType.DdlCanvas => GetDdlCanvasForInteraction().ConnectionManager,
             WorkspaceDocumentType.QueryCanvas => GetQueryCanvasForInteraction().ConnectionManager,
-            _ => GetQueryCanvasForInteraction().ConnectionManager,
+            WorkspaceDocumentType.SqlEditor => ResolveDiagramCanvasForConnectionSidebar().ConnectionManager,
+            _ => ResolveDiagramCanvasForConnectionSidebar().ConnectionManager,
         };
     }
 
     private CanvasViewModel ResolveDiagramCanvasForConnectionSidebar()
     {
+        if (CurrentShell.ActiveWorkspaceDocument?.DocumentViewModel is CanvasViewModel activeCanvas)
+            return activeCanvas;
+
         return CurrentShell.ActiveWorkspaceDocumentType switch
         {
             WorkspaceDocumentType.DdlCanvas => GetDdlCanvasForInteraction(),
@@ -819,6 +819,7 @@ public partial class MainWindow : Window
         {
             WorkspaceDocumentType.DdlCanvas => GetDdlCanvasForInteraction().ActiveConnectionConfig,
             WorkspaceDocumentType.QueryCanvas => GetQueryCanvasForInteraction().ActiveConnectionConfig,
+            WorkspaceDocumentType.SqlEditor => ResolveDiagramCanvasForConnectionSidebar().ActiveConnectionConfig,
             _ => GetQueryCanvasForInteraction().ActiveConnectionConfig
                 ?? CurrentShell.DdlCanvas?.ActiveConnectionConfig,
         };
@@ -830,6 +831,7 @@ public partial class MainWindow : Window
         {
             WorkspaceDocumentType.DdlCanvas => GetDdlCanvasForInteraction().DatabaseMetadata,
             WorkspaceDocumentType.QueryCanvas => GetQueryCanvasForInteraction().DatabaseMetadata,
+            WorkspaceDocumentType.SqlEditor => ResolveDiagramCanvasForConnectionSidebar().DatabaseMetadata,
             _ => GetQueryCanvasForInteraction().DatabaseMetadata
                 ?? CurrentShell.DdlCanvas?.DatabaseMetadata,
         };

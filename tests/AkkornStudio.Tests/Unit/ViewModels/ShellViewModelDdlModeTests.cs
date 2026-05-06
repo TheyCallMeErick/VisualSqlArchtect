@@ -159,7 +159,7 @@ public class ShellViewModelDdlModeTests
     }
 
     [Fact]
-    public void EnsureDdlCanvas_InheritsMetadataAndConnection_FromQueryCanvasContext()
+    public void EnsureDdlCanvas_DoesNotInheritMetadataAndConnection_FromQueryCanvasContext()
     {
         var vm = new ShellViewModel(connectionManagerViewModelFactory: global::AkkornStudio.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
 
@@ -177,12 +177,12 @@ public class ShellViewModelDdlModeTests
 
         CanvasViewModel ddlCanvas = vm.EnsureDdlCanvas();
 
-        Assert.Same(metadata, ddlCanvas.DatabaseMetadata);
-        Assert.Same(config, ddlCanvas.ActiveConnectionConfig);
+        Assert.Null(ddlCanvas.DatabaseMetadata);
+        Assert.Null(ddlCanvas.ActiveConnectionConfig);
     }
 
     [Fact]
-    public void EnsureDdlCanvas_WhenAlreadyCreated_SynchronizesMetadataFromQueryCanvas()
+    public void EnsureDdlCanvas_WhenAlreadyCreated_DoesNotSynchronizeMetadataFromQueryCanvas()
     {
         var vm = new ShellViewModel(connectionManagerViewModelFactory: global::AkkornStudio.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
 
@@ -205,9 +205,46 @@ public class ShellViewModelDdlModeTests
         CanvasViewModel ensuredDdl = vm.EnsureDdlCanvas();
 
         Assert.Same(ddlCanvas, ensuredDdl);
-        Assert.Same(metadata, ensuredDdl.DatabaseMetadata);
-        Assert.Same(config, ensuredDdl.ActiveConnectionConfig);
-        Assert.True(liveDdl.RunSchemaAnalysisCommand.CanExecute(null));
+        Assert.Null(ensuredDdl.DatabaseMetadata);
+        Assert.Null(ensuredDdl.ActiveConnectionConfig);
+        Assert.False(liveDdl.RunSchemaAnalysisCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void Query_Ddl_AndSqlEditor_UseIndependentConnectionContexts()
+    {
+        var vm = new ShellViewModel(connectionManagerViewModelFactory: global::AkkornStudio.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
+
+        CanvasViewModel queryCanvas = vm.EnsureCanvas();
+        CanvasViewModel ddlCanvas = vm.EnsureDdlCanvas();
+        vm.ActivateDocument(AkkornStudio.UI.Services.Workspace.Models.WorkspaceDocumentType.SqlEditor);
+        SqlEditorViewModel sqlEditor = Assert.IsType<SqlEditorViewModel>(vm.ActiveSqlEditorDocument);
+
+        queryCanvas.SetDatabaseContext(
+            CreateMetadata(),
+            new ConnectionConfig(
+                Provider: DatabaseProvider.Postgres,
+                Host: "query-host",
+                Port: 5432,
+                Database: "query_db",
+                Username: "query_user",
+                Password: "pwd"));
+
+        ddlCanvas.SetDatabaseContext(
+            CreateMetadata(),
+            new ConnectionConfig(
+                Provider: DatabaseProvider.SqlServer,
+                Host: "ddl-host",
+                Port: 1433,
+                Database: "ddl_db",
+                Username: "ddl_user",
+                Password: "pwd"));
+
+        Assert.NotSame(queryCanvas.ConnectionManager, ddlCanvas.ConnectionManager);
+        Assert.NotNull(sqlEditor.SharedConnectionManager);
+        Assert.NotSame(queryCanvas.ConnectionManager, sqlEditor.SharedConnectionManager);
+        Assert.NotSame(ddlCanvas.ConnectionManager, sqlEditor.SharedConnectionManager);
+        Assert.Null(sqlEditor.GetActiveConnectionConfigForTools());
     }
 
     private static DbMetadata CreateMetadata() =>

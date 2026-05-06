@@ -227,12 +227,18 @@ public class CommandPaletteFactory(
             },
             new()
             {
+                ActionId = ShortcutActionIds.OpenConnectionManager,
                 Name = LN("Manage Connections"),
                 Description = LD("Open the connection manager to add, edit or switch database connections"),
                 Shortcut = ShortcutText(ShortcutActionIds.OpenConnectionManager, "Ctrl+Shift+C"),
                 Icon = MaterialIconKind.DatabaseSettings,
                 Tags = LTg("connection database server host provider switch"),
-                Execute = () => CurrentCanvas.ConnectionManager.Open(),
+                Execute = () =>
+                {
+                    ConnectionManagerViewModel manager = CurrentShell.ActiveConnectionManager
+                        ?? CurrentShell.EnsureCanvas().ConnectionManager;
+                    manager.ConnectOrOpenManagerCommand.Execute(null);
+                },
             },
             // ── File ──────────────────────────────────────────────────────────
             new()
@@ -430,20 +436,6 @@ public class CommandPaletteFactory(
                 Tags = LTg("data results table panel"),
                 Execute = OpenOutputPreviewModal,
             },
-            new()
-            {
-                ActionId = ShortcutActionIds.RunPreview,
-                Name = LN("Run Preview"),
-                Description = LD("Execute the current query in preview"),
-                Shortcut = ShortcutText(ShortcutActionIds.RunPreview, "F5"),
-                Icon = MaterialIconKind.Play,
-                Tags = LTg("execute run sql query results"),
-                Execute = async () =>
-                {
-                    if (!CurrentCanvas.HasErrors && !CurrentCanvas.LiveSql.IsMutatingCommand)
-                        await _preview.RunPreviewAsync();
-                },
-            },
             // ── Cleanup / Quality ─────────────────────────────────────────────
             new()
             {
@@ -632,17 +624,6 @@ public class CommandPaletteFactory(
 
         switch (shell.ActivePreviewContract.Kind)
         {
-            case WorkspaceDocumentPreviewKind.Query:
-            {
-                CanvasViewModel queryCanvas = shell.ActiveQueryCanvasDocument ?? shell.Canvas
-                    ?? throw new InvalidOperationException("Preview SQL indisponivel para o canvas Query atual.");
-                LiveSqlBarViewModel liveSql = queryCanvas.LiveSql
-                    ?? throw new InvalidOperationException("Preview SQL indisponivel para o canvas Query atual.");
-                liveSql.Recompile();
-                shell.OutputPreview.OpenForQuery(queryCanvas, liveSql, liveSql.ProviderLabel);
-                return;
-            }
-
             case WorkspaceDocumentPreviewKind.Ddl:
             {
                 CanvasViewModel ddlCanvas = shell.EnsureDdlCanvas();

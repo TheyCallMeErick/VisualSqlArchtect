@@ -35,6 +35,7 @@
     <AvaloniaResource Include="Assets\Syntax\*.xshd" />
     <EmbeddedResource Include="Assets\ReportFrontend\dist\report-app.css" />
     <EmbeddedResource Include="Assets\ReportFrontend\dist\report-app.js" />
+     <AvaloniaResource Include="Assets\Images\**" />
     <None Update="Assets\Localization\*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>

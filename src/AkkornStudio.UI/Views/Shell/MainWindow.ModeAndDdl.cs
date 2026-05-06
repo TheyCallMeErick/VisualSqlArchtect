@@ -769,21 +769,6 @@ public partial class MainWindow
     {
         switch (CurrentShell.ActivePreviewContract.Kind)
         {
-            case WorkspaceDocumentPreviewKind.Query:
-            {
-                CanvasViewModel queryCanvas = CurrentShell.ActiveQueryCanvasDocument ?? CurrentShell.Canvas
-                    ?? throw new InvalidOperationException(
-                        L("error.mainWindow.queryPreviewUnavailable", "Preview SQL indisponivel para o canvas Query atual."));
-                LiveSqlBarViewModel liveSql = queryCanvas.LiveSql
-                    ?? throw new InvalidOperationException(
-                        L("error.mainWindow.queryPreviewUnavailable", "Preview SQL indisponivel para o canvas Query atual."));
-                liveSql.Recompile();
-                CurrentShell.OutputPreview.OpenForQuery(queryCanvas, liveSql, liveSql.ProviderLabel);
-                TrackCriticalFlow("CF-07-sql-preview", "open_query_preview", "ok");
-                await Task.CompletedTask;
-                return;
-            }
-
             case WorkspaceDocumentPreviewKind.Ddl:
             {
                 await ViewDdlSqlAsync();

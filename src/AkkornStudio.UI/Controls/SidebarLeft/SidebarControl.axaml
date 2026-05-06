@@ -23,12 +23,14 @@
         <Button x:Name="NodesTabButton"
                 Classes="panel-tab"
                 Classes.active="{Binding ShowNodes}"
+                Command="{Binding SelectNodesCommand}"
           Content="{Binding [sidebar.tab.nodes], Source={x:Static loc:LocalizationService.Instance}}"/>
 
         <!-- Connection Tab -->
         <Button x:Name="ConnectionTabButton"
                 Classes="panel-tab"
                 Classes.active="{Binding ShowConnection}"
+                Command="{Binding SelectConnectionCommand}"
           Content="{Binding [sidebar.tab.connection], Source={x:Static loc:LocalizationService.Instance}}"/>
 
       </StackPanel>
@@ -38,12 +40,14 @@
     <Grid Grid.Row="1" RowDefinitions="*">
       <!-- Nodes Tab -->
       <Grid IsVisible="{Binding ShowNodes}" Grid.Column="0">
-        <ctrl:NodesListControl x:Name="NodesControl"/>
+        <ctrl:NodesListControl x:Name="NodesControl"
+                               DataContext="{Binding NodesList}"/>
       </Grid>
 
       <!-- Connection Tab -->
       <Grid IsVisible="{Binding ShowConnection}" Grid.Column="0" VerticalAlignment="Stretch">
         <ctrl:ConnectionTabControl x:Name="ConnectionControl"
+                                   DataContext="{Binding ConnectionManager}"
                                    VerticalAlignment="Stretch"
                                    HorizontalAlignment="Stretch"/>
       </Grid>

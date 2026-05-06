@@ -645,13 +645,22 @@
   </Style>
 
   <Style Selector="Expander.app-accordion">
-    <Setter Property="Background" Value="{StaticResource Bg1Brush}"/>
+    <Setter Property="Background" Value="{StaticResource Bg2Brush}"/>
     <Setter Property="BorderBrush" Value="{StaticResource BorderSubtleBrush}"/>
     <Setter Property="BorderThickness" Value="1"/>
     <Setter Property="CornerRadius" Value="{StaticResource RadiusMD}"/>
     <Setter Property="Padding" Value="0"/>
     <Setter Property="HorizontalAlignment" Value="Stretch"/>
     <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+  </Style>
+  <Style Selector="Expander.app-accordion /template/ ToggleButton">
+    <Setter Property="Background" Value="{StaticResource Bg2Brush}"/>
+    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource BorderSubtleBrush}"/>
+  </Style>
+  <Style Selector="Expander.app-accordion /template/ ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Bg1Brush}"/>
+    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
   </Style>
   <Style Selector="Expander.app-accordion:pointerover">
     <Setter Property="BorderBrush" Value="{StaticResource BorderFocusBrush}"/>

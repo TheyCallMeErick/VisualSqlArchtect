@@ -13,6 +13,8 @@ using AkkornStudio.UI.Services.Localization;
 using AkkornStudio.UI.Services.Modal;
 using AkkornStudio.UI.ViewModels.Canvas;
 using AkkornStudio.UI.Services.Theming;
+using System.Diagnostics;
+using System.IO;
 
 namespace AkkornStudio.UI.ViewModels;
 
@@ -20,6 +22,7 @@ namespace AkkornStudio.UI.ViewModels;
 
 public sealed class ConnectionManagerViewModel : ViewModelBase
 {
+    private const string ConnectionModalLogFile = "connection-modal-debug.log";
     // Latency above this threshold is considered "Degraded" rather than "Online"
     private const double DegradedLatencyThresholdMs = 500.0;
     // How often the background health monitor pings the active connection (seconds)
@@ -622,7 +625,12 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
         ImportFromUrlCommand  = new RelayCommand(StartImportFromUrlSafe, () => !string.IsNullOrWhiteSpace(EditConnectionUrl));
         ConnectCommand        = new RelayCommand(StartConnectSafe, () => IsEditing ? IsFormValid : SelectedProfile is not null);
         DisconnectCommand     = new RelayCommand(StartDisconnectSafe, () => _activeProfileId is not null);
-        CloseCommand          = new RelayCommand(() => IsVisible = false);
+        CloseCommand          = new RelayCommand(() =>
+        {
+            LogConnectionModal("CloseCommand invoked");
+            IsVisible = false;
+            LogConnectionModal("CloseCommand completed");
+        });
         OpenNewProfileCommand = new RelayCommand(() =>
         {
             Open();
@@ -685,7 +693,12 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
         LoadProfiles();
     }
 
-    public void Open() => IsVisible = true;
+    public void Open()
+    {
+        LogConnectionModal("Open invoked");
+        IsVisible = true;
+        LogConnectionModal("Open completed");
+    }
 
     // ── Form operations ───────────────────────────────────────────────────────
 
@@ -805,14 +818,21 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
 
     private void ConnectOrOpenManager()
     {
+        LogConnectionModal("ConnectOrOpenManager invoked");
         if (IsConnecting || IsReloadingSchema)
+        {
+            LogConnectionModal("ConnectOrOpenManager aborted: busy");
             return;
+        }
 
         bool beginNewProfile = Profiles.Count == 0;
-        if (_globalModalManager.RequestConnectionManager(beginNewProfile: beginNewProfile, keepStartVisible: false))
-            return;
+        // When invoked from a canvas-local sidebar (DDL/Query), keep the flow local
+        // to this manager instance and avoid double-open race with global routing.
+        if (Canvas is null)
+            _ = _globalModalManager.RequestConnectionManager(beginNewProfile: beginNewProfile, keepStartVisible: false);
 
         Open();
+        LogConnectionModal("ConnectOrOpenManager after Open");
 
         if (Profiles.Count > 0)
         {
@@ -821,10 +841,28 @@ public sealed class ConnectionManagerViewModel : ViewModelBase
 
             IsEditing = false;
             TestStatus = string.Empty;
+            LogConnectionModal("ConnectOrOpenManager completed with existing profiles");
             return;
         }
 
         BeginNewProfile();
+        LogConnectionModal("ConnectOrOpenManager completed with BeginNewProfile");
+    }
+
+    private void LogConnectionModal(string message)
+    {
+        string line =
+            $"{DateTimeOffset.Now:O} | message={message} | isVisible={IsVisible} | canvasBound={(Canvas is not null)} | profileCount={Profiles.Count} | selectedProfile={(SelectedProfile?.Id ?? "<null>")} | activeProfile={(ActiveProfileId ?? "<null>")}";
+        Debug.WriteLine(line);
+        try
+        {
+            string path = Path.Combine(AppContext.BaseDirectory, ConnectionModalLogFile);
+            File.AppendAllText(path, line + Environment.NewLine);
+        }
+        catch
+        {
+            // Best-effort diagnostics only.
+        }
     }
 
     private async Task DisconnectAsync()

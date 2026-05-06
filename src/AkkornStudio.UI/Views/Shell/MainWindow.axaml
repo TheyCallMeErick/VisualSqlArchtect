@@ -12,6 +12,7 @@
           x:Name="RootWindow"
   x:DataType="vm:ShellViewModel"
         Title="{Binding [app.windowTitle], Source={x:Static loc:LocalizationService.Instance}}"
+        Icon="/Assets/Images/Icons/logo.ico"
         Width="1440" Height="900"
         MinWidth="960" MinHeight="620"
         Background="{StaticResource Bg0Brush}"
@@ -809,7 +810,7 @@
            VerticalAlignment="Center"
            ZIndex="50"
           IsVisible="{Binding IsConnectionManagerOverlayVisible}">
-      <ctrl:ConnectionManagerControl DataContext="{Binding ActiveConnectionManager}"
+      <ctrl:ConnectionManagerControl DataContext="{Binding ConnectionManagerOverlay}"
                                      Name="ConnectionManagerOverlay"/>
     </Panel>
 
@@ -1152,7 +1153,3 @@
     </Border>
     </Grid>
 </Window>
-
-
-
-

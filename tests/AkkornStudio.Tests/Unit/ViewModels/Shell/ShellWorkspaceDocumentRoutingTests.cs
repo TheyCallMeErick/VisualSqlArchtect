@@ -557,7 +557,7 @@ public class ShellWorkspaceDocumentRoutingTests
     }
 
     [Fact]
-    public void IsConnectionManagerOverlayVisible_UsesVisibleSharedManagerWhenDdlDocumentIsActive()
+    public void IsConnectionManagerOverlayVisible_AllowsGlobalVisibleManagerWhenDdlDocumentIsActive()
     {
         var shell = new ShellViewModel(connectionManagerViewModelFactory: global::AkkornStudio.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
         shell.EnterCanvas();
@@ -566,13 +566,13 @@ public class ShellWorkspaceDocumentRoutingTests
         CanvasViewModel queryCanvas = shell.EnsureCanvas();
         queryCanvas.ConnectionManager.Open();
 
-        Assert.Same(queryCanvas.ConnectionManager, shell.ActiveConnectionManager);
-        Assert.True(shell.IsConnectionManagerVisible);
+        Assert.NotSame(queryCanvas.ConnectionManager, shell.ActiveConnectionManager);
+        Assert.False(shell.IsConnectionManagerVisible);
         Assert.True(shell.IsConnectionManagerOverlayVisible);
     }
 
     [Fact]
-    public void IsConnectionManagerOverlayVisible_AllowsConnectionModalInSqlEditorMode()
+    public void IsConnectionManagerOverlayVisible_InSqlEditorModeFollowsSharedQueryManager()
     {
         var shell = new ShellViewModel(connectionManagerViewModelFactory: global::AkkornStudio.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
         shell.EnterCanvas();
@@ -584,6 +584,20 @@ public class ShellWorkspaceDocumentRoutingTests
         Assert.Same(queryCanvas.ConnectionManager, shell.ActiveConnectionManager);
         Assert.True(shell.IsConnectionManagerVisible);
         Assert.True(shell.IsConnectionManagerOverlayVisible);
+    }
+
+    [Fact]
+    public void IsConnectionManagerOverlayVisible_InErModeFollowsSharedManager()
+    {
+        var shell = new ShellViewModel(connectionManagerViewModelFactory: global::AkkornStudio.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
+        shell.EnterCanvas();
+        shell.ActivateDocument(WorkspaceDocumentType.ErDiagram);
+
+        CanvasViewModel queryCanvas = shell.EnsureCanvas();
+        queryCanvas.ConnectionManager.Open();
+
+        Assert.True(shell.IsConnectionManagerOverlayVisible);
+        Assert.Same(queryCanvas.ConnectionManager, shell.ConnectionManagerOverlay);
     }
 
     [Fact]
@@ -606,6 +620,67 @@ public class ShellWorkspaceDocumentRoutingTests
         queryCanvas.ConnectionManager.Open();
         Assert.True(queryCanvas.ConnectionManager.IsVisible);
         Assert.False(ddlCanvas.ConnectionManager.IsVisible);
+    }
+
+    [Fact]
+    public void DdlSidebarConnectFlow_OpensOnlyDdlConnectionManager()
+    {
+        var shell = new ShellViewModel(connectionManagerViewModelFactory: global::AkkornStudio.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
+        shell.EnterCanvas();
+        shell.ActivateDocument(WorkspaceDocumentType.DdlCanvas);
+
+        CanvasViewModel queryCanvas = shell.EnsureCanvas();
+        CanvasViewModel ddlCanvas = shell.EnsureDdlCanvas();
+
+        ddlCanvas.Sidebar.ConnectionManager.ConnectOrOpenManagerCommand.Execute(null);
+
+        Assert.Equal(WorkspaceDocumentType.DdlCanvas, shell.ActiveWorkspaceDocumentType);
+        Assert.False(queryCanvas.ConnectionManager.IsVisible);
+        Assert.True(ddlCanvas.ConnectionManager.IsVisible);
+        Assert.True(shell.IsConnectionManagerOverlayVisible);
+        Assert.True(shell.IsDdlConnectionManagerOverlayVisible);
+        Assert.False(shell.IsQueryConnectionManagerOverlayVisible);
+    }
+
+    [Fact]
+    public void DdlSidebarConnectFlow_ShowsOverlay_EvenWhenModalRouteWasPreviouslyBoundToQuery()
+    {
+        var shell = new ShellViewModel(connectionManagerViewModelFactory: global::AkkornStudio.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
+        shell.EnterCanvas();
+
+        CanvasViewModel queryCanvas = shell.EnsureCanvas();
+        CanvasViewModel ddlCanvas = shell.EnsureDdlCanvas();
+
+        shell.AttachConnectionModalToActiveDocument();
+        queryCanvas.ConnectionManager.Open();
+        queryCanvas.ConnectionManager.CloseCommand.Execute(null);
+
+        shell.ActivateDocument(WorkspaceDocumentType.DdlCanvas);
+        ddlCanvas.Sidebar.ConnectionManager.ConnectOrOpenManagerCommand.Execute(null);
+
+        Assert.True(ddlCanvas.ConnectionManager.IsVisible);
+        Assert.True(shell.IsConnectionManagerOverlayVisible);
+        Assert.Same(ddlCanvas.ConnectionManager, shell.ConnectionManagerOverlay);
+    }
+
+    [Fact]
+    public void DdlSidebarConnectFlow_CloseCommand_HidesOverlayAfterOpeningManager()
+    {
+        var shell = new ShellViewModel(connectionManagerViewModelFactory: global::AkkornStudio.UI.Services.ConnectionManager.ConnectionManagerViewModelFactory.CreateDefault());
+        shell.EnterCanvas();
+        shell.ActivateDocument(WorkspaceDocumentType.DdlCanvas);
+
+        CanvasViewModel ddlCanvas = shell.EnsureDdlCanvas();
+        ddlCanvas.Sidebar.ConnectionManager.ConnectOrOpenManagerCommand.Execute(null);
+
+        Assert.True(ddlCanvas.ConnectionManager.IsVisible);
+        Assert.True(shell.IsConnectionManagerOverlayVisible);
+        Assert.Same(ddlCanvas.ConnectionManager, shell.ConnectionManagerOverlay);
+
+        ddlCanvas.ConnectionManager.CloseCommand.Execute(null);
+
+        Assert.False(ddlCanvas.ConnectionManager.IsVisible);
+        Assert.False(shell.IsConnectionManagerOverlayVisible);
     }
 
     [Fact]

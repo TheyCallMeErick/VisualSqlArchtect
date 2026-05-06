@@ -53,8 +53,9 @@ public class MainWindowSidebarActionsRegressionTests
         string source = ReadMainWindowSources();
 
         Assert.Contains("private void EnsureExclusiveConnectionManager(ConnectionManagerViewModel targetManager)", source);
-        Assert.Contains("EnsureExclusiveConnectionManager(sidebarManager);", source);
         Assert.Contains("EnsureExclusiveConnectionManager(manager);", source);
+        Assert.DoesNotContain("ActiveDiagramSidebar?.EffectiveConnectionManager", source);
+        Assert.Contains("ConnectionManagerViewModel manager = ResolveConnectionManagerForActiveSubscreen();", source);
         Assert.Contains("queryCanvas.ConnectionManager.IsVisible = false;", source);
         Assert.Contains("ddlCanvas.ConnectionManager.IsVisible = false;", source);
     }

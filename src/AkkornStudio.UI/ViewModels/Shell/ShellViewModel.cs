@@ -20,6 +20,8 @@ using AkkornStudio.UI.Serialization;
 using AkkornStudio.UI.ViewModels;
 using AkkornStudio.UI.ViewModels.Canvas.Strategies;
 using AkkornStudio.UI.ViewModels.ErDiagram;
+using System.Diagnostics;
+using System.IO;
 
 namespace AkkornStudio.UI.ViewModels;
 
@@ -28,6 +30,7 @@ namespace AkkornStudio.UI.ViewModels;
 /// </summary>
 public sealed class ShellViewModel : ViewModelBase
 {
+    private const string ShellConnectionModalLogFile = "shell-connection-modal-debug.log";
     private const string AutoProjectionMarkerParameter = "__akkorn_auto_projection";
     private const string AutoProjectionChildEntityParameter = "__akkorn_auto_projection_child";
     private const string AutoProjectionParentEntityParameter = "__akkorn_auto_projection_parent";
@@ -82,11 +85,14 @@ public sealed class ShellViewModel : ViewModelBase
     private readonly IWorkspaceDocumentPreviewContractRegistry _previewContractRegistry;
     private readonly IWorkspaceDocumentDiagnosticsContractRegistry _diagnosticsContractRegistry;
     private readonly IConnectionManagerViewModelFactory _connectionManagerViewModelFactory;
+    private readonly ConnectionManagerViewModel _sqlEditorConnectionManager;
     private PropertyChangedEventHandler? _localizationPropertyChanged;
     private PropertyChangedEventHandler? _outputPreviewPropertyChanged;
     private Guid? _queryDocumentId;
     private Guid? _ddlDocumentId;
     private Guid? _erDiagramDocumentId;
+    private Guid? _connectionModalOwnerDocumentId;
+    private Guid? _lastSyncedWorkspaceDocumentId;
 
     public ShellViewModel(
         CanvasViewModel? canvas = null,
@@ -106,6 +112,7 @@ public sealed class ShellViewModel : ViewModelBase
         _diagnosticsContractRegistry = diagnosticsContractRegistry ?? new WorkspaceDocumentDiagnosticsContractRegistry();
         _connectionManagerViewModelFactory = connectionManagerViewModelFactory
             ?? throw new ArgumentNullException(nameof(connectionManagerViewModelFactory));
+        _sqlEditorConnectionManager = _connectionManagerViewModelFactory.Create();
         Toasts = canvas?.Toasts ?? new ToastCenterViewModel();
         _canvas = canvas;
         StartMenu = new StartMenuViewModel();
@@ -114,11 +121,11 @@ public sealed class ShellViewModel : ViewModelBase
         OutputPreview = new OutputPreviewModalViewModel();
         SqlEditor = _sqlEditorViewModelFactory.Create(new SqlEditorViewModelFactoryContext
         {
-            ConnectionConfigResolver = ResolveSharedActiveConnectionConfig,
+            ConnectionConfigResolver = ResolveSqlEditorActiveConnectionConfig,
             ConnectionConfigByProfileIdResolver = ResolveSqlEditorConnectionByProfileId,
             ConnectionProfilesResolver = ResolveSqlEditorConnectionProfiles,
-            MetadataResolver = ResolveSharedMetadata,
-            SharedConnectionManagerResolver = ResolveSharedConnectionManager,
+            MetadataResolver = ResolveSqlEditorMetadata,
+            SharedConnectionManagerResolver = ResolveSqlEditorConnectionManager,
         });
         QueryModeCommand = new RelayCommand(() => ActivateDocument(WorkspaceDocumentType.QueryCanvas));
         DdlModeCommand = new RelayCommand(() => ActivateDocument(WorkspaceDocumentType.DdlCanvas));
@@ -159,6 +166,7 @@ public sealed class ShellViewModel : ViewModelBase
             AttachCanvasObservers(value);
             RaisePropertyChanged(nameof(ActiveCanvas));
             RaisePropertyChanged(nameof(ActiveConnectionManager));
+            RaisePropertyChanged(nameof(ConnectionManagerOverlay));
             RaisePropertyChanged(nameof(IsConnectionManagerVisible));
             RaisePropertyChanged(nameof(IsConnectionManagerOverlayVisible));
             SqlEditor.NotifyConnectionContextChanged();
@@ -291,7 +299,10 @@ public sealed class ShellViewModel : ViewModelBase
     public bool IsDiagramOverlayLayerVisible => IsCanvasVisible && IsDiagramDocumentPageActive;
 
     public bool IsConnectionManagerOverlayVisible =>
-        IsCanvasVisible && (Canvas?.ConnectionManager.IsVisible == true || DdlCanvas?.ConnectionManager.IsVisible == true);
+        IsCanvasVisible
+        && (QueryConnectionManager?.IsVisible == true
+            || DdlConnectionManager?.IsVisible == true
+            || ConnectionManagerOverlay?.IsVisible == true);
 
     public bool IsOutputPreviewModalVisible =>
         IsCanvasVisible && OutputPreview.IsVisible;
@@ -299,8 +310,28 @@ public sealed class ShellViewModel : ViewModelBase
     public CanvasViewModel? ActiveCanvas =>
         ActiveWorkspaceDocument?.DocumentViewModel as CanvasViewModel;
 
-    public ConnectionManagerViewModel? ActiveConnectionManager =>
-        ResolveVisibleConnectionManager() ?? ResolveDocumentConnectionManager();
+    public ConnectionManagerViewModel? QueryConnectionManager =>
+        ActiveQueryCanvasDocument?.ConnectionManager
+        ?? ResolveKnownQueryCanvas()?.ConnectionManager;
+
+    public ConnectionManagerViewModel? DdlConnectionManager =>
+        ActiveDdlCanvasDocument?.ConnectionManager
+        ?? ResolveKnownDdlCanvas()?.ConnectionManager;
+
+    public bool IsQueryConnectionManagerOverlayVisible =>
+        IsCanvasVisible
+        && ActiveWorkspaceDocumentType == WorkspaceDocumentType.QueryCanvas
+        && QueryConnectionManager?.IsVisible == true;
+
+    public bool IsDdlConnectionManagerOverlayVisible =>
+        IsCanvasVisible
+        && ActiveWorkspaceDocumentType == WorkspaceDocumentType.DdlCanvas
+        && DdlConnectionManager?.IsVisible == true;
+
+    public ConnectionManagerViewModel? ConnectionManagerOverlay =>
+        ResolveConnectionManagerForModalRoute();
+
+    public ConnectionManagerViewModel? ActiveConnectionManager => ResolveDocumentConnectionManager();
 
     public SidebarViewModel? ActiveDiagramSidebar => ActiveCanvas?.Sidebar;
 
@@ -338,6 +369,7 @@ public sealed class ShellViewModel : ViewModelBase
             RefreshConnectionManagerObservers();
             RaisePropertyChanged(nameof(ActiveCanvas));
             RaisePropertyChanged(nameof(ActiveConnectionManager));
+            RaisePropertyChanged(nameof(ConnectionManagerOverlay));
             RaisePropertyChanged(nameof(IsConnectionManagerVisible));
             RaisePropertyChanged(nameof(IsConnectionManagerOverlayVisible));
             SyncExtractedPanels();
@@ -407,7 +439,6 @@ public sealed class ShellViewModel : ViewModelBase
         if (ActiveQueryCanvasDocument is not null)
         {
             BindPropertyPanelActions(ActiveQueryCanvasDocument);
-            SyncCanvasConnectionContext(ActiveQueryCanvasDocument, ResolveKnownDdlCanvas());
             return ActiveQueryCanvasDocument;
         }
 
@@ -424,8 +455,6 @@ public sealed class ShellViewModel : ViewModelBase
             BindPropertyPanelActions(Canvas);
         }
 
-        SyncCanvasConnectionContext(Canvas, ResolveKnownDdlCanvas());
-
         return Canvas;
     }
 
@@ -434,7 +463,6 @@ public sealed class ShellViewModel : ViewModelBase
         if (ActiveDdlCanvasDocument is not null)
         {
             BindPropertyPanelActions(ActiveDdlCanvasDocument);
-            SyncCanvasConnectionContext(ActiveDdlCanvasDocument, ResolveKnownQueryCanvas());
             return ActiveDdlCanvasDocument;
         }
 
@@ -450,8 +478,6 @@ public sealed class ShellViewModel : ViewModelBase
                 connectionManagerFactory: _connectionManagerViewModelFactory);
             BindPropertyPanelActions(DdlCanvas);
         }
-
-        SyncCanvasConnectionContext(DdlCanvas, ResolveKnownQueryCanvas());
 
         RegisterOrUpdateDdlDocument(DdlCanvas);
 
@@ -730,6 +756,22 @@ public sealed class ShellViewModel : ViewModelBase
         RaisePropertyChanged(nameof(CommandPalette));
     }
 
+    public void AttachConnectionModalToActiveDocument()
+    {
+        _connectionModalOwnerDocumentId = ActiveWorkspaceDocumentId;
+        RaisePropertyChanged(nameof(ConnectionManagerOverlay));
+        RaisePropertyChanged(nameof(IsConnectionManagerOverlayVisible));
+    }
+
+    public void ClearConnectionModalRoute()
+    {
+        _connectionModalOwnerDocumentId = null;
+        CloseDiagramConnectionManager(ResolveKnownQueryCanvas());
+        CloseDiagramConnectionManager(ResolveKnownDdlCanvas());
+        RaisePropertyChanged(nameof(ConnectionManagerOverlay));
+        RaisePropertyChanged(nameof(IsConnectionManagerOverlayVisible));
+    }
+
     private static string ResolveAppVersionLabel()
     {
         Assembly asm = typeof(ShellViewModel).Assembly;
@@ -752,24 +794,6 @@ public sealed class ShellViewModel : ViewModelBase
             return fileVersion;
 
         return asm.GetName().Version?.ToString() ?? "dev";
-    }
-
-    private static void SyncCanvasConnectionContext(CanvasViewModel target, CanvasViewModel? source)
-    {
-        if (source is null)
-            return;
-
-        DbMetadata? metadata = source.DatabaseMetadata;
-        ConnectionConfig? config = source.ActiveConnectionConfig;
-        bool sourceHasContext = metadata is not null || config is not null;
-        bool targetNeedsContext = target.DatabaseMetadata is null || target.ActiveConnectionConfig is null;
-        if (!sourceHasContext || !targetNeedsContext)
-            return;
-
-        target.SetDatabaseContext(
-            target.DatabaseMetadata ?? metadata,
-            target.ActiveConnectionConfig ?? config
-        );
     }
 
     private CanvasViewModel? ResolveKnownQueryCanvas() =>
@@ -800,14 +824,20 @@ public sealed class ShellViewModel : ViewModelBase
                     EnsureExclusiveVisibleConnectionManager(manager);
 
                 RaisePropertyChanged(nameof(ActiveConnectionManager));
+                RaisePropertyChanged(nameof(ConnectionManagerOverlay));
                 RaisePropertyChanged(nameof(IsConnectionManagerVisible));
                 RaisePropertyChanged(nameof(IsConnectionManagerOverlayVisible));
+                RaisePropertyChanged(nameof(QueryConnectionManager));
+                RaisePropertyChanged(nameof(DdlConnectionManager));
+                RaisePropertyChanged(nameof(IsQueryConnectionManagerOverlayVisible));
+                RaisePropertyChanged(nameof(IsDdlConnectionManagerOverlayVisible));
+                LogShellConnectionOverlay("ConnectionManager.IsVisible changed");
             }
 
             SqlEditor.NotifyConnectionContextChanged();
         };
 
-        ConnectionManagerViewModel? queryManager = Canvas?.ConnectionManager;
+        ConnectionManagerViewModel? queryManager = QueryConnectionManager;
         if (!ReferenceEquals(_observedQueryConnectionManager, queryManager))
         {
             if (_observedQueryConnectionManager is not null)
@@ -818,7 +848,7 @@ public sealed class ShellViewModel : ViewModelBase
                 _observedQueryConnectionManager.PropertyChanged += _activeConnectionManagerPropertyChanged;
         }
 
-        ConnectionManagerViewModel? ddlManager = DdlCanvas?.ConnectionManager;
+        ConnectionManagerViewModel? ddlManager = DdlConnectionManager;
         if (!ReferenceEquals(_observedDdlConnectionManager, ddlManager))
         {
             if (_observedDdlConnectionManager is not null)
@@ -832,19 +862,25 @@ public sealed class ShellViewModel : ViewModelBase
         // Keep overlay bindings in sync even when managers were already visible
         // before observer wiring completed.
         RaisePropertyChanged(nameof(ActiveConnectionManager));
+        RaisePropertyChanged(nameof(ConnectionManagerOverlay));
         RaisePropertyChanged(nameof(IsConnectionManagerVisible));
         RaisePropertyChanged(nameof(IsConnectionManagerOverlayVisible));
+        RaisePropertyChanged(nameof(QueryConnectionManager));
+        RaisePropertyChanged(nameof(DdlConnectionManager));
+        RaisePropertyChanged(nameof(IsQueryConnectionManagerOverlayVisible));
+        RaisePropertyChanged(nameof(IsDdlConnectionManagerOverlayVisible));
+        LogShellConnectionOverlay("RefreshConnectionManagerObservers");
     }
 
     private void EnsureExclusiveVisibleConnectionManager(ConnectionManagerViewModel visibleManager)
     {
-        if (Canvas?.ConnectionManager is ConnectionManagerViewModel queryManager
+        if (ResolveKnownQueryCanvas()?.ConnectionManager is ConnectionManagerViewModel queryManager
             && !ReferenceEquals(queryManager, visibleManager))
         {
             queryManager.IsVisible = false;
         }
 
-        if (DdlCanvas?.ConnectionManager is ConnectionManagerViewModel ddlManager
+        if (ResolveKnownDdlCanvas()?.ConnectionManager is ConnectionManagerViewModel ddlManager
             && !ReferenceEquals(ddlManager, visibleManager))
         {
             ddlManager.IsVisible = false;
@@ -885,35 +921,62 @@ public sealed class ShellViewModel : ViewModelBase
     private ConnectionManagerViewModel? ResolveDocumentConnectionManager() =>
         ActiveWorkspaceDocumentType switch
         {
-            WorkspaceDocumentType.DdlCanvas => DdlCanvas?.ConnectionManager ?? Canvas?.ConnectionManager,
-            WorkspaceDocumentType.QueryCanvas => Canvas?.ConnectionManager ?? DdlCanvas?.ConnectionManager,
-            WorkspaceDocumentType.SqlEditor => ResolveSharedConnectionManager(),
+            WorkspaceDocumentType.DdlCanvas => ActiveDdlCanvasDocument?.ConnectionManager
+                ?? ResolveKnownDdlCanvas()?.ConnectionManager,
+            WorkspaceDocumentType.QueryCanvas => ActiveQueryCanvasDocument?.ConnectionManager
+                ?? ResolveKnownQueryCanvas()?.ConnectionManager,
+            WorkspaceDocumentType.SqlEditor => ResolveSqlEditorConnectionManager(),
             _ => ActiveCanvas?.ConnectionManager ?? ResolveSharedConnectionManager(),
         };
 
     private ConnectionManagerViewModel? ResolveVisibleConnectionManager()
     {
-        ConnectionManagerViewModel? documentManager = ResolveDocumentConnectionManager();
-        if (documentManager?.IsVisible == true)
-            return documentManager;
+        ConnectionManagerViewModel? activeManager = ResolveDocumentConnectionManager();
+        if (activeManager?.IsVisible == true)
+            return activeManager;
 
-        if (Canvas?.ConnectionManager.IsVisible == true)
-            return Canvas.ConnectionManager;
+        ConnectionManagerViewModel? queryManager = QueryConnectionManager;
+        if (queryManager?.IsVisible == true)
+            return queryManager;
 
-        if (DdlCanvas?.ConnectionManager.IsVisible == true)
-            return DdlCanvas.ConnectionManager;
+        ConnectionManagerViewModel? ddlManager = DdlConnectionManager;
+        if (ddlManager?.IsVisible == true)
+            return ddlManager;
 
         return null;
     }
 
+    private ConnectionManagerViewModel? ResolveConnectionManagerForModalRoute()
+    {
+        if (_connectionModalOwnerDocumentId is Guid ownerId
+            && TryResolveConnectionManagerByDocumentId(ownerId, out ConnectionManagerViewModel? ownerManager))
+        {
+            if (ownerManager?.IsVisible == true)
+                return ownerManager;
+        }
+
+        return ResolveVisibleConnectionManager()
+            ?? ResolveDocumentConnectionManager()
+            ?? ResolveSharedConnectionManager();
+    }
+
+    private bool TryResolveConnectionManagerByDocumentId(Guid documentId, out ConnectionManagerViewModel? manager)
+    {
+        OpenWorkspaceDocument? document = _workspaceRouter.OpenDocuments
+            .FirstOrDefault(candidate => candidate.Descriptor.DocumentId == documentId);
+
+        if (document?.DocumentViewModel is CanvasViewModel canvas)
+        {
+            manager = canvas.ConnectionManager;
+            return true;
+        }
+
+        manager = null;
+        return false;
+    }
+
     private void SyncExtractedPanels()
     {
-        if (Canvas is not null)
-            Canvas.Sidebar.ConnectionManagerOverride = null;
-
-        if (DdlCanvas is not null)
-            DdlCanvas.Sidebar.ConnectionManagerOverride = null;
-
         if (ActivePageContract.ShowsDiagramSidebar)
         {
             LeftSidebar.BindQuerySidebar(ActiveDiagramSidebar);
@@ -973,15 +1036,44 @@ public sealed class ShellViewModel : ViewModelBase
 
     private void SyncStateFromActiveDocument()
     {
+        bool changedDocumentRoute = _lastSyncedWorkspaceDocumentId != ActiveWorkspaceDocumentId;
+        _lastSyncedWorkspaceDocumentId = ActiveWorkspaceDocumentId;
+        if (changedDocumentRoute)
+            ClearConnectionModalRoute();
+
+        // Rebind observers whenever active workspace document changes so the
+        // overlay visibility reacts to the active document manager instance.
+        RefreshConnectionManagerObservers();
+
         if (ActiveWorkspaceDocumentType != WorkspaceDocumentType.DdlCanvas)
             _isViewSubcanvasActive = false;
 
         RaisePropertyChanged(nameof(ActiveCanvas));
         RaisePropertyChanged(nameof(ActiveDiagramSidebar));
         RaisePropertyChanged(nameof(ActiveDiagramPropertyPanel));
-        if (ActiveWorkspaceDocumentType is WorkspaceDocumentType.SqlEditor or WorkspaceDocumentType.ErDiagram)
-            HideDiagramOnlyOverlays();
+        switch (ActiveWorkspaceDocumentType)
+        {
+            case WorkspaceDocumentType.QueryCanvas:
+                CloseDiagramConnectionManager(ResolveKnownDdlCanvas());
+                break;
+            case WorkspaceDocumentType.DdlCanvas:
+                CloseDiagramConnectionManager(ResolveKnownQueryCanvas());
+                break;
+            case WorkspaceDocumentType.SqlEditor:
+            case WorkspaceDocumentType.ErDiagram:
+                HideDiagramOnlyOverlays();
+                break;
+        }
         UpdateActiveCanvasContext();
+    }
+
+    private static void CloseDiagramConnectionManager(CanvasViewModel? canvas)
+    {
+        if (canvas is null)
+            return;
+
+        canvas.ConnectionManager.IsVisible = false;
+        canvas.ConnectionManager.CloseClearCanvasPromptCommand.Execute(null);
     }
 
     private void RaiseActiveDocumentPropertiesChanged()
@@ -1010,12 +1102,18 @@ public sealed class ShellViewModel : ViewModelBase
         RaisePropertyChanged(nameof(IsDiagramModeActive));
         RaisePropertyChanged(nameof(IsDiagramOverlayLayerVisible));
         RaisePropertyChanged(nameof(ActiveConnectionManager));
+        RaisePropertyChanged(nameof(ConnectionManagerOverlay));
         RaisePropertyChanged(nameof(IsConnectionManagerVisible));
         RaisePropertyChanged(nameof(IsConnectionManagerOverlayVisible));
+        RaisePropertyChanged(nameof(QueryConnectionManager));
+        RaisePropertyChanged(nameof(DdlConnectionManager));
+        RaisePropertyChanged(nameof(IsQueryConnectionManagerOverlayVisible));
+        RaisePropertyChanged(nameof(IsDdlConnectionManagerOverlayVisible));
         RaisePropertyChanged(nameof(IsOutputPreviewModalVisible));
         RaisePropertyChanged(nameof(ActiveCanvas));
         RaisePropertyChanged(nameof(ActiveDiagramSidebar));
         RaisePropertyChanged(nameof(ActiveDiagramPropertyPanel));
+        LogShellConnectionOverlay("RaiseActiveDocumentPropertiesChanged");
     }
 
     private void HideDiagramOnlyOverlays()
@@ -1037,7 +1135,12 @@ public sealed class ShellViewModel : ViewModelBase
         }
 
         RaisePropertyChanged(nameof(IsConnectionManagerOverlayVisible));
+        RaisePropertyChanged(nameof(ConnectionManagerOverlay));
         RaisePropertyChanged(nameof(IsOutputPreviewModalVisible));
+        RaisePropertyChanged(nameof(QueryConnectionManager));
+        RaisePropertyChanged(nameof(DdlConnectionManager));
+        RaisePropertyChanged(nameof(IsQueryConnectionManagerOverlayVisible));
+        RaisePropertyChanged(nameof(IsDdlConnectionManagerOverlayVisible));
     }
 
     private void RegisterOrUpdateQueryDocument(CanvasViewModel queryCanvas)
@@ -1121,11 +1224,11 @@ public sealed class ShellViewModel : ViewModelBase
         string title = nextOrdinal == 1 ? "SQL Editor" : $"SQL Editor {nextOrdinal}";
         SqlEditorViewModel sqlEditorDocument = _sqlEditorViewModelFactory.Create(new SqlEditorViewModelFactoryContext
         {
-            ConnectionConfigResolver = ResolveSharedActiveConnectionConfig,
+            ConnectionConfigResolver = ResolveSqlEditorActiveConnectionConfig,
             ConnectionConfigByProfileIdResolver = ResolveSqlEditorConnectionByProfileId,
             ConnectionProfilesResolver = ResolveSqlEditorConnectionProfiles,
-            MetadataResolver = ResolveSharedMetadata,
-            SharedConnectionManagerResolver = ResolveSharedConnectionManager,
+            MetadataResolver = ResolveSqlEditorMetadata,
+            SharedConnectionManagerResolver = ResolveSqlEditorConnectionManager,
         });
         Guid documentId = Guid.NewGuid();
         RegisterOrUpdateDocument(documentId, WorkspaceDocumentType.SqlEditor, title, sqlEditorDocument, activate: true);
@@ -1174,6 +1277,22 @@ public sealed class ShellViewModel : ViewModelBase
         RaiseActiveDocumentPropertiesChanged();
     }
 
+    private void LogShellConnectionOverlay(string message)
+    {
+        string line =
+            $"{DateTimeOffset.Now:O} | message={message} | activeType={(ActiveWorkspaceDocumentType?.ToString() ?? "<null>")} | activeId={(ActiveWorkspaceDocumentId?.ToString() ?? "<null>")} | startVisible={IsStartVisible} | canvasVisible={IsCanvasVisible} | queryVisible={(QueryConnectionManager?.IsVisible == true)} | ddlVisible={(DdlConnectionManager?.IsVisible == true)} | overlayVisible={IsConnectionManagerOverlayVisible} | overlayManager={(ConnectionManagerOverlay is null ? "<null>" : ConnectionManagerOverlay.GetHashCode().ToString())}";
+        Debug.WriteLine(line);
+        try
+        {
+            string path = Path.Combine(AppContext.BaseDirectory, ShellConnectionModalLogFile);
+            File.AppendAllText(path, line + Environment.NewLine);
+        }
+        catch
+        {
+            // Diagnostics only.
+        }
+    }
+
     private CanvasViewModel BuildCanvasDocument(SavedWorkspaceDocument savedDocument, bool isDdl)
     {
         var canvas = new CanvasViewModel(
@@ -1199,11 +1318,11 @@ public sealed class ShellViewModel : ViewModelBase
     {
         return _sqlEditorViewModelFactory.Create(new SqlEditorViewModelFactoryContext
         {
-            ConnectionConfigResolver = ResolveSharedActiveConnectionConfig,
+            ConnectionConfigResolver = ResolveSqlEditorActiveConnectionConfig,
             ConnectionConfigByProfileIdResolver = ResolveSqlEditorConnectionByProfileId,
             ConnectionProfilesResolver = ResolveSqlEditorConnectionProfiles,
-            MetadataResolver = ResolveSharedMetadata,
-            SharedConnectionManagerResolver = ResolveSharedConnectionManager,
+            MetadataResolver = ResolveSqlEditorMetadata,
+            SharedConnectionManagerResolver = ResolveSqlEditorConnectionManager,
         });
     }
 
@@ -2345,22 +2464,22 @@ public sealed class ShellViewModel : ViewModelBase
 
     private ConnectionConfig? ResolveSqlEditorConnectionByProfileId(string? profileId)
     {
-        (CanvasViewModel? connectionCanvas, ConnectionManagerViewModel? connectionManager) = ResolveSharedConnectionContext();
-        if (connectionCanvas is null || connectionManager is null)
+        ConnectionManagerViewModel? connectionManager = ResolveSqlEditorConnectionManager();
+        if (connectionManager is null)
             return null;
 
         if (string.IsNullOrWhiteSpace(profileId))
-            return connectionCanvas.ActiveConnectionConfig;
+            return ResolveSqlEditorActiveConnectionConfig();
 
         ConnectionProfile? selected = connectionManager.Profiles
             .FirstOrDefault(profile => string.Equals(profile.Id, profileId, StringComparison.Ordinal));
 
-        return selected?.ToConnectionConfig() ?? connectionCanvas.ActiveConnectionConfig;
+        return selected?.ToConnectionConfig() ?? ResolveSqlEditorActiveConnectionConfig();
     }
 
     private IReadOnlyList<SqlEditorConnectionProfileOption> ResolveSqlEditorConnectionProfiles()
     {
-        ConnectionManagerViewModel? manager = ResolveSharedConnectionManager();
+        ConnectionManagerViewModel? manager = ResolveSqlEditorConnectionManager();
         if (manager is null)
             return [];
 
@@ -2373,6 +2492,25 @@ public sealed class ShellViewModel : ViewModelBase
             })
             .ToList();
     }
+
+    private ConnectionManagerViewModel? ResolveSqlEditorConnectionManager() =>
+        _sqlEditorConnectionManager;
+
+    private ConnectionConfig? ResolveSqlEditorActiveConnectionConfig()
+    {
+        string? activeProfileId = _sqlEditorConnectionManager.ActiveProfileId;
+        if (!string.IsNullOrWhiteSpace(activeProfileId))
+        {
+            ConnectionProfile? selected = _sqlEditorConnectionManager.Profiles
+                .FirstOrDefault(profile => string.Equals(profile.Id, activeProfileId, StringComparison.Ordinal));
+            if (selected is not null)
+                return selected.ToConnectionConfig();
+        }
+
+        return null;
+    }
+
+    private DbMetadata? ResolveSqlEditorMetadata() => null;
 
     private ConnectionManagerViewModel? ResolveSharedConnectionManager() =>
         Canvas?.ConnectionManager ?? DdlCanvas?.ConnectionManager;
